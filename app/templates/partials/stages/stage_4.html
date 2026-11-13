@@ -1,0 +1,53 @@
+<section class="panel stage-card">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Publish package and merch</h1>
+            <p class="panel-desc">Review social metadata and the print mockup before distribution.</p>
+        </div>
+        <div class="panel-actions">
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/gateway/4/approve"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                {% if not ep.merch_listing and not ep.social_posts %}disabled{% endif %}
+            >Authorize publish</button>
+        </div>
+    </div>
+
+    {% if not ep.merch_listing and not ep.social_posts %}
+    <div class="empty-state">Approve the video in Gateway 4 to build the publish package.</div>
+    {% else %}
+    <div class="merch-preview-grid">
+        <div class="mockup-img-frame">
+            {% if ep.merch_mockup_url %}
+            <img src="{{ ep.merch_mockup_url }}" alt="Merch mockup">
+            {% else %}
+            <div class="scene-video-placeholder tall">Mockup pending</div>
+            {% endif %}
+        </div>
+        <div class="listing-box">
+            <span class="badge badge-warn">Print listing</span>
+            <h4>{{ ep.merch_listing.product_title or 'Merch title' }}</h4>
+            <div class="profit-line">
+                {% if ep.merch_listing.profit_margin_usd is defined %}
+                ${{ '%.2f'|format(ep.merch_listing.profit_margin_usd) }} profit / unit
+                {% else %}
+                Profit pending
+                {% endif %}
+            </div>
+            <p class="panel-desc">Variants S–2XL · direct-to-garment</p>
+            <div class="meta-block">
+                <div class="label">YouTube Shorts title</div>
+                <div class="value">{{ ep.social_posts.youtube_shorts.title if ep.social_posts.youtube_shorts is mapping else '—' }}</div>
+            </div>
+            <div class="meta-block">
+                <div class="label">TikTok caption</div>
+                <div class="value">{{ ep.social_posts.tiktok.caption if ep.social_posts.tiktok is mapping else '—' }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</section>

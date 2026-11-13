@@ -1,0 +1,47 @@
+<section class="panel stage-card">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Review script and merch line</h1>
+            <p class="panel-desc">Review the script, then generate the episode video.</p>
+        </div>
+        <div class="panel-actions">
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/gateway/2/approve"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                hx-timeout="900000"
+                {% if not ep.script %}disabled{% endif %}
+            >Generate Video</button>
+        </div>
+    </div>
+
+    {% if not ep.script %}
+    <div class="empty-state">No script yet. Approve Gateway 2 first.</div>
+    {% else %}
+    <div class="merch-box">
+        <div>
+            <span class="badge badge-warn">Merch punchline</span>
+            <div class="merch-quote">"{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}"</div>
+            <p class="panel-desc">Used for apparel mockups in Gateway 5.</p>
+        </div>
+        <details class="inline-edit">
+            <summary class="btn btn-ghost btn-sm">Edit</summary>
+            <form
+                class="inline-edit-form"
+                hx-post="/ui/merch/update"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >
+                <input type="text" name="punchline" value="{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}" required>
+                <button class="btn btn-primary btn-sm" type="submit">Save</button>
+            </form>
+        </details>
+    </div>
+
+    {% include "partials/script_scene_block.html" %}
+    {% endif %}
+</section>

@@ -1,0 +1,70 @@
+<section class="panel stage-card">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Select a satirical concept</h1>
+        </div>
+        <div class="panel-actions">
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/gateway/1/approve"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Approve concept</button>
+        </div>
+    </div>
+
+    <div class="concept-grid">
+        {% if ep.available_concepts %}
+            {% for concept in ep.available_concepts %}
+            {% set idx = loop.index0 %}
+            {% set is_empty = concept.empty or (concept.title or '')|lower == 'empty' %}
+            {% if is_empty %}
+            <div class="concept-card concept-card-empty" aria-disabled="true">
+                <div class="concept-top">
+                    <span class="badge">Concept {{ loop.index }}</span>
+                    <span class="badge">Empty</span>
+                </div>
+                <h3>Empty</h3>
+                <p class="muted">—</p>
+            </div>
+            {% else %}
+            <button
+                class="concept-card {% if idx == selected_concept_index %}selected{% endif %}"
+                type="button"
+                hx-post="/ui/concepts/select"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-vals='{"index": {{ idx }}}'
+                hx-indicator="#busy"
+            >
+                <div class="concept-top">
+                    <span class="badge">Concept {{ loop.index }}</span>
+                    {% if idx == selected_concept_index %}<span class="badge badge-ok">Selected</span>{% endif %}
+                </div>
+                <h3>{{ concept.title }}</h3>
+                {% if concept.cultural_hook %}
+                <p class="concept-hook">{{ concept.cultural_hook }}</p>
+                {% endif %}
+                <p class="concept-premise">{{ concept.premise or "Satirical suburban crash-out premise." }}</p>
+                {% if concept.synopsis %}
+                <p class="concept-synopsis">{{ concept.synopsis }}</p>
+                {% endif %}
+                {% if concept.conflict %}
+                <div class="concept-meta"><strong>Conflict:</strong> {{ concept.conflict }}</div>
+                {% endif %}
+                {% if concept.tone %}
+                <div class="concept-meta"><strong>Tone:</strong> {{ concept.tone }}</div>
+                {% endif %}
+                {% if concept.suggested_merch %}
+                <div class="concept-meta"><strong>Merch:</strong> {{ concept.suggested_merch }}</div>
+                {% endif %}
+            </button>
+            {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No concepts available for this video.</div>
+        {% endif %}
+    </div>
+</section>

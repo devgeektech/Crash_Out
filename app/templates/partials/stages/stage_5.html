@@ -1,0 +1,48 @@
+<section class="panel stage-card">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Community seeding drafts</h1>
+            <p class="panel-desc">Review comment drafts before any external posting.</p>
+        </div>
+        <div class="panel-actions">
+            {% if ep.current_gateway >= 6 %}
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/episode/reset"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Produce next episode</button>
+            {% else %}
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/gateway/5/approve"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                {% if not ep.seeding_drafts %}disabled{% endif %}
+            >Authorize seeding</button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if ep.current_gateway >= 6 %}
+        {% include "partials/stages/completed.html" %}
+    {% elif not ep.seeding_drafts %}
+    <div class="empty-state">Authorize publish in Gateway 5 to generate seeding drafts.</div>
+    {% else %}
+    <div class="seeding-list">
+        {% for draft in ep.seeding_drafts %}
+        <article class="seeding-card">
+            <div class="seeding-head">
+                <strong>{{ draft.platform or 'Community' }}{% if draft.target_community %} · {{ draft.target_community }}{% endif %}</strong>
+                {% if draft.tone %}<span class="badge">{{ draft.tone }}</span>{% endif %}
+            </div>
+            <p>{{ draft.proposed_comment_draft or draft.text or draft.comment }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="home-wrap">
+    <div class="home-hero">
+        <div>
+            <div class="panel-kicker">Production queue</div>
+            <h1 class="home-title">Videos in the pipeline</h1>
+            <p class="panel-desc">Pick a video to open Gate 1. Script packages stay fixed until a generation model is wired.</p>
+        </div>
+    </div>
+
+    <div class="catalog-grid">
+        {% for card in catalog_cards %}
+        <article class="catalog-card">
+            <div class="catalog-card-top">
+                <span class="badge badge-info">{{ card.list_number }}</span>
+                <span class="badge">{{ card.duration_label }}</span>
+            </div>
+            <h2>{{ card.title }}</h2>
+            <p class="catalog-sub">{{ card.subtitle }}</p>
+            <p class="panel-desc">{{ card.premise }}</p>
+            <div class="catalog-meta">
+                <span>Merch: <strong>{{ card.merch }}</strong></span>
+                <span>Status: <strong>{{ card.episode_status }}</strong></span>
+            </div>
+            <form method="post" action="/ui/catalog/{{ card.id }}/open" class="catalog-actions">
+                <button class="btn btn-primary" type="submit">Open Gate 1</button>
+            </form>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

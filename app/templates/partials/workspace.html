@@ -1,0 +1,79 @@
+<div id="workspace" class="workspace" data-stage="{{ viewing_stage }}">
+    <nav class="stepper-bar" aria-label="Pipeline stages">
+        <div class="stepper">
+            {% for num, label in stage_labels.items() %}
+            {% set is_disabled = num in disabled_stages %}
+            {% set mark = stage_marks.get(num, label[:1]) %}
+            <button
+                class="step-item {% if viewing_stage == num %}active{% endif %} {% if ep.current_gateway > num and num > 0 %}completed{% endif %} {% if is_disabled %}is-disabled{% endif %}"
+                type="button"
+                {% if is_disabled %}
+                disabled
+                aria-disabled="true"
+                title="Coming soon"
+                {% else %}
+                hx-get="/ui/stage/{{ num }}"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                {% endif %}
+            >
+                <span class="step-num">{{ mark }}</span>
+                <span class="step-info">
+                    <span class="step-title">{{ label }}</span>
+                    {% if is_disabled %}<span class="step-sub">Soon</span>{% endif %}
+                </span>
+            </button>
+            {% endfor %}
+        </div>
+    </nav>
+
+    <div class="meta-strip">
+        <div class="meta-left">
+            <span>Viewing: <strong>{{ stage_labels[viewing_stage] }}</strong></span>
+            <span class="meta-sep">·</span>
+            <span>Episode: <strong>{{ ep.title }}</strong></span>
+            <span class="meta-sep">·</span>
+            <span>Status: <span class="badge">{{ ep.status|replace('_', ' ')|title }}</span></span>
+        </div>
+    </div>
+
+    <main class="main-wrapper {% if viewing_stage != 0 %}main-wrapper-single{% endif %}">
+        <div class="center-content">
+            {% if viewing_stage == 0 %}
+                {% include "partials/stages/stage_0.html" %}
+            {% elif viewing_stage == 1 %}
+                {% include "partials/stages/stage_1.html" %}
+            {% elif viewing_stage == 2 %}
+                {% include "partials/stages/stage_2.html" %}
+            {% elif viewing_stage == 3 %}
+                {% include "partials/stages/stage_3.html" %}
+            {% elif viewing_stage == 4 %}
+                {% include "partials/stages/stage_locked.html" %}
+            {% elif viewing_stage == 5 %}
+                {% include "partials/stages/stage_locked.html" %}
+            {% endif %}
+        </div>
+
+        {% if viewing_stage == 0 %}
+        <aside class="side-pane">
+            <section class="panel">
+                <div class="side-head">
+                    <h3>Pearson family</h3>
+                    <span class="badge">Refs</span>
+                </div>
+                <div class="family-grid">
+                    {% for member in family %}
+                    <div class="family-card">
+                        <img src="/characters/{{ member.id }}_9x16.png" alt="{{ member.name }}"
+                             onerror="this.src='/static/assets/characters/{{ member.id }}.png'">
+                        <strong>{{ member.name }} · {{ member.age }}</strong>
+                        <span>{{ member.role }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+        </aside>
+        {% endif %}
+    </main>
+</div>

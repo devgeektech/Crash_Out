@@ -1,0 +1,96 @@
+<section class="panel stage-card stage-queue">
+    <div class="panel-header panel-header-compact">
+        <div>
+            <h1 class="panel-title">Queue</h1>
+        </div>
+        <div class="panel-actions">
+            <details class="video-add-details">
+                <summary class="btn btn-primary btn-sm">Add</summary>
+                <form
+                    class="video-add-form"
+                    hx-post="/ui/queue/add"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-indicator="#busy"
+                >
+                    <div class="field">
+                        <label for="manual-video-title">Title</label>
+                        <input
+                            id="manual-video-title"
+                            type="text"
+                            name="title"
+                            placeholder="New video title"
+                            required
+                            autofocus
+                        >
+                    </div>
+                    <div class="field">
+                        <label for="manual-video-subtitle">Subtitle</label>
+                        <input
+                            id="manual-video-subtitle"
+                            type="text"
+                            name="subtitle"
+                            placeholder="Short description (optional)"
+                        >
+                    </div>
+                    <button class="btn btn-primary btn-sm" type="submit">Add video</button>
+                </form>
+            </details>
+        </div>
+    </div>
+
+    <div class="video-queue-list" role="listbox" aria-label="Video queue">
+        {% if catalog_cards %}
+            {% for card in catalog_cards %}
+            <div class="video-queue-row {% if ep.catalog_id == card.id %}is-active{% endif %}" role="option" aria-selected="{{ 'true' if ep.catalog_id == card.id else 'false' }}">
+                <button
+                    class="video-queue-select"
+                    type="button"
+                    hx-post="/ui/catalog/{{ card.id }}/select"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-indicator="#busy"
+                >
+                    <span class="video-queue-num" aria-label="Video {{ card.list_number }}">{{ card.list_number }}</span>
+                    <div class="video-queue-copy">
+                        <h3>{{ card.title }}</h3>
+                        <p>{{ card.subtitle }}</p>
+                        <div class="video-queue-meta">
+                            <span class="badge">{{ card.duration_label }}</span>
+                            <span class="badge">{{ card.episode_status }}</span>
+                            {% if card.has_master %}<span class="badge badge-ok">Has master</span>{% endif %}
+                        </div>
+                    </div>
+                </button>
+                {% if card.custom %}
+                <button
+                    class="video-queue-delete"
+                    type="button"
+                    title="Delete video"
+                    aria-label="Delete {{ card.title }}"
+                    data-confirm-delete
+                    data-delete-url="/ui/queue/{{ card.id }}/delete"
+                    data-delete-title="{{ card.title }}"
+                >
+                    <span aria-hidden="true">×</span>
+                </button>
+                {% endif %}
+                <button
+                    class="video-queue-arrow"
+                    type="button"
+                    title="Open Gateway 2"
+                    aria-label="Open Gateway 2 for {{ card.title }}"
+                    hx-post="/ui/catalog/{{ card.id }}/gate1"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-indicator="#busy"
+                >
+                    <span aria-hidden="true">→</span>
+                </button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No videos in the queue yet.</div>
+        {% endif %}
+    </div>
+</section>

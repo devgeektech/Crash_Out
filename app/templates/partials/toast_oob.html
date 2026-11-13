@@ -1,0 +1,7 @@
+{% if toast %}
+<div id="toast" class="toast toast-{{ toast_kind|default('info') }} show" role="status" hx-swap-oob="true">
+    {{ toast }}
+</div>
+{% else %}
+<div id="toast" class="toast" hidden hx-swap-oob="true"></div>
+{% endif %}

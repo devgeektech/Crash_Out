@@ -1,0 +1,7 @@
+{% if toast %}
+<div id="toast" class="toast toast-{{ toast_kind|default('info') }} show" role="status">
+    {{ toast }}
+</div>
+{% else %}
+<div id="toast" class="toast" hidden></div>
+{% endif %}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crash Out — Production Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body
+    hx-boost="false"
+    data-viewing-stage="{{ viewing_stage|default(0) }}"
+    data-page="studio"
+>
+    <div id="busy" class="busy-bar" aria-hidden="true">
+        <div class="busy-bar-fill"></div>
+    </div>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <div class="brand-mark" aria-label="Crash Out">
+                <span class="brand-crash">CRASH</span><span class="brand-out">OUT</span>
+            </div>
+            <div class="brand-copy">
+                <div class="brand-title">Production Studio</div>
+            </div>
+        </a>
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <div id="toast-host">
+        {% include "partials/toast.html" %}
+    </div>
+
+    <dialog id="app-confirm-dialog" class="app-dialog" aria-labelledby="app-confirm-title">
+        <form method="dialog" class="app-dialog-sheet">
+            <div class="app-dialog-head">
+                <h2 id="app-confirm-title">Delete video?</h2>
+                <p id="app-confirm-message">This will remove the video from the queue.</p>
+            </div>
+            <div class="app-dialog-actions">
+                <button class="btn btn-ghost btn-sm" value="cancel" type="submit">Cancel</button>
+                <button class="btn btn-danger btn-sm" value="confirm" type="submit">Delete</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="/static/js/ui.js"></script>
+</body>
+</html>

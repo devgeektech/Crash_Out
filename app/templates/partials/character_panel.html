@@ -1,0 +1,45 @@
+{% set voices = {
+  'gary': {'name': 'Gary (Dad, 44)', 'archetype': 'The Cracking Gentle Parent', 'tone': 'Therapist voice that cracks into rapid-fire rally rhetoric.'},
+  'linda': {'name': 'Linda (Mom, 42)', 'archetype': 'The Secret Junk-Food Goopist', 'tone': 'Breathy faux-zen cadence that shatters into HOA terror.'},
+  'chris': {'name': 'Chris (Son, 15)', 'archetype': 'The Techno-Gospel Doomer', 'tone': 'Flat monotone drawl with cold statistical detachment.'},
+  'chloe': {'name': 'Chloe (Daughter, 11)', 'archetype': 'The Pre-Teen Momager', 'tone': 'Sugary influencer voice shifting into cold corporate PR.'}
+} %}
+{% set meta = voices.get(active_char, voices.gary) %}
+
+<div id="character-panel" class="character-panel">
+    <div class="char-pills">
+        {% for member in family %}
+        <button
+            class="btn btn-sm {% if member.id == active_char %}btn-primary{% else %}btn-ghost{% endif %}"
+            type="button"
+            hx-get="/ui/character/{{ member.id }}"
+            hx-target="#character-panel"
+            hx-swap="outerHTML"
+            hx-indicator="#busy"
+        >{{ member.name }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="vidu-char-card">
+        <div class="vidu-char-top">
+            <div class="vidu-char-identity">
+                <img
+                    src="/characters/{{ active_char }}_9x16.png"
+                    alt="{{ meta.name }}"
+                    onerror="this.src='/static/assets/characters/{{ active_char }}.png'"
+                >
+                <div>
+                    <strong>{{ meta.name }}</strong>
+                    <div class="panel-desc">{{ meta.archetype }}</div>
+                </div>
+            </div>
+            <div class="download-row">
+                <a class="btn btn-ghost btn-sm" href="/characters/{{ active_char }}_9x16.png" download>Download 9:16</a>
+            </div>
+        </div>
+        <div class="voice-box">
+            <span class="badge badge-info">Voice direction</span>
+            <p class="panel-desc">{{ meta.tone }}</p>
+        </div>
+    </div>
+</div>

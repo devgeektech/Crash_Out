@@ -1,0 +1,85 @@
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# Episode media & runtime state (regenerable / large)
+outputs/*
+!outputs/.gitkeep
+
+# Local caches / temp
+*.log
+*.tmp
+*.temp
+_tmp_*.py
+.tmp/
+temp/
+tmp/
+
+# Media artifacts outside outputs (if any)
+*.mp4
+*.webm
+*.mov
+*.wav
+*.mp3
+# Keep character reference art tracked
+!characters/**/*.png
+!characters/**/*.jpg
+!characters/**/*.webp
+
+# Notebooks / misc
+.ipynb_checkpoints/
+*.bak
+*.orig

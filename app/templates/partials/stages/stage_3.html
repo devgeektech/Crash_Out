@@ -1,0 +1,115 @@
+<section class="panel stage-card">
+    <div class="panel-header">
+        <div>
+            <h1 class="panel-title">Episode video</h1>
+            <p class="panel-desc">Scene clips and the full episode assemble here after Generate Video.</p>
+        </div>
+        <div class="panel-actions">
+            <button
+                class="btn btn-primary"
+                type="button"
+                hx-post="/ui/gateway/3/approve"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Approve video</button>
+        </div>
+    </div>
+
+    <div class="section-block">
+        <div class="section-head">
+            <div>
+                <h3>Scene clips</h3>
+                <p>Each clip is a standalone vertical render.</p>
+            </div>
+        </div>
+
+        <div class="scene-videos-grid">
+            {% if scene_cards|default([]) %}
+                {% for card in scene_cards|default([]) %}
+                <article class="scene-video-card">
+                    <div class="scene-video-head">
+                        <strong>Scene {{ card.scene_id }} · {{ card.title }}</strong>
+                        <span class="badge">{{ card.duration_sec }}s</span>
+                    </div>
+                    {% if card.has_video and card.playable_url %}
+                    <div class="scene-video-frame">
+                        <video
+                            class="scene-video"
+                            controls
+                            playsinline
+                            preload="metadata"
+                            src="{{ card.playable_url }}"
+                        ></video>
+                    </div>
+                    <div class="scene-video-meta muted">
+                        {% if card.latency_sec %}{{ card.latency_sec }}s render{% endif %}
+                        {% if card.vidu_mode %} · {{ card.vidu_mode }}{% endif %}
+                        {% if not card.latency_sec and not card.vidu_mode %}Ready{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="scene-video-placeholder">
+                        <span>{{ card.time_range }}</span>
+                        <span class="muted">Not rendered</span>
+                    </div>
+                    <div class="scene-video-meta muted" aria-hidden="true">&nbsp;</div>
+                    {% endif %}
+                    <button
+                        class="btn btn-ghost btn-sm"
+                        type="button"
+                        hx-post="/ui/video/generate-scene/{{ card.scene_id }}"
+                        hx-target="#workspace"
+                        hx-swap="outerHTML"
+                        hx-indicator="#busy"
+                        hx-timeout="900000"
+                    >Regenerate</button>
+                </article>
+                {% endfor %}
+            {% else %}
+            <div class="empty-state">Use Generate Video on the Script stage to render scenes here.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="section-block">
+        <div class="section-head">
+            <div>
+                <h3>Full episode</h3>
+                <p>Four scenes concatenated into one ~55s broadcast file.</p>
+            </div>
+        </div>
+
+        <div class="master-merged-wrapper">
+            <div class="master-merged-player-box">
+                {% if master_video is defined and master_video.has_video and master_video.playable_url %}
+                <video id="main-video-player" controls playsinline loop preload="metadata" src="{{ master_video.playable_url }}"></video>
+                {% else %}
+                <div class="scene-video-placeholder tall">Full episode pending</div>
+                {% endif %}
+            </div>
+            <div class="master-controls-pane">
+                <div class="master-title-row">
+                    <div class="master-title">Full episode</div>
+                    {% if (master_video is defined and master_video.merged) or ep.scenes_merged %}
+                    <span class="badge badge-ok">Ready</span>
+                    {% else %}
+                    <span class="badge badge-warn">Pending</span>
+                    {% endif %}
+                </div>
+                <div class="master-actions">
+                    {% if master_video is defined and master_video.has_video and master_video.playable_url %}
+                    <a class="btn btn-primary" href="{{ master_video.playable_url }}" download>Download MP4</a>
+                    {% else %}
+                    <span class="btn btn-ghost disabled">Download MP4</span>
+                    {% endif %}
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-box"><div class="k">Container</div><div class="v">H.264 · MP4</div></div>
+                    <div class="stat-box"><div class="k">Audio</div><div class="v">Native AAC</div></div>
+                    <div class="stat-box"><div class="k">Aspect</div><div class="v">9:16 vertical</div></div>
+                    <div class="stat-box"><div class="k">Duration</div><div class="v">~55 seconds</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
