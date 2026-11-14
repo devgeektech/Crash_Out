@@ -51,7 +51,43 @@
         }
     }
 
+    function finishEpisodeRename(input, { submit }) {
+        if (!input || input.readOnly) return;
+        const form = input.closest("[data-ep-rename-form]");
+        const original = input.getAttribute("data-original") || "";
+        const next = (input.value || "").trim();
+        input.classList.remove("is-editing");
+        input.readOnly = true;
+        if (!next) {
+            input.value = original;
+            return;
+        }
+        if (submit && next !== original && form) {
+            form.submit();
+            return;
+        }
+        if (next !== original) {
+            input.value = next;
+        } else {
+            input.value = original;
+        }
+    }
+
     document.addEventListener("click", (event) => {
+        const renameBtn = event.target.closest("[data-ep-rename]");
+        if (renameBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            const form = renameBtn.closest("[data-ep-rename-form]");
+            const input = form && form.querySelector(".ep-title-input");
+            if (!input) return;
+            input.readOnly = false;
+            input.classList.add("is-editing");
+            input.focus();
+            input.select();
+            return;
+        }
+
         const deleteBtn = event.target.closest("[data-confirm-delete]");
         if (deleteBtn) {
             event.preventDefault();
@@ -95,6 +131,29 @@
             }
         });
     }
+
+    document.addEventListener("keydown", (event) => {
+        const input = event.target;
+        if (!input || !input.matches || !input.matches(".ep-title-input.is-editing")) return;
+        if (event.key === "Enter") {
+            event.preventDefault();
+            finishEpisodeRename(input, { submit: true });
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            input.value = input.getAttribute("data-original") || "";
+            finishEpisodeRename(input, { submit: false });
+        }
+    });
+
+    document.addEventListener(
+        "blur",
+        (event) => {
+            const input = event.target;
+            if (!input || !input.matches || !input.matches(".ep-title-input.is-editing")) return;
+            finishEpisodeRename(input, { submit: true });
+        },
+        true
+    );
 
     document.body.addEventListener("htmx:afterSwap", () => {
         document.querySelectorAll("textarea[data-live-char-count]").forEach(updatePromptCharBadge);

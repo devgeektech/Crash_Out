@@ -84,20 +84,27 @@ def fetch_live_concepts() -> List[Dict[str, Any]]:
         meta["trend_count"] = len(raw)
         filtered = filter_trends(raw)
         meta["filtered_count"] = len(filtered)
-        if filtered:
-            concepts = write_concepts(filtered)
+        # If theme filter is too strict, still use top web-search hits (reject list already applied in filter).
+        seed = filtered if filtered else [
+            t for t in raw[:18]
+            if t.get("title")
+        ]
+        meta["seed_count"] = len(seed)
+        if seed:
+            concepts = write_concepts(seed)
             if len(concepts) >= 3:
-                meta["mode"] = "live"
+                meta["mode"] = "live" if filtered else "live_unfiltered"
                 save_cached_concepts(concepts[:3], meta=meta)
                 logger.info(
-                    "Agent 0 live concepts: %s trends → %s filtered → 3 cards",
+                    "Agent 0 live concepts: %s search hits → %s filtered → %s seeded → 3 cards",
                     meta["trend_count"],
                     meta["filtered_count"],
+                    meta["seed_count"],
                 )
                 return concepts[:3]
             logger.warning("Concept writer returned %s cards; trying cache", len(concepts))
         else:
-            logger.warning("No trends passed fit filter (raw=%s)", meta["trend_count"])
+            logger.warning("No web-search trends available (raw=%s)", meta["trend_count"])
     except Exception as exc:
         logger.exception("Live trend pipeline failed: %s", exc)
         meta["error"] = str(exc)

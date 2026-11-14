@@ -29,8 +29,17 @@ from app.agents.agent_0_trend_ingest import trend_ingest_agent
 from app.agents.agent_1_scriptwriter import scriptwriter_agent
 from app.agents.agent_4_publisher import publisher_agent
 from app.agents.agent_5_seeder import seeder_agent
+from app.engines.factory import engine_display_name, get_video_engine, video_engine_mode
 from app.engines.vidu_engine import ViduEngine
+from app.studio.generation import (
+    archive_clip_before_regen,
+    enqueue_job,
+    record_cost,
+    set_production_status,
+    update_job,
+)
 from app.paths import (
+    ASSETS_DIR,
     CHARACTERS_DIR,
     OUTPUT_DIR,
     ensure_episode_output_folder,
@@ -42,7 +51,7 @@ from app.paths import (
     scene_file_candidates,
     scene_relpath,
 )
-from app.video_merger import merge_scene_videos
+from app.media.merger import merge_scene_videos
 
 
 def _silence_windows_proactor_connection_reset() -> None:
@@ -102,6 +111,9 @@ _silence_windows_proactor_connection_reset()
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _install_windows_asyncio_exception_handler(asyncio.get_running_loop())
+    from app.studio.worker import start_worker
+
+    start_worker()
     yield
 
 
@@ -156,19 +168,24 @@ def get_pipeline_state():
 
 
 @app.post("/api/episodes/new")
-def create_new_episode(title: str = "New Episode", engine: str = "vidu"):
-    ep = state_manager.create_episode(title=title, engine="vidu")
+def create_new_episode(title: str = "New Episode", engine: str = "mock"):
+    mode = video_engine_mode()
+    ep = state_manager.create_episode(title=title, engine=mode)
     ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
     state_manager.save()
-    orchestrator.log(ep.id, f"Created episode pipeline: '{title}' (Vidu only).")
+    orchestrator.log(
+        ep.id,
+        f"Created episode pipeline: '{title}' (engine={engine_display_name()}).",
+    )
     return ep.dict()
 
 
 @app.get("/api/platforms/status")
 def get_platforms_status():
-    vidu = ViduEngine()
+    engine = get_video_engine()
     return {
-        "active_engine": "vidu",
+        "active_engine": video_engine_mode(),
+        "engine_name": engine_display_name(),
         "vidu_model": config.vidu_model,
         "vidu_reference_model": config.vidu_reference_model,
         "credentials": {
@@ -178,23 +195,25 @@ def get_platforms_status():
             "vidu_reference_model": config.vidu_reference_model,
             "vidu_base_url": config.vidu_base_url,
             "vidu_resolution": config.vidu_resolution,
+            "video_engine": video_engine_mode(),
         },
         "platforms": {
-            "vidu": vidu.test_connection(),
+            video_engine_mode(): engine.test_connection(),
         },
     }
 
 
 @app.post("/api/platforms/set-active")
 def set_active_platform(engine: str = Body(..., embed=True)):
-    if engine.lower() != "vidu":
-        raise HTTPException(status_code=400, detail="Only the Vidu engine is supported.")
+    mode = (engine or "").lower().strip()
+    if mode not in {"mock", "vidu"}:
+        raise HTTPException(status_code=400, detail="Engine must be mock or vidu.")
     ep = state_manager.get_active_episode()
     if ep:
-        ep.selected_engine = "vidu"
-        state_manager.log_qa(ep.id, "Active engine confirmed: Vidu.")
+        ep.selected_engine = mode
+        state_manager.log_qa(ep.id, f"Active engine set: {mode}.")
         state_manager.save()
-    return {"status": "success", "active_engine": "vidu"}
+    return {"status": "success", "active_engine": mode}
 
 
 @app.post("/api/platforms/lock-in")
@@ -281,17 +300,20 @@ def approve_gateway_1(payload: Dict[str, Any] = Body(...)):
     ep.merch_punchline = script_data.get("merch_punchline_trigger")
     ep.status = "WAITING_GATEWAY_2"
     ep.current_gateway = 2
+    set_production_status(ep, "scripting")
     state_manager.save()
     return ep.dict()
 
 
-def _require_vidu_ready() -> ViduEngine:
-    if not config.vidu_api_key:
+def _require_engine_ready():
+    """Return configured engine. Mock never needs a Vidu key."""
+    mode = video_engine_mode()
+    if mode == "vidu" and not config.vidu_api_key:
         raise HTTPException(
             status_code=400,
-            detail="VIDU_API_KEY is required. Add it in .env or Settings, then retry.",
+            detail="VIDU_API_KEY is required when VIDEO_ENGINE=vidu. Or set VIDEO_ENGINE=mock.",
         )
-    return ViduEngine()
+    return get_video_engine()
 
 
 def _scene_result_payload(sc: Dict[str, Any], res) -> Dict[str, Any]:
@@ -308,6 +330,7 @@ def _scene_result_payload(sc: Dict[str, Any], res) -> Dict[str, Any]:
         "latency_sec": res.latency_sec,
         "job_id": res.job_id,
         "vidu_mode": res.metadata.get("mode"),
+        "engine": res.engine,
         "credits": res.metadata.get("credits"),
     }
 
@@ -315,35 +338,45 @@ def _scene_result_payload(sc: Dict[str, Any], res) -> Dict[str, Any]:
 def _generate_scene_worker(
     scene: Dict[str, Any], folder_name: str
 ) -> Tuple[int, Dict[str, Any], Any]:
-    """Thread worker: each scene gets its own ViduEngine client."""
+    """Thread worker: each scene gets its own engine client (mock or vidu)."""
     sc_id = int(scene.get("scene_id", 1))
-    engine = ViduEngine()
+    engine = get_video_engine()
     rel = scene_relpath(folder_name, sc_id)
     result = engine.generate_scene_video(scene, rel)
     return sc_id, scene, result
 
 
 def render_all_episode_scenes(ep: Episode) -> List[Dict[str, Any]]:
-    _require_vidu_ready()
+    _require_engine_ready()
     scenes = _script_scenes_for_episode(ep)
     folder = ensure_episode_output_folder(ep)
+    mode = video_engine_mode()
+    set_production_status(ep, "generating")
     state_manager.save()
 
     total_start = time.time()
     worker_count = min(4, max(1, len(scenes)))
     orchestrator.log(
         ep.id,
-        f"Rendering {len(scenes)} Vidu Q4 scenes concurrently "
-        f"({worker_count} workers, model={config.vidu_reference_model}) "
-        f"→ outputs/{folder}/",
+        f"Rendering {len(scenes)} scenes concurrently via {engine_display_name()} "
+        f"({worker_count} workers) → outputs/{folder}/",
     )
     for sc in scenes:
-        sc_id = sc.get("scene_id", 1)
-        prompt_chars = sc.get("vidu_prompt_chars") or len(sc.get("vidu_prompt") or "")
+        sc_id = int(sc.get("scene_id", 1))
+        prompt = sc.get("vidu_prompt") or sc.get("source_prompt") or ""
+        archive_clip_before_regen(ep, sc_id, prompt=prompt, engine=mode)
+        try:
+            job = enqueue_job(ep, sc_id)
+            update_job(ep, job["id"], status="processing")
+            sc["_job_id"] = job["id"]
+        except ValueError:
+            sc["_job_id"] = None
+        prompt_chars = sc.get("vidu_prompt_chars") or len(prompt)
         orchestrator.log(
             ep.id,
             f"Queued Scene {sc_id}/4: '{sc.get('title')}' | prompt {prompt_chars}/2000 chars",
         )
+    state_manager.save()
 
     completed: Dict[int, Dict[str, Any]] = {}
     failures: List[str] = []
@@ -355,35 +388,55 @@ def render_all_episode_scenes(ep: Episode) -> List[Dict[str, Any]]:
         for fut in as_completed(futures):
             sc = futures[fut]
             sc_id = int(sc.get("scene_id", 1))
+            job_id = sc.get("_job_id")
             try:
                 done_id, scene, res = fut.result()
             except Exception as exc:
                 failures.append(f"Scene {sc_id}: {exc}")
                 orchestrator.log(ep.id, f"Scene {sc_id} failed: {exc}")
+                if job_id:
+                    update_job(ep, job_id, status="failed", error=str(exc))
                 continue
 
             if res.status != "completed" or not res.local_path:
                 err = res.error or "unknown error"
                 failures.append(f"Scene {done_id}: {err}")
                 orchestrator.log(ep.id, f"Scene {done_id} failed: {err}")
+                if job_id:
+                    update_job(ep, job_id, status="failed", error=err)
                 continue
 
             completed[done_id] = _scene_result_payload(scene, res)
+            try:
+                credits_used = float(res.metadata.get("credits_used") or 0)
+            except (TypeError, ValueError):
+                credits_used = 0.0
+            record_cost(
+                ep,
+                scene_id=done_id,
+                engine=res.engine,
+                estimated_usd=float(res.cost_estimate_usd or 0),
+                credits=credits_used,
+            )
+            if job_id:
+                update_job(ep, job_id, status="completed")
             orchestrator.log(
                 ep.id,
-                f"Scene {done_id} completed via Vidu ({res.metadata.get('mode')}): "
+                f"Scene {done_id} completed via {res.engine} ({res.metadata.get('mode')}): "
                 f"{res.video_url} in {res.latency_sec}s",
             )
 
     if failures:
+        state_manager.save()
         raise HTTPException(
             status_code=502,
-            detail="Concurrent Vidu generation failed — " + "; ".join(failures),
+            detail="Scene generation failed — " + "; ".join(failures),
         )
 
     scene_results = [completed[int(sc.get("scene_id", 1))] for sc in scenes]
     ep.scene_videos = scene_results
     ep.video_render_time_sec = round(time.time() - total_start, 2)
+    ep.video_engine_used = engine_display_name()
     orchestrator.log(
         ep.id,
         f"All {len(scene_results)} scenes finished concurrently in "
@@ -411,19 +464,29 @@ def merge_episode_scenes(ep: Episode) -> Dict[str, Any]:
 
     merged_rel = merged_relpath(folder)
     merged_path = merged_abspath(folder)
+    intro = os.path.join(ASSETS_DIR, "intro.mp4")
+    outro = os.path.join(ASSETS_DIR, "outro.mp4")
 
     orchestrator.log(
         ep.id,
-        f"FFmpeg concat: merging {len(scene_paths)} Vidu scene clips into "
-        f"outputs/{merged_rel}...",
+        f"FFmpeg concat: merging {len(scene_paths)} scene clips"
+        f"{' + intro' if os.path.isfile(intro) else ''}"
+        f"{' + outro' if os.path.isfile(outro) else ''}"
+        f" into outputs/{merged_rel}...",
     )
-    merge_res = merge_scene_videos(scene_paths, merged_path)
+    merge_res = merge_scene_videos(
+        scene_paths,
+        merged_path,
+        intro_path=intro if os.path.isfile(intro) else None,
+        outro_path=outro if os.path.isfile(outro) else None,
+    )
 
     if merge_res.get("success"):
         ep.merged_video_url = public_url(merged_rel)
         ep.video_url = ep.merged_video_url
         ep.scenes_merged = True
         ep.video_qa_passed = True
+        set_production_status(ep, "generating")
         orchestrator.log(
             ep.id,
             f"FFmpeg concat success: {merged_rel} ({merge_res.get('file_size_kb')} KB)",
@@ -446,17 +509,22 @@ def approve_gateway_2(payload: Dict[str, Any] = Body(...)):
     orchestrator.approve_gateway(ep.id, 2, payload)
     ep.status = "SCRIPT_APPROVED"
     ep.current_gateway = 3
+    set_production_status(ep, "generating")
     state_manager.save()
-    orchestrator.log(ep.id, "Gateway 2 approved: generating 4 Vidu scenes...")
+    orchestrator.log(
+        ep.id,
+        f"Gateway 2 approved: generating 4 scenes via {engine_display_name()}...",
+    )
 
     render_all_episode_scenes(ep)
     merge_episode_scenes(ep)
 
-    ep.video_engine_used = f"Vidu AI ({config.vidu_model} / {config.vidu_reference_model})"
+    ep.video_engine_used = engine_display_name()
     ep.native_audio_enabled = True
-    ep.selected_engine = "vidu"
+    ep.selected_engine = video_engine_mode()
     ep.status = "SCRIPT_APPROVED"
     ep.current_gateway = 3
+    set_production_status(ep, "generating")
     state_manager.save()
     return ep.dict()
 
@@ -482,17 +550,31 @@ def generate_single_scene(payload: Dict[str, Any] = Body(...)):
     if not target_scene:
         raise HTTPException(status_code=404, detail=f"Scene {scene_id} not found in script.")
 
-    vidu = _require_vidu_ready()
+    engine = _require_engine_ready()
     folder = ensure_episode_output_folder(ep)
+    mode = video_engine_mode()
+    prompt = target_scene.get("vidu_prompt") or target_scene.get("source_prompt") or ""
+    archive_clip_before_regen(ep, scene_id, prompt=prompt, engine=mode)
+    try:
+        job = enqueue_job(ep, scene_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    update_job(ep, job["id"], status="processing")
+    set_production_status(ep, "generating")
     state_manager.save()
     output_filename = scene_relpath(folder, scene_id)
     orchestrator.log(
         ep.id,
-        f"Re-generating Scene {scene_id} via Vidu API → outputs/{output_filename}",
+        f"Re-generating Scene {scene_id} via {engine_display_name()} → outputs/{output_filename}",
     )
-    res = vidu.generate_scene_video(target_scene, output_filename)
+    res = engine.generate_scene_video(target_scene, output_filename)
     if res.status != "completed":
-        raise HTTPException(status_code=502, detail=f"Vidu scene {scene_id} failed: {res.error}")
+        update_job(ep, job["id"], status="failed", error=res.error or "failed")
+        state_manager.save()
+        raise HTTPException(
+            status_code=502,
+            detail=f"Scene {scene_id} failed: {res.error}",
+        )
 
     updated = False
     for sc_info in ep.scene_videos:
@@ -503,25 +585,24 @@ def generate_single_scene(payload: Dict[str, Any] = Body(...)):
             sc_info["latency_sec"] = res.latency_sec
             sc_info["job_id"] = res.job_id
             sc_info["vidu_mode"] = res.metadata.get("mode")
+            sc_info["engine"] = res.engine
             updated = True
             break
     if not updated:
-        ep.scene_videos.append(
-            {
-                "scene_id": scene_id,
-                "title": target_scene.get("title", f"Scene {scene_id}"),
-                "time_range": target_scene.get("time_range", "00:00 - 00:15"),
-                "duration_sec": res.metadata.get("duration_sec", 15),
-                "primary_character": target_scene.get("primary_character", "gary"),
-                "video_url": res.video_url,
-                "local_path": res.local_path,
-                "status": "completed",
-                "latency_sec": res.latency_sec,
-                "job_id": res.job_id,
-                "vidu_mode": res.metadata.get("mode"),
-            }
-        )
+        ep.scene_videos.append(_scene_result_payload(target_scene, res))
 
+    try:
+        credits_used = float(res.metadata.get("credits_used") or 0)
+    except (TypeError, ValueError):
+        credits_used = 0.0
+    record_cost(
+        ep,
+        scene_id=scene_id,
+        engine=res.engine,
+        estimated_usd=float(res.cost_estimate_usd or 0),
+        credits=credits_used,
+    )
+    update_job(ep, job["id"], status="completed")
     state_manager.save()
     return {"status": "success", "scene": target_scene, "video_url": res.video_url}
 
@@ -556,8 +637,9 @@ def approve_gateway_3(payload: Dict[str, Any] = Body(...)):
     ep.social_posts = deploy_result.get("social", {})
     ep.merch_listing = deploy_result.get("merch", {})
     ep.merch_mockup_url = deploy_result.get("mockup_url")
-    ep.status = "WAITING_GATEWAY_4"
-    ep.current_gateway = 4
+    from app.studio.generation import mark_episode_final
+
+    mark_episode_final(ep)
     state_manager.save()
     return ep.dict()
 
@@ -755,9 +837,10 @@ def approve_gateway_5(payload: Dict[str, Any] = Body(...)):
     if not ep:
         raise HTTPException(status_code=404, detail="No active episode")
 
+    from app.studio.generation import mark_episode_final
+
     orchestrator.approve_gateway(ep.id, 5, payload)
-    ep.status = "COMPLETED"
-    ep.current_gateway = 6
+    mark_episode_final(ep)
     state_manager.save()
     return ep.dict()
 

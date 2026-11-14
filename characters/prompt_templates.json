@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "updated_at": 1794569819.7296557,
+  "templates": [
+    {
+      "id": "kitchen_crashout",
+      "name": "Kitchen Crash-Out",
+      "scene_type": "kitchen",
+      "camera": "9:16 vertical, snappy cuts, close-ups on stress-watch then wide kitchen",
+      "scene_instructions": "Suburban kitchen; white cabinets, marble island. Escalate from decorum to crash-out. No text overlays. Flat vector cutout, bold outlines.",
+      "dialogue_hint": "Short overlapping family arguments; Chloe may livestream."
+    },
+    {
+      "id": "driveway_optics",
+      "name": "Driveway Optics Crisis",
+      "scene_type": "driveway",
+      "camera": "9:16, wide driveway then close on Linda's Stanley / Gary's face flush",
+      "scene_instructions": "Suburban driveway / HOA sightline. Status anxiety and neighbor optics. Keep character looks locked to refs.",
+      "dialogue_hint": "Linda optics panic; Gary tariff rant; kids rate engagement."
+    },
+    {
+      "id": "continuity_cut",
+      "name": "Continuity Cut (from prior frame)",
+      "scene_type": "continuity",
+      "camera": "Match previous clip final frame; continue action without redesign",
+      "scene_instructions": "Continue DIRECTLY from previous clip final frame. Identical kitchen layout, outfits, faces. No extras.",
+      "dialogue_hint": "Pick up mid-argument; escalate."
+    }
+  ]
+}

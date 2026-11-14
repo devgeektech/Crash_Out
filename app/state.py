@@ -87,11 +87,14 @@ def _should_keep_episode(ep: "Episode", active_id: Optional[str]) -> bool:
 class Episode(BaseModel):
     id: str
     title: str = "Untitled Episode"
+    episode_number: int = 0
     output_folder: Optional[str] = None
     status: str = "DRAFT"
+    # Studio production workflow (parallel to HITL gateway status)
+    production_status: str = "draft"  # draft|scripting|generating|published
     current_gateway: int = 1
-    selected_engine: str = "vidu"
-    final_platform_decision: Optional[str] = "vidu"
+    selected_engine: str = "mock"
+    final_platform_decision: Optional[str] = "mock"
     catalog_id: Optional[str] = None
     script_key: str = "hoa_violation"
 
@@ -100,6 +103,7 @@ class Episode(BaseModel):
 
     script: Optional[Dict[str, Any]] = None
     merch_punchline: Optional[str] = None
+    script_versions: List[Dict[str, Any]] = []
 
     video_url: Optional[str] = None
     video_engine_used: Optional[str] = None
@@ -111,6 +115,9 @@ class Episode(BaseModel):
     merged_video_url: Optional[str] = None
     scenes_merged: bool = False
     merging_in_progress: bool = False
+    clip_history: Dict[str, List[Dict[str, Any]]] = {}
+    generation_jobs: List[Dict[str, Any]] = []
+    cost_ledger: List[Dict[str, Any]] = []
 
     audio_mix_url: Optional[str] = None
     character_stems: Dict[str, str] = {}
@@ -121,6 +128,16 @@ class Episode(BaseModel):
     merch_listing: Dict[str, Any] = {}
 
     seeding_drafts: List[Dict[str, Any]] = []
+    revision_notes: List[Dict[str, Any]] = []
+
+    # Legacy mix field kept for old episode.json; audio is Vidu-native in-clip
+    audio_mix: Dict[str, Any] = {}
+    # Dialogue timing rows feed Vidu timeline prompts (not a TTS engine)
+    dialogue_timing: List[Dict[str, Any]] = []
+
+    # QA checklists + continuity last-frame paths
+    qa_checklists: Dict[str, Any] = {}
+    continuity_frames: Dict[str, str] = {}
 
     qa_logs: List[str] = []
     sla_metrics: Dict[str, float] = {}
@@ -149,8 +166,10 @@ def _index_entry(ep: Episode) -> Dict[str, Any]:
     return {
         "id": ep.id,
         "title": ep.title,
+        "episode_number": getattr(ep, "episode_number", 0) or 0,
         "output_folder": ep.output_folder,
         "status": ep.status,
+        "production_status": getattr(ep, "production_status", "draft") or "draft",
         "current_gateway": ep.current_gateway,
         "catalog_id": ep.catalog_id,
         "script_key": ep.script_key,
@@ -372,25 +391,39 @@ class StateManager:
     def create_episode(
         self,
         title: str = "New Episode",
-        engine: str = "vidu",
+        engine: str = "mock",
         *,
         catalog_id: Optional[str] = None,
         script_key: str = "hoa_violation",
+        episode_number: Optional[int] = None,
     ) -> Episode:
-        ep_id = f"ep_{int(time.time())}"
+        from app.engines.factory import engine_display_name, video_engine_mode
+        from app.studio.generation import next_episode_number
+
+        # Include counter so create+duplicate in the same second never collide.
+        base = int(time.time())
+        ep_id = f"ep_{base}"
+        n = 0
+        while ep_id in self.episodes:
+            n += 1
+            ep_id = f"ep_{base}_{n}"
         taken = {
             (other.output_folder or "").strip()
             for other in self.episodes.values()
             if (other.output_folder or "").strip()
         }
         folder = resolve_episode_folder(ep_id, title, taken=taken)
+        mode = video_engine_mode()
         episode = Episode(
             id=ep_id,
             title=title,
+            episode_number=int(episode_number or next_episode_number()),
             output_folder=folder,
-            selected_engine=engine,
-            video_engine_used="Vidu AI (Q4 Preview - Native Audio)",
+            selected_engine=engine or mode,
+            final_platform_decision=mode,
+            video_engine_used=engine_display_name(),
             status="WAITING_GATEWAY_1",
+            production_status="draft",
             current_gateway=1,
             catalog_id=catalog_id,
             script_key=script_key or "hoa_violation",
@@ -400,6 +433,70 @@ class StateManager:
         self.active_episode_id = ep_id
         self.save_episode(ep_id)
         return episode
+
+    def duplicate_episode(self, episode_id: str) -> Optional[Episode]:
+        """Clone episode metadata/script; optionally copy scene media."""
+        src = self.episodes.get(episode_id)
+        if not src:
+            return None
+        new_title = f"{src.title} (Copy)"
+        clone = self.create_episode(
+            title=new_title,
+            engine=src.selected_engine or "mock",
+            catalog_id=src.catalog_id,
+            script_key=src.script_key or "hoa_violation",
+        )
+        clone.available_concepts = list(src.available_concepts or [])
+        clone.selected_concept = dict(src.selected_concept) if src.selected_concept else None
+        clone.script = dict(src.script) if isinstance(src.script, dict) else src.script
+        clone.merch_punchline = src.merch_punchline
+        clone.production_status = "draft"
+        clone.status = "WAITING_GATEWAY_1"
+        clone.current_gateway = 1
+        clone.scene_videos = []
+        clone.merged_video_url = None
+        clone.scenes_merged = False
+        clone.clip_history = {}
+        clone.generation_jobs = []
+        clone.revision_notes = []
+        clone.script_versions = list(src.script_versions or [])
+        # Copy existing scene mp4s if present so duplicate can preview immediately.
+        src_folder = _episode_folder_path(src)
+        dst_folder = _episode_folder_path(clone)
+        if os.path.isdir(src_folder):
+            for name in os.listdir(src_folder):
+                if name.startswith("scene_") and name.lower().endswith((".mp4", ".webm")):
+                    try:
+                        shutil.copy2(
+                            os.path.join(src_folder, name),
+                            os.path.join(dst_folder, name),
+                        )
+                    except OSError:
+                        pass
+        self.save_episode(clone.id)
+        return clone
+
+    def rename_episode(self, episode_id: str, title: str) -> Optional[Episode]:
+        ep = self.episodes.get(episode_id)
+        if not ep:
+            return None
+        new_title = (title or "").strip() or ep.title
+        ep.title = new_title
+        # Keep folder stable; only update title field for POC.
+        self.save_episode(episode_id)
+        return ep
+
+    def list_episodes_sorted(self) -> List[Episode]:
+        from app.studio.generation import ensure_episode_numbers
+
+        ensure_episode_numbers()
+        return sorted(
+            self.episodes.values(),
+            key=lambda e: (
+                -(int(getattr(e, "episode_number", 0) or 0)),
+                -(float(getattr(e, "updated_at", 0) or 0)),
+            ),
+        )
 
     def set_active(self, episode_id: str) -> Optional[Episode]:
         if episode_id not in self.episodes:

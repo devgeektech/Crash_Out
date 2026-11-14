@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "updated_at": 1794569505.3295727,
+  "characters": {
+    "gary": {
+      "id": "gary",
+      "name": "Gary",
+      "age": 44,
+      "role": "Father, suburban breadwinner, corporate middle-management drone",
+      "archetype": "The Cracking Gentle Parent / Suburban MAGA Disciple",
+      "description": "Wants to be an enlightened gentle parent who broke generational trauma, but under pressure shatters into Trumpian grievance politics. Terrified of irrelevance and financial ruin.",
+      "personality": "Starts soft therapist voice, then accordion-hand Trump rally cadence; jaw-clench; stress-watch panic.",
+      "visual_prompt": "2D adult satirical animation. Gary, 44, pear-shaped dad build, receding light-brown hair, wide circular eyes with heavy dark bags, shocked open mouth. Navy short-sleeve polo tucked into khaki trousers, brown belt, dark brown loafers. Holds glowing smartphone; cyan-glow smartwatch on wrist.",
+      "image_file": "gary_9x16.png",
+      "voice": {
+        "tone": "Soft therapist voice that spikes into nasal high-volume Trumpian hyperbole.",
+        "speed": "1.15x",
+        "pitch": "medium",
+        "delivery": "[Gary, stressed suburban dad]:",
+        "sample_file": ""
+      },
+      "updated_at": 1794569505.3295603
+    },
+    "linda": {
+      "id": "linda",
+      "name": "Linda",
+      "age": 42,
+      "role": "Mother, HOA/PTA social climber",
+      "archetype": "The Secret Junk-Food Goopist / Status-Anxious Wellness Hypocrite",
+      "description": "Preaches clean living and high vibration while secretly bingeing junk food and wine. Self-worth tied to neighborhood optics and Nextdoor reputation.",
+      "personality": "Breathy faux-zen voice → shrill panic whisper; secret carb scarf; frantic hand-wipes for snack dust.",
+      "visual_prompt": "2D adult satirical animation. Linda, 42, slim athletic build, shoulder-length wavy honey-blonde hair, large eyes with tired lines, wide toothy smile, white stud earrings. Matching mauve-pink sports bra and high-waisted leggings, white sneakers. Holds oversized light-green Stanley tumbler with straw.",
+      "image_file": "linda_9x16.png",
+      "voice": {
+        "tone": "Breathy faux-zen that fractures into shrill status panic.",
+        "speed": "1.05x",
+        "pitch": "medium",
+        "delivery": "[Linda, breathy wellness panic]:",
+        "sample_file": ""
+      },
+      "updated_at": 1794569505.3295662
+    },
+    "chris": {
+      "id": "chris",
+      "name": "Chris",
+      "age": 15,
+      "role": "Son, high-school sophomore, bedroom nihilist",
+      "archetype": "The Techno-Gospel Doomer / First Principles Bro",
+      "description": "Anti-work apocalyptic about civilization yet dependent on dad's salary and wifi. Masks dread with cold statistical nihilism.",
+      "personality": "Monotone drawl, no eye contact, indifferent shrug, speaks to walls/floors.",
+      "visual_prompt": "2D adult satirical animation. Chris, 15, slim teen, hood up on oversized charcoal hoodie, messy brown hair, heavy-lidded circular eyes, flat mouth. White wired earbuds, hands in front pocket, baggy black sweatpants, black-and-white sneakers. Completely deadpan.",
+      "image_file": "chris_9x16.png",
+      "voice": {
+        "tone": "Flat monotone teen drawl with zero emotional inflection.",
+        "speed": "0.9x",
+        "pitch": "medium",
+        "delivery": "[Chris, deadpan monotone]:",
+        "sample_file": ""
+      },
+      "updated_at": 1794569505.3295696
+    },
+    "chloe": {
+      "id": "chloe",
+      "name": "Chloe",
+      "age": 11,
+      "role": "Daughter, middle-schooler, de facto domestic business manager",
+      "archetype": "The Pre-Teen Momager / Digital Monetization Shark",
+      "description": "Cutthroat 45-year-old talent-manager instincts in an 11-year-old body. Family meltdowns are raw IP to package and monetize. Crashes out if algorithm downranks her.",
+      "personality": "Pause-finger to silence parents, repositions ring light, flips from sugary influencer to cold PR shark.",
+      "visual_prompt": "2D adult satirical animation. Chloe, 11, brown middle-part pigtails with orange-pink tips, large eyes, mischievous smirk. Color-block zip hoodie (purple/green/teal/pink/red), white tee, black joggers, rainbow Crocs with charms. Holds smartphone with circular glowing ring light.",
+      "image_file": "chloe_9x16.png",
+      "voice": {
+        "tone": "Sugary influencer vocal fry flipping into corporate PR cadence.",
+        "speed": "1.15x",
+        "pitch": "medium",
+        "delivery": "[Chloe, influencer smirk]:",
+        "sample_file": ""
+      },
+      "updated_at": 1794569505.3295715
+    }
+  }
+}

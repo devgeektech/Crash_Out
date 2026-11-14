@@ -33,15 +33,12 @@ class PlatformCredentials(BaseModel):
         os.getenv("VIDU_PROMPT_MAX_CHARS", str(VIDU_PROMPT_MAX_CHARS))
     )
 
-    # Agent 0 — live trend ingestion (all optional; public Reddit + pytrends work without keys)
-    reddit_client_id: str = os.getenv("REDDIT_CLIENT_ID", "")
-    reddit_client_secret: str = os.getenv("REDDIT_CLIENT_SECRET", "")
-    reddit_user_agent: str = os.getenv(
-        "REDDIT_USER_AGENT", "CrashOutPOC/1.0 (Agent0 Trend Ingest)"
-    )
-    news_api_key: str = os.getenv("NEWS_API_KEY", "")
+    # Agent 0 — optional LLM concept writer (web search needs no keys)
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    # mock = never call Vidu (default while credits empty); vidu = live API
+    video_engine: str = os.getenv("VIDEO_ENGINE", "mock").strip().lower() or "mock"
 
     video_aspect_ratio: str = "9:16"
     scene_duration_seconds: int = SCENE_DURATION_SEC
@@ -49,7 +46,7 @@ class PlatformCredentials(BaseModel):
     # Fixed attached script runtime (~55s); keep 60 as merge target ceiling.
     total_duration_seconds: int = 55
     fps: int = 24
-    active_video_engine: str = "vidu"
+    active_video_engine: str = os.getenv("VIDEO_ENGINE", "mock").strip().lower() or "mock"
 
 
 config = PlatformCredentials()

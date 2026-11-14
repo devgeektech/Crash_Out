@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-shell characters-layout">
+    <aside class="char-nav panel">
+        <h2>Character library</h2>
+        <p class="muted">Central refs for Gary, Linda, Chris, Chloe.</p>
+        <div class="char-list">
+            {% for c in characters %}
+            <a class="char-list-item {% if c.id == active.id %}active{% endif %}" href="/characters?char_id={{ c.id }}">
+                <img src="{{ c.image_url }}" alt="{{ c.name }}">
+                <span>{{ c.name }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </aside>
+
+    <div class="panel char-editor">
+        <div class="char-editor-head">
+            <img class="char-preview" src="{{ active.image_url }}" alt="{{ active.name }}">
+            <div>
+                <h1>{{ active.name }}</h1>
+                <p class="muted">{{ active.role }}</p>
+            </div>
+        </div>
+
+        <form method="post" action="/ui/characters/{{ active.id }}/image" enctype="multipart/form-data" class="inline-form">
+            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
+            <button class="btn btn-sm btn-primary" type="submit">Replace</button>
+        </form>
+
+        <form method="post" action="/ui/characters/{{ active.id }}/save" class="form-grid">
+            <label>Name <input class="input" name="name" value="{{ active.name }}"></label>
+            <label>Role <input class="input" name="role" value="{{ active.role }}"></label>
+            <label>Archetype <input class="input" name="archetype" value="{{ active.archetype }}"></label>
+            <label class="full">Description
+                <textarea class="input" name="description" rows="4">{{ active.description }}</textarea>
+            </label>
+            <label class="full">Personality / instructions
+                <textarea class="input" name="personality" rows="3">{{ active.personality }}</textarea>
+            </label>
+            <label class="full">Visual prompt
+                <textarea class="input" name="visual_prompt" rows="4">{{ active.visual_prompt }}</textarea>
+            </label>
+            <p class="muted full">Vidu audio direction (baked into the clip — no separate TTS / lip-sync)</p>
+            <label>Tone <input class="input" name="voice_tone" value="{{ active.voice.tone }}"></label>
+            <label>Speed hint <input class="input" name="voice_speed" value="{{ active.voice.speed }}"></label>
+            <label>Pitch hint <input class="input" name="voice_pitch" value="{{ active.voice.pitch }}"></label>
+            <label class="full">Vidu audio tag
+                <input class="input" name="voice_delivery" value="{{ active.voice.delivery }}" placeholder="[Gary, stressed suburban dad]:">
+            </label>
+            <div class="full">
+                <button class="btn btn-primary" type="submit">Save character</button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

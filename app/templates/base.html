@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crash Out — Production Studio</title>
+    <title>{% block title %}Crash Out — Production Studio{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
 <body
     hx-boost="false"
     data-viewing-stage="{{ viewing_stage|default(0) }}"
-    data-page="studio"
+    data-page="{{ page|default('dashboard') }}"
 >
     <div id="busy" class="busy-bar" aria-hidden="true">
         <div class="busy-bar-fill"></div>
@@ -21,13 +21,20 @@
 
     <header class="site-header">
         <a class="brand" href="/">
-            <div class="brand-mark" aria-label="Crash Out">
-                <span class="brand-crash">CRASH</span><span class="brand-out">OUT</span>
+            <div class="brand-mark" aria-hidden="true">
+                <img src="/static/assets/brand/crash_out_badge.jpg" alt="">
             </div>
             <div class="brand-copy">
-                <div class="brand-title">Production Studio</div>
+                <div class="brand-title"><span class="brand-title-crash">CRASH</span> <span class="brand-title-out">OUT</span></div>
+                <div class="brand-sub muted">Production Studio</div>
             </div>
         </a>
+        <nav class="site-nav" aria-label="Primary">
+            <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/">Dashboard</a>
+            <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio">Studio</a>
+            <a class="nav-link {% if page == 'episodes' %}active{% endif %}" href="/episodes">Episodes</a>
+            <a class="nav-link {% if page == 'characters' %}active{% endif %}" href="/characters">Characters</a>
+        </nav>
     </header>
 
     {% block content %}{% endblock %}

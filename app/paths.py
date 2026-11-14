@@ -12,8 +12,11 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs")
 # Shared character reference art — outside outputs/ (not episode media).
 CHARACTERS_DIR = os.path.join(PROJECT_ROOT, "characters")
+# Optional reusable intro/outro bumpers for final assembly.
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHARACTERS_DIR, exist_ok=True)
+os.makedirs(ASSETS_DIR, exist_ok=True)
 
 _RESERVED_DIR_NAMES = {"clean_characters", "characters"}
 

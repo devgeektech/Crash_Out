@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-shell episode-record-page">
+    <div class="page-head">
+        <div>
+            <p class="muted"><a href="/episodes">← Episodes</a></p>
+            <h1>#{{ ep.episode_number }} · {{ ep.title }}</h1>
+            <p class="muted">Published record</p>
+        </div>
+        <div class="page-head-actions">
+            {% if master_video.has_video and master_video.playable_url %}
+            <a class="btn btn-primary" href="{{ master_video.playable_url }}" download>Download MP4</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="panel stage-card">
+        <div class="section-block">
+            <div class="section-head">
+                <div>
+                    <h3>Scene clips</h3>
+                    <p>Read-only archive of each vertical render.</p>
+                </div>
+            </div>
+
+            <div class="scene-videos-grid">
+                {% if scene_cards %}
+                    {% for card in scene_cards %}
+                    <article class="scene-video-card">
+                        <div class="scene-video-head">
+                            <strong>Scene {{ card.scene_id }} · {{ card.title }}</strong>
+                            <span class="badge">{{ card.duration_sec }}s</span>
+                        </div>
+                        {% if card.has_video and card.playable_url %}
+                        <div class="scene-video-frame">
+                            <video
+                                class="scene-video"
+                                controls
+                                playsinline
+                                preload="metadata"
+                                src="{{ card.playable_url }}"
+                            ></video>
+                        </div>
+                        <div class="scene-video-meta muted">
+                            {% if card.latency_sec %}{{ card.latency_sec }}s render{% endif %}
+                            {% if card.vidu_mode %} · {{ card.vidu_mode }}{% endif %}
+                            {% if not card.latency_sec and not card.vidu_mode %}Ready{% endif %}
+                        </div>
+                        {% else %}
+                        <div class="scene-video-placeholder">
+                            <span>{{ card.time_range or ('Scene ' ~ card.scene_id) }}</span>
+                            <span class="muted">Not on file</span>
+                        </div>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                {% else %}
+                <div class="empty-state">No scene clips stored for this record.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-head">
+                <div>
+                    <h3>Full episode</h3>
+                    <p>Merged master from Studio.</p>
+                </div>
+            </div>
+
+            <div class="master-merged-wrapper">
+                <div class="master-merged-player-box">
+                    {% if master_video.has_video and master_video.playable_url %}
+                    <video id="main-video-player" controls playsinline loop preload="metadata" src="{{ master_video.playable_url }}"></video>
+                    {% else %}
+                    <div class="scene-video-placeholder tall">No master video on file</div>
+                    {% endif %}
+                </div>
+                <div class="master-controls-pane">
+                    <div class="master-title-row">
+                        <div class="master-title">Full episode</div>
+                        {% if master_video.merged or ep.scenes_merged %}
+                        <span class="badge badge-ok">Ready</span>
+                        {% else %}
+                        <span class="badge badge-warn">Missing</span>
+                        {% endif %}
+                    </div>
+                    <div class="master-actions">
+                        {% if master_video.has_video and master_video.playable_url %}
+                        <a class="btn btn-primary" href="{{ master_video.playable_url }}" download>Download MP4</a>
+                        {% else %}
+                        <span class="btn btn-ghost disabled">Download MP4</span>
+                        {% endif %}
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-box"><div class="k">Container</div><div class="v">H.264 · MP4</div></div>
+                        <div class="stat-box"><div class="k">Audio</div><div class="v">Native AAC</div></div>
+                        <div class="stat-box"><div class="k">Aspect</div><div class="v">9:16 vertical</div></div>
+                        <div class="stat-box"><div class="k">Duration</div><div class="v">~55 seconds</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</section>
+{% endblock %}

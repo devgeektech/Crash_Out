@@ -28,7 +28,35 @@ from app.catalog import (
     update_custom_scene_prompt,
 )
 from app.config import CHARACTERS, config
-from app.engines.vidu_engine import ViduEngine
+from app.studio.characters import (
+    get_character,
+    list_characters,
+    save_character_image,
+    update_character,
+)
+from app.studio.audio import (
+    sync_dialogue_timing_from_script,
+    update_dialogue_timing_row,
+    voice_library_snapshot,
+)
+from app.studio.export import export_16x9_letterbox, export_episode_zip, list_downloadable_assets
+from app.studio.generation import (
+    PRODUCTION_STATUSES,
+    add_revision_note,
+    cost_summary,
+    find_job,
+    list_final_episodes_sorted,
+    mark_episode_final,
+    restore_clip_version,
+    restore_script_version,
+    save_script_version,
+    studio_dashboard_snapshot,
+    set_production_status,
+    update_job,
+)
+from app.studio.prompt_library import combine_prompt, list_templates, upsert_template
+from app.studio.qa import ensure_qa, extract_last_frame, update_qa
+from app.studio.worker import enqueue_background, list_notifications, mark_notifications_read
 from app.paths import (
     OUTPUT_DIR,
     abspath_from_public,
@@ -138,24 +166,41 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
             continue
 
     cards: list[Dict[str, Any]] = []
-    for sc in scenes:
-        try:
-            sid = int(sc.get("scene_id", 0))
-        except (TypeError, ValueError):
-            continue
-        sv = by_id.get(sid) or {}
-        media = _resolve_scene_playable(ep, sid, sv)
-        cards.append(
-            {
-                "scene_id": sid,
-                "title": sc.get("title") or f"Scene {sid}",
-                "time_range": sc.get("time_range") or "",
-                "duration_sec": sc.get("duration_sec") or sv.get("duration_sec") or 15,
-                "latency_sec": sv.get("latency_sec"),
-                "vidu_mode": sv.get("vidu_mode"),
-                **media,
-            }
-        )
+    if scenes:
+        for sc in scenes:
+            try:
+                sid = int(sc.get("scene_id", 0))
+            except (TypeError, ValueError):
+                continue
+            sv = by_id.get(sid) or {}
+            media = _resolve_scene_playable(ep, sid, sv)
+            cards.append(
+                {
+                    "scene_id": sid,
+                    "title": sc.get("title") or f"Scene {sid}",
+                    "time_range": sc.get("time_range") or "",
+                    "duration_sec": sc.get("duration_sec") or sv.get("duration_sec") or 15,
+                    "latency_sec": sv.get("latency_sec"),
+                    "vidu_mode": sv.get("vidu_mode"),
+                    **media,
+                }
+            )
+    else:
+        # Record / legacy episodes may have renders without a script package.
+        for sid in sorted(by_id.keys()) or [1, 2, 3, 4]:
+            sv = by_id.get(sid) or {}
+            media = _resolve_scene_playable(ep, sid, sv)
+            cards.append(
+                {
+                    "scene_id": sid,
+                    "title": sv.get("title") or f"Scene {sid}",
+                    "time_range": sv.get("time_range") or "",
+                    "duration_sec": sv.get("duration_sec") or 15,
+                    "latency_sec": sv.get("latency_sec"),
+                    "vidu_mode": sv.get("vidu_mode"),
+                    **media,
+                }
+            )
     return cards
 
 
@@ -225,16 +270,24 @@ SCENE_BOUNDS = [
 def _ensure_episode() -> Episode:
     ep = state_manager.get_active_episode()
     if not ep:
-        ep = state_manager.create_episode("Episode 1: The HOA Violation", engine="vidu")
+        from app.engines.factory import video_engine_mode
+
+        ep = state_manager.create_episode(
+            "Episode 1: The HOA Violation", engine=video_engine_mode()
+        )
         ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
         state_manager.save()
     return ep
 
 
 def _platform_status() -> Dict[str, Any]:
-    vidu = ViduEngine()
-    status = vidu.test_connection()
+    from app.engines.factory import engine_display_name, get_video_engine, video_engine_mode
+
+    engine = get_video_engine()
+    status = engine.test_connection()
     return {
+        "video_engine": video_engine_mode(),
+        "engine_name": engine_display_name(),
         "vidu_model": config.vidu_model,
         "vidu_reference_model": config.vidu_reference_model,
         "vidu_has_key": bool(config.vidu_api_key),
@@ -514,6 +567,51 @@ def _catalog_cards() -> list:
     return cards
 
 
+def _studio_queue_cards() -> list:
+    """Studio queue only: in-progress catalog rows + orphan studio episodes (never published)."""
+    from app.studio.generation import is_final_episode, normalize_production_status
+
+    def _published(ep: Optional[Episode]) -> bool:
+        if not ep:
+            return False
+        if normalize_production_status(getattr(ep, "production_status", None)) == "published":
+            return True
+        return is_final_episode(ep)
+
+    cards: list = []
+    seen_ep_ids: set[str] = set()
+    for card in _catalog_cards():
+        ep = card.get("episode")
+        if _published(ep):
+            continue
+        cards.append(card)
+        if ep:
+            seen_ep_ids.add(ep.id)
+
+    # Draft / scripting / generating episodes that are not represented by a catalog row.
+    extras: list = []
+    for ep in state_manager.list_episodes_sorted():
+        if ep.id in seen_ep_ids or _published(ep):
+            continue
+        prod = normalize_production_status(getattr(ep, "production_status", None))
+        extras.append(
+            {
+                "id": ep.catalog_id or ep.id,
+                "title": ep.title,
+                "subtitle": "In studio",
+                "duration_label": "—",
+                "list_number": int(ep.episode_number or 0),
+                "episode": ep,
+                "episode_status": (prod or "draft").replace("_", " ").title(),
+                "gateway": ep.current_gateway,
+                "has_master": bool(ep.merged_video_url or ep.scenes_merged),
+                "custom": bool(ep.catalog_id and str(ep.catalog_id).startswith("custom_")),
+            }
+        )
+    extras.sort(key=lambda c: int(c.get("list_number") or 0), reverse=True)
+    return cards + extras
+
+
 def build_context(
     request: Request,
     viewing_stage: Optional[int] = None,
@@ -562,8 +660,23 @@ def build_context(
         "toast_kind": "error" if error else toast_kind,
         "scene_cards": _build_scene_cards(ep),
         "master_video": _resolve_master_video(ep),
-        "catalog_cards": _catalog_cards(),
+        "catalog_cards": _studio_queue_cards(),
         "page": "studio",
+        "episode_list": state_manager.list_episodes_sorted(),
+        "production_statuses": list(PRODUCTION_STATUSES),
+        "generation_jobs": list(reversed(ep.generation_jobs or []))[:20],
+        "revision_notes": list(reversed(list(ep.revision_notes or [])))[:20],
+        "clip_history": ep.clip_history or {},
+        "library_characters": list_characters(),
+        "script_versions": list(reversed(ep.script_versions or []))[:20],
+        "prompt_templates": list_templates(),
+        "cost_summary": cost_summary(ep),
+        "export_assets": list_downloadable_assets(ep),
+        "voice_library": voice_library_snapshot(),
+        "dialogue_timing": ep.dialogue_timing or [],
+        "notifications": list_notifications(unread_only=True),
+        "qa_scene": ensure_qa(ep, script_scene or 1),
+        "continuity_frames": ep.continuity_frames or {},
         # Always define Gate 2 tab vars before bundle merge (avoids Jinja UndefinedError)
         "script_scene": 1,
         "script_scene_ids": [],
@@ -592,15 +705,77 @@ def render(
 # ---------------------------------------------------------------------------
 
 
+def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
+    """Shared chrome context for non-pipeline pages (nav, toast, engine badge)."""
+    ctx = {
+        "request": request,
+        "page": page,
+        "platform": _platform_status(),
+        "toast": extra.pop("toast", None),
+        "toast_kind": extra.pop("toast_kind", "info"),
+        "viewing_stage": extra.pop("viewing_stage", 0),
+        # Safe defaults so base/partials never hit UndefinedError
+        "revision_notes": [],
+        "production_statuses": PRODUCTION_STATUSES,
+        "library_characters": [],
+        "episode_list": [],
+    }
+    ctx.update(extra)
+    return ctx
+
+
 @router.get("/", response_class=HTMLResponse)
-def ui_home(request: Request, stage: Optional[int] = None):
-    """Studio landing — video queue (stage 0) sits before Concept."""
-    return render(request, "studio.html", viewing_stage=0 if stage is None else stage)
+def ui_home(request: Request):
+    """Production dashboard — overview of pipeline health and recent work."""
+    from app.catalog import list_catalog_items
+
+    snap = studio_dashboard_snapshot()
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        _shell_context(
+            request,
+            "dashboard",
+            dashboard=snap,
+            catalog_count=len(_studio_queue_cards()),
+            catalog_cards=_studio_queue_cards()[:8],
+        ),
+    )
 
 
 @router.get("/studio", response_class=HTMLResponse)
-def ui_studio(request: Request, stage: Optional[int] = None):
-    return render(request, "studio.html", viewing_stage=0 if stage is None else stage)
+def ui_studio(
+    request: Request,
+    stage: Optional[int] = None,
+    episode: Optional[str] = None,
+    catalog: Optional[str] = None,
+):
+    """HITL production studio — opens on the video queue (stage 0) unless a stage is requested.
+
+    Optional ``episode`` / ``catalog`` query params activate that queue item first
+    (used by Dashboard → Studio queue Open links).
+    """
+    activated: Optional[Episode] = None
+    if episode:
+        activated = state_manager.set_active(episode)
+        if not activated:
+            raise HTTPException(status_code=404, detail="Episode not found")
+    elif catalog:
+        activated = _activate_catalog_video(catalog)
+
+    if stage is None:
+        # Deep-link from dashboard: resume at furthest stage for that episode.
+        if activated is not None:
+            stage = _stage_for_selected_episode(activated)
+        else:
+            stage = 0
+    return render(request, "studio.html", viewing_stage=stage)
+
+
+@router.get("/queue", response_class=HTMLResponse)
+def ui_queue_redirect(request: Request):
+    """Legacy URL — Queue was renamed to Studio."""
+    return RedirectResponse(url="/studio", status_code=303)
 
 
 def _apply_catalog_concepts(ep: Episode, catalog_id: str) -> None:
@@ -997,6 +1172,7 @@ def ui_approve_gateway_1(request: Request):
         ep.merch_punchline = script_data.get("merch_punchline_trigger")
         ep.status = "WAITING_GATEWAY_2"
         ep.current_gateway = 2
+        set_production_status(ep, "scripting")
         state_manager.save()
     except HTTPException as exc:
         return render(
@@ -1017,7 +1193,7 @@ def ui_approve_gateway_1(request: Request):
         request,
         "partials/htmx_workspace.html",
         viewing_stage=2,
-        toast="Concept approved · script ready",
+        toast="Concept approved · status Scripting",
         toast_kind="ok",
     )
 
@@ -1050,6 +1226,7 @@ def ui_approve_gateway_2(request: Request):
         # Keep SCRIPT_APPROVED visible after Generate Video (do not overwrite with WAITING_GATEWAY_3).
         ep.status = "SCRIPT_APPROVED"
         ep.current_gateway = 3
+        set_production_status(ep, "generating")
         state_manager.save()
         orchestrator.log(ep.id, "Gateway 2 approved: generating 4 Vidu scenes...")
         render_all_episode_scenes(ep)
@@ -1059,6 +1236,7 @@ def ui_approve_gateway_2(request: Request):
         ep.selected_engine = "vidu"
         ep.status = "SCRIPT_APPROVED"
         ep.current_gateway = 3
+        set_production_status(ep, "generating")
         state_manager.save()
     except HTTPException as exc:
         return render(
@@ -1237,8 +1415,8 @@ def ui_approve_gateway_3(request: Request):
         ep.social_posts = deploy_result.get("social", {})
         ep.merch_listing = deploy_result.get("merch", {})
         ep.merch_mockup_url = deploy_result.get("mockup_url")
-        ep.status = "WAITING_GATEWAY_4"
-        ep.current_gateway = 4
+        # Video confirmed → Published and moved to Episodes library.
+        mark_episode_final(ep)
         state_manager.save()
     except Exception as exc:
         return render(
@@ -1247,13 +1425,7 @@ def ui_approve_gateway_3(request: Request):
             viewing_stage=3,
             error=str(exc),
         )
-    return render(
-        request,
-        "partials/htmx_workspace.html",
-        viewing_stage=4,
-        toast="Video approved",
-        toast_kind="ok",
-    )
+    return RedirectResponse(url=f"/episodes/{ep.id}", status_code=303)
 
 
 @router.post("/ui/gateway/4/approve", response_class=HTMLResponse)
@@ -1291,8 +1463,7 @@ def ui_approve_gateway_5(request: Request):
     ep = _ensure_episode()
     try:
         orchestrator.approve_gateway(ep.id, 5, {"seeding": ep.seeding_drafts})
-        ep.status = "COMPLETED"
-        ep.current_gateway = 6
+        mark_episode_final(ep)
         state_manager.save()
     except Exception as exc:
         return render(
@@ -1305,7 +1476,560 @@ def ui_approve_gateway_5(request: Request):
         request,
         "partials/htmx_workspace.html",
         viewing_stage=5,
-        toast="Episode complete",
+        toast="Episode complete — moved to Episodes",
+        toast_kind="ok",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Episodes dashboard + character library + production workflow
+# ---------------------------------------------------------------------------
+
+
+@router.get("/episodes", response_class=HTMLResponse)
+def ui_episodes_page(request: Request):
+    """Finished library only — in-progress work stays in Studio."""
+    _ensure_episode()
+    return templates.TemplateResponse(
+        request,
+        "episodes.html",
+        _shell_context(
+            request,
+            "episodes",
+            episodes=list_final_episodes_sorted(),
+            active_id=state_manager.active_episode_id,
+        ),
+    )
+
+
+@router.get("/episodes/{episode_id}", response_class=HTMLResponse)
+def ui_episode_record(request: Request, episode_id: str):
+    """Read-only record view (video archive) — does not open Studio."""
+    from app.studio.generation import is_final_episode
+
+    ep = state_manager.episodes.get(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    if not is_final_episode(ep):
+        # In-progress shows belong in Studio, not the records library.
+        return RedirectResponse(url="/studio", status_code=303)
+
+    if _attach_local_renders(ep) or _hydrate_renders_from_siblings(ep):
+        state_manager.save_episode(ep.id)
+
+    return templates.TemplateResponse(
+        request,
+        "episode_record.html",
+        _shell_context(
+            request,
+            "episodes",
+            ep=ep,
+            scene_cards=_build_scene_cards(ep),
+            master_video=_resolve_master_video(ep),
+        ),
+    )
+
+
+@router.post("/ui/episodes/create", response_class=HTMLResponse)
+def ui_episodes_create(request: Request, title: str = Form("New Episode")):
+    from app.engines.factory import video_engine_mode
+
+    ep = state_manager.create_episode(
+        title=(title or "New Episode").strip() or "New Episode",
+        engine=video_engine_mode(),
+    )
+    ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
+    state_manager.save()
+    orchestrator.log(ep.id, f"Created episode #{ep.episode_number}: {ep.title}")
+    return RedirectResponse(url="/studio", status_code=303)
+
+
+@router.post("/ui/episodes/{episode_id}/open", response_class=HTMLResponse)
+def ui_episodes_open(request: Request, episode_id: str):
+    """Legacy POST open → record page (not Studio)."""
+    ep = state_manager.episodes.get(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return RedirectResponse(url=f"/episodes/{episode_id}", status_code=303)
+
+
+@router.post("/ui/episodes/{episode_id}/duplicate", response_class=HTMLResponse)
+def ui_episodes_duplicate(request: Request, episode_id: str):
+    clone = state_manager.duplicate_episode(episode_id)
+    if not clone:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    orchestrator.log(clone.id, f"Duplicated from {episode_id} → #{clone.episode_number}")
+    return RedirectResponse(url="/episodes", status_code=303)
+
+
+@router.post("/ui/episodes/{episode_id}/rename", response_class=HTMLResponse)
+def ui_episodes_rename(request: Request, episode_id: str, title: str = Form(...)):
+    from app.studio.generation import is_final_episode
+
+    ep = state_manager.rename_episode(episode_id, title)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    # Studio renames stay in Studio; published records return to the library view.
+    if is_final_episode(ep):
+        return RedirectResponse(url=f"/episodes/{episode_id}", status_code=303)
+    return RedirectResponse(url="/studio", status_code=303)
+
+
+@router.post("/ui/episodes/{episode_id}/autosave", response_class=HTMLResponse)
+def ui_episodes_autosave(
+    request: Request,
+    episode_id: str,
+    title: Optional[str] = Form(None),
+):
+    ep = state_manager.episodes.get(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    if title is not None and title.strip():
+        ep.title = title.strip()
+    state_manager.save_episode(episode_id)
+    return HTMLResponse('<span class="autosave-ok">Saved</span>')
+
+
+@router.post("/ui/production/status", response_class=HTMLResponse)
+def ui_production_status(request: Request, status: str = Form(...)):
+    ep = _ensure_episode()
+    try:
+        set_production_status(ep, status)
+        state_manager.save()
+    except ValueError as exc:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=0,
+            error=str(exc),
+        )
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=0,
+        toast=f"Status → {status}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/production/note", response_class=HTMLResponse)
+def ui_production_note(
+    request: Request,
+    note: str = Form(...),
+):
+    ep = _ensure_episode()
+    add_revision_note(ep, note, author="")
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=0,
+        toast="Note saved",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/script/version", response_class=HTMLResponse)
+def ui_script_version(request: Request, label: str = Form("")):
+    ep = _ensure_episode()
+    try:
+        save_script_version(ep, label=label)
+        state_manager.save()
+    except ValueError as exc:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=2,
+            error=str(exc),
+        )
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=2,
+        toast="Script version saved",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/jobs/{job_id}/retry", response_class=HTMLResponse)
+def ui_job_retry(request: Request, job_id: str):
+    from app.main import generate_single_scene
+
+    ep = _ensure_episode()
+    job = find_job(ep, job_id)
+    if not job:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=3,
+            error="Job not found",
+        )
+    if job.get("status") not in {"failed", "completed"}:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=3,
+            error="Only failed/completed jobs can be retried",
+        )
+    # Clear in-flight lock by marking old job failed-done, then re-run scene.
+    update_job(ep, job_id, status="failed", error="superseded by retry")
+    state_manager.save()
+    scene_id = int(job.get("scene_id") or 1)
+    try:
+        generate_single_scene({"scene_id": scene_id})
+    except HTTPException as exc:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=3,
+            error=str(exc.detail),
+        )
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast=f"Retried scene {scene_id}",
+        toast_kind="ok",
+    )
+
+
+@router.get("/characters", response_class=HTMLResponse)
+def ui_characters_page(request: Request, char_id: str = "gary"):
+    cid = (char_id or "gary").lower()
+    return templates.TemplateResponse(
+        request,
+        "characters.html",
+        _shell_context(
+            request,
+            "characters",
+            characters=list_characters(),
+            active=get_character(cid),
+            library_characters=list_characters(),
+        ),
+    )
+
+
+@router.post("/ui/characters/{char_id}/save", response_class=HTMLResponse)
+def ui_characters_save(
+    request: Request,
+    char_id: str,
+    name: str = Form(""),
+    role: str = Form(""),
+    archetype: str = Form(""),
+    description: str = Form(""),
+    personality: str = Form(""),
+    visual_prompt: str = Form(""),
+    voice_tone: str = Form(""),
+    voice_speed: str = Form(""),
+    voice_pitch: str = Form(""),
+    voice_delivery: str = Form(""),
+):
+    try:
+        update_character(
+            char_id,
+            {
+                "name": name,
+                "role": role,
+                "archetype": archetype,
+                "description": description,
+                "personality": personality,
+                "visual_prompt": visual_prompt,
+                "voice": {
+                    "tone": voice_tone,
+                    "speed": voice_speed,
+                    "pitch": voice_pitch,
+                    "delivery": voice_delivery,
+                },
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return RedirectResponse(url=f"/characters?char_id={char_id}", status_code=303)
+
+
+@router.post("/ui/characters/{char_id}/image", response_class=HTMLResponse)
+async def ui_characters_image(
+    request: Request,
+    char_id: str,
+    image: UploadFile = File(...),
+):
+    import tempfile
+
+    suffix = os.path.splitext(image.filename or "")[1] or ".png"
+    raw = await image.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+    try:
+        save_character_image(char_id, tmp_path, ext=suffix)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+    return RedirectResponse(url=f"/characters?char_id={char_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Script versions, dialogue edit, templates, history restore, export, audio, QA
+# ---------------------------------------------------------------------------
+
+
+@router.post("/ui/script/version/{version_id}/restore", response_class=HTMLResponse)
+def ui_script_version_restore(request: Request, version_id: str):
+    ep = _ensure_episode()
+    try:
+        restore_script_version(ep, version_id)
+        state_manager.save()
+    except ValueError as exc:
+        return render(request, "partials/htmx_workspace.html", viewing_stage=2, error=str(exc))
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=2,
+        toast="Script version restored",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/script/scene/{scene_id}/line/{line_index}", response_class=HTMLResponse)
+def ui_script_line_save(
+    request: Request,
+    scene_id: int,
+    line_index: int,
+    text: str = Form(""),
+    time_start: float = Form(0),
+    time_end: float = Form(0),
+    character: str = Form("gary"),
+):
+    ep = _ensure_episode()
+    scenes = (ep.script or {}).get("scenes") or []
+    scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == scene_id), None)
+    if not scene:
+        return render(request, "partials/htmx_workspace.html", viewing_stage=2, error="Scene not found")
+    lines = list(scene.get("dialogue") or [])
+    if line_index < 0 or line_index >= len(lines):
+        return render(request, "partials/htmx_workspace.html", viewing_stage=2, error="Line not found")
+    lines[line_index]["text"] = text
+    lines[line_index]["time_start"] = float(time_start)
+    lines[line_index]["time_end"] = float(time_end)
+    lines[line_index]["character"] = (character or "gary").lower()
+    scene["dialogue"] = lines
+    state_manager.save()
+    return render(
+        request,
+        "partials/script_scene_block.html",
+        viewing_stage=2,
+        script_scene=scene_id,
+        toast="Dialogue saved",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/templates/apply", response_class=HTMLResponse)
+def ui_templates_apply(
+    request: Request,
+    template_id: str = Form(...),
+    scene_id: int = Form(1),
+    characters: str = Form("gary,linda,chris,chloe"),
+):
+    ep = _ensure_episode()
+    cast = [c.strip().lower() for c in characters.split(",") if c.strip()]
+    scenes = (ep.script or {}).get("scenes") or []
+    scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == int(scene_id)), None)
+    dialogue = (scene or {}).get("dialogue") or []
+    prompt = combine_prompt(template_id=template_id, character_ids=cast, dialogue_lines=dialogue)
+    if scene is not None:
+        scene["source_prompt"] = prompt
+        scene["vidu_prompt"] = prompt
+        state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=2,
+        script_scene=int(scene_id),
+        toast="Template applied to scene prompt",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/templates/save", response_class=HTMLResponse)
+def ui_templates_save(
+    request: Request,
+    template_id: str = Form(""),
+    name: str = Form(""),
+    scene_type: str = Form("general"),
+    camera: str = Form(""),
+    scene_instructions: str = Form(""),
+    dialogue_hint: str = Form(""),
+):
+    upsert_template(
+        {
+            "id": template_id or None,
+            "name": name,
+            "scene_type": scene_type,
+            "camera": camera,
+            "scene_instructions": scene_instructions,
+            "dialogue_hint": dialogue_hint,
+        }
+    )
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=2,
+        toast="Template saved",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/clips/{scene_id}/restore/{version}", response_class=HTMLResponse)
+def ui_clip_restore(request: Request, scene_id: int, version: int):
+    ep = _ensure_episode()
+    try:
+        restore_clip_version(ep, scene_id, version)
+        state_manager.save()
+    except ValueError as exc:
+        return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=str(exc))
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast=f"Restored scene {scene_id} v{version}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/jobs/enqueue/{scene_id}", response_class=HTMLResponse)
+def ui_jobs_enqueue(request: Request, scene_id: int):
+    ep = _ensure_episode()
+    try:
+        enqueue_background(ep, scene_id)
+    except ValueError as exc:
+        return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=str(exc))
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast=f"Scene {scene_id} queued in background",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/notifications/read", response_class=HTMLResponse)
+def ui_notifications_read(request: Request):
+    mark_notifications_read()
+    return render(request, "partials/htmx_workspace.html", viewing_stage=3, toast="Notifications cleared")
+
+
+@router.post("/ui/export/zip", response_class=HTMLResponse)
+def ui_export_zip(request: Request):
+    ep = _ensure_episode()
+    res = export_episode_zip(ep)
+    if not res.get("success"):
+        return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast=f"Zip ready: {res.get('url')}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/export/16x9", response_class=HTMLResponse)
+def ui_export_16x9(request: Request):
+    ep = _ensure_episode()
+    res = export_16x9_letterbox(ep)
+    if not res.get("success"):
+        return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast="16:9 export ready",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/audio/timing/sync", response_class=HTMLResponse)
+def ui_audio_timing_sync(request: Request):
+    ep = _ensure_episode()
+    sync_dialogue_timing_from_script(ep)
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=2,
+        toast="Dialogue timing synced for Vidu prompts",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/audio/timing/{row_id}", response_class=HTMLResponse)
+def ui_audio_timing_row(
+    request: Request,
+    row_id: str,
+    time_start: float = Form(0),
+    time_end: float = Form(0),
+    pause_after_sec: float = Form(0.15),
+    speed: str = Form("1.0x"),
+    text: str = Form(""),
+):
+    ep = _ensure_episode()
+    row = update_dialogue_timing_row(
+        ep,
+        row_id,
+        {
+            "time_start": time_start,
+            "time_end": time_end,
+            "pause_after_sec": pause_after_sec,
+            "speed": speed,
+            "text": text,
+        },
+    )
+    if not row:
+        return render(request, "partials/htmx_workspace.html", viewing_stage=2, error="Timing row not found")
+    state_manager.save()
+    return render(request, "partials/htmx_workspace.html", viewing_stage=2, toast="Timing updated", toast_kind="ok")
+
+
+@router.post("/ui/qa/{scene_id}", response_class=HTMLResponse)
+def ui_qa_update(
+    request: Request,
+    scene_id: int,
+    section: str = Form(...),
+    check_id: str = Form(...),
+    passed: str = Form("true"),
+    note: str = Form(""),
+):
+    ep = _ensure_episode()
+    flag = None if passed == "pending" else (passed.lower() == "true")
+    update_qa(ep, scene_id, section=section, check_id=check_id, passed=flag, note=note)
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        script_scene=scene_id,
+        toast="QA updated",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/continuity/{scene_id}/extract", response_class=HTMLResponse)
+def ui_continuity_extract(request: Request, scene_id: int):
+    ep = _ensure_episode()
+    res = extract_last_frame(ep, scene_id)
+    if not res.get("success"):
+        return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=3,
+        toast=f"Last frame saved for scene {scene_id}",
         toast_kind="ok",
     )
 

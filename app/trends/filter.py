@@ -148,7 +148,9 @@ def score_fit(item: Dict[str, Any]) -> float:
     hits = _keyword_hits(text)
     source = str(item.get("source") or "").lower()
     base = float(item.get("score") or 0)
-    source_boost = 25.0 if source.startswith("reddit/") else (10.0 if source in {"gdelt", "newsapi"} else 0.0)
+    source_boost = 15.0 if source == "web_search" else (
+        25.0 if source.startswith("reddit/") else (10.0 if source in {"gdelt", "newsapi"} else 0.0)
+    )
     # Normalize reddit scores a bit; boost keyword hits hard.
     return hits * 40.0 + min(base, 500.0) * 0.05 + source_boost + (5.0 if hits else 0.0)
 
@@ -171,12 +173,15 @@ def filter_trends(
         hits = _keyword_hits(text)
         if hits < 1:
             continue
-        source = str(item.get("source") or "").lower()
         strong = sum(1 for kw in STRONG_KEYWORDS if kw in text)
-        # All sources need a strong cultural token in the title (Crash Out fit).
-        if strong < 1:
+        source = str(item.get("source") or "").lower()
+        # Web-search hits: accept strong theme tokens; soft-pass title keyword hits.
+        if source == "web_search":
+            if strong < 1 and hits < 1:
+                continue
+        elif strong < 1:
             continue
-        if fit >= min_score:
+        if fit >= min_score or (source == "web_search" and strong >= 1):
             ranked.append((fit, enriched))
         else:
             soft.append((fit, enriched))

@@ -306,6 +306,7 @@ class ViduEngine(BaseVideoEngine):
                     "native_audio": True,
                     "duration_sec": max(3, min(duration, 16)),
                     "credits": result.get("credits"),
+                    "credits_used": 1,
                     "remote_url": remote_url,
                     "cover_url": creations[0].get("cover_url"),
                     "reference_image_count": len(images),

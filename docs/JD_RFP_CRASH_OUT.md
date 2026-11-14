@@ -62,6 +62,8 @@ The system must be orchestrated by a Master Project Manager Agent (Orchestrator)
 
 ### Agent 2: Multi-Character Voice Synthesis (TTS)
 
+> **POC note:** Not implemented. Crash Out generates spoken audio **inside Vidu** with each clip. Character voice tags live in the prompt, not a separate TTS API.
+
 **Objective:** Synthesizes voice tracks from the approved script.
 
 **Integrations:** ElevenLabs API (or equivalent voice engine) using dedicated voice IDs for each family member.
@@ -71,6 +73,8 @@ The system must be orchestrated by a Master Project Manager Agent (Orchestrator)
 **HITL Gateway 3:** Pushes preview audio to the user. User can trigger regeneration of specific lines or approve audio for visual sync.
 
 ### Agent 3: 2D Animation, Lip-Sync & Auto-Captioning
+
+> **POC note:** Separate lip-sync engines are **not** used. Vidu Q4 produces video + native audio in one pass; FFmpeg only merges scene clips.
 
 **Objective:** Animates character assets, coordinates lip-sync with audio, renders layered composite scenes, and adds dynamic kinetic subtitles.
 

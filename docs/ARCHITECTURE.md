@@ -16,6 +16,7 @@ flowchart TD
   g4[HITL_Gateway4_SocialMerch]
   a5[Agent5_SeedingDrafts]
   g5[HITL_Gateway5_Seeding]
+  library[Episodes_Library]
 
   catalog --> a0
   a0 --> g1
@@ -28,6 +29,45 @@ flowchart TD
   a4 --> g4
   g4 --> a5
   a5 --> g5
+  g5 --> library
+```
+
+## Package layout
+
+```
+Crash_Out/
+├── run.py                 # Uvicorn entry
+├── requirements.txt
+├── .env.example
+├── assets/                # Optional intro/outro bumpers only
+├── characters/            # Shared 9:16 refs + library.json
+├── docs/                  # Product / architecture / JD reference
+│   └── reference/prompts/ # Original scene prompt text refs
+├── outputs/               # Episode media + index (gitignored)
+└── app/
+    ├── main.py            # FastAPI app + /api/* render/merge
+    ├── ui.py              # HITL Hub (Jinja + HTMX routes)
+    ├── config.py
+    ├── paths.py
+    ├── state.py
+    ├── catalog.py
+    ├── personas.py
+    ├── prompts.py
+    ├── agents/            # Agent adapters
+    ├── engines/           # Vidu + local preview engines
+    ├── trends/            # Agent 0 web-search ingest
+    ├── studio/            # Studio domain helpers
+    │   ├── generation.py  # Queue, credits, finals library
+    │   ├── characters.py
+    │   ├── prompt_library.py
+    │   ├── audio.py
+    │   ├── export.py
+    │   ├── qa.py
+    │   └── worker.py
+    ├── media/
+    │   └── merger.py      # FFmpeg scene concat
+    ├── templates/
+    └── static/            # CSS/JS + brand art
 ```
 
 ## Key modules
@@ -37,56 +77,41 @@ flowchart TD
 | `run.py` | Entry — starts Uvicorn |
 | `app/main.py` | FastAPI app, REST `/api/*`, Vidu render + merge |
 | `app/ui.py` | HITL Hub routes (HTMX partials) |
-| `app/state.py` | Episode state machine; index + per-episode JSON |
-| `app/paths.py` | `outputs/ep_<id>_<Title>/`, public URL helpers |
-| `app/config.py` | Vidu + Agent 0 credentials from `.env` |
-| `app/personas.py` | Character bible + HOA script package |
-| `app/catalog.py` | Built-in + custom catalog videos/concepts |
-| `app/engines/vidu_engine.py` | Vidu Q4 client |
-| `app/video_merger.py` | FFmpeg concat → `merged_60s.mp4` |
-| `app/agents/agent_m_orchestrator.py` | Gateway approve + QA helpers + logs |
-| `app/agents/agent_0_trend_ingest.py` | Gate 1 concepts (thin wrapper) |
-| `app/trends/` | Live trend collect → filter → concept writer → cache |
-| `app/agents/agent_1_scriptwriter.py` | Script package by `script_key` |
-| `app/agents/agent_4_publisher.py` | Social/merch draft package |
-| `app/agents/agent_5_seeder.py` | Community seeding drafts |
-| `app/templates/` | Jinja HITL stages |
-| `characters/` | Shared `*_9x16.png` refs (outside `outputs/`) |
-| `outputs/` | Episode folders + `pipeline_index.json` + trend cache |
+| `app/state.py` | Episode state; index + per-episode JSON |
+| `app/paths.py` | `outputs/`, `characters/`, `assets/` helpers |
+| `app/config.py` | Env / Vidu settings |
+| `app/catalog.py` | Built-in + custom catalog |
+| `app/engines/` | Vidu Q4 + local preview factory |
+| `app/studio/` | Queue, characters, export, QA, worker |
+| `app/media/merger.py` | FFmpeg → `merged_60s.mp4` |
+| `app/agents/` | Orchestrator + Agent 0/1/4/5 |
+| `app/trends/` | Live web-search concept pipeline |
+
+## Pages
+
+| Route | Role |
+|---|---|
+| `/` | Production dashboard |
+| `/studio` | In-progress HITL pipeline (create / work shows here) |
+| `/episodes` | **Finished** library only (cleared all gateways) |
+| `/characters` | Character library |
 
 ## Episode storage
 
 - Folder: `outputs/ep_<episode_id>_<Sanitized Title>/`
 - Files: `episode.json`, `.episode_id`, `scene_1..4.mp4`, `merged_60s.mp4`, optional merch mockup
-- Index: `outputs/pipeline_index.json` (active episode + lightweight listing)
-- Empty / no-progress episodes are pruned; mid-pipeline episodes with script or `gateway >= 2` are kept even without MP4s
+- Index: `outputs/pipeline_index.json`
+- Brand art: `app/static/assets/brand/`
 
-## Agent 0 live ingest
+## Video engines
 
-```mermaid
-flowchart LR
-  reddit[Reddit_RSS_or_OAuth]
-  gtrends[GoogleTrends_RSS]
-  gdelt[GDELT]
-  news[NewsAPI_optional]
-  filter[ThemeFitFilter]
-  writer[LLM_or_HeuristicWriter]
-  cache[trend_concepts_cache.json]
-  gate1[Three_Concept_Cards]
-
-  reddit --> filter
-  gtrends --> filter
-  gdelt --> filter
-  news --> filter
-  filter --> writer
-  writer --> cache
-  writer --> gate1
-  cache --> gate1
-```
-
-Fallback order: **live cards → quality cache → static HOA/Stanley concepts**.
+- `VIDEO_ENGINE=mock` (default) → local FFmpeg placeholders
+- `VIDEO_ENGINE=vidu` → live Q4 API
+- Factory: `app/engines/factory.py`
 
 ## Env (see `.env.example`)
 
-- **Required for video:** `VIDU_API_KEY`, Vidu model/base URL
-- **Optional for Agent 0:** `REDDIT_*`, `NEWS_API_KEY`, `OPENAI_API_KEY` / `OPENAI_MODEL`
+- **`VIDEO_ENGINE`:** `mock` or `vidu`
+- **Live video:** `VIDU_API_KEY`, model/base URL
+- **Optional Agent 0:** `OPENAI_API_KEY`
+- Optional bumpers: `assets/intro.mp4`, `assets/outro.mp4`

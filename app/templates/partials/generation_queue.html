@@ -1,0 +1,73 @@
+<section class="panel gen-queue-panel">
+    <div class="side-head">
+        <h3>Generation queue</h3>
+    </div>
+    <div class="inline-form" style="margin-bottom:0.75rem">
+        {% for sid in [1,2,3,4] %}
+        <button class="btn btn-sm btn-ghost" type="button"
+                hx-post="/ui/jobs/enqueue/{{ sid }}"
+                hx-target="#workspace" hx-swap="outerHTML" hx-indicator="#busy">Queue S{{ sid }}</button>
+        {% endfor %}
+    </div>
+    {% if generation_jobs %}
+    <table class="data-table compact">
+        <thead>
+            <tr>
+                <th>Scene</th>
+                <th>Status</th>
+                <th>Error</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in generation_jobs %}
+            <tr>
+                <td>{{ job.scene_id }}</td>
+                <td><span class="badge">{{ job.status }}</span></td>
+                <td class="muted">{{ job.error or '—' }}</td>
+                <td>
+                    {% if job.status in ['failed', 'completed'] %}
+                    <button
+                        class="btn btn-sm btn-ghost"
+                        type="button"
+                        hx-post="/ui/jobs/{{ job.id }}/retry"
+                        hx-target="#workspace"
+                        hx-swap="outerHTML"
+                        hx-indicator="#busy"
+                    >Retry</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No generation jobs yet. Queue a clip or generate from Script/Video.</p>
+    {% endif %}
+
+    {% if clip_history %}
+    <div class="side-head" style="margin-top:1rem">
+        <h3>Clip history</h3>
+    </div>
+    {% for sid, versions in clip_history.items() %}
+    <div class="history-block">
+        <strong>Scene {{ sid }}</strong>
+        <ul class="muted">
+            {% for v in versions[-5:] %}
+            <li>
+                v{{ v.version }} · {{ v.engine }}
+                · {{ (v.prompt or '')[:60] }}{% if (v.prompt or '')|length > 60 %}…{% endif %}
+                {% if v.path %}
+                <button class="btn btn-sm btn-ghost" type="button"
+                        hx-post="/ui/clips/{{ sid }}/restore/{{ v.version }}"
+                        hx-target="#workspace" hx-swap="outerHTML">Restore</button>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+    {% endif %}
+</section>
+
+{% include "partials/studio_tools.html" %}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-shell dashboard-page">
+    <div class="brand-hero" aria-label="Crash Out family">
+        <img class="brand-hero-img" src="/static/assets/brand/crash_out_family.png" alt="Crash Out Pearson family">
+        <div class="brand-hero-shade"></div>
+        <div class="brand-hero-copy">
+            <h1>Production dashboard</h1>
+            <p>Pipeline health, episode status, and credit usage.</p>
+            <a class="btn btn-primary" href="/studio">Open studio</a>
+        </div>
+    </div>
+
+    <div class="dash-kpis">
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">In Studio</span>
+            <strong class="dash-kpi-value">{{ dashboard.studio_count }}</strong>
+            <span class="muted">{{ catalog_count }} in queue</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Scripting</span>
+            <strong class="dash-kpi-value">{{ dashboard.scripting_count }}</strong>
+            <span class="muted">{{ dashboard.draft_count }} draft</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Generating</span>
+            <strong class="dash-kpi-value">{{ dashboard.generating_count }}</strong>
+            <span class="muted">{{ dashboard.jobs_waiting }} waiting</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Credits</span>
+            <strong class="dash-kpi-value">{{ '%.0f'|format(dashboard.credits_total|default(0)) }}</strong>
+            <span class="muted">used across episodes</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Published</span>
+            <strong class="dash-kpi-value">{{ dashboard.published_count }}</strong>
+            <span class="muted">in Episodes</span>
+        </article>
+    </div>
+
+    <div class="dash-grid">
+        <section class="panel dash-panel dash-active">
+            <div class="side-head">
+                <h2>Active episode</h2>
+            </div>
+            {% if dashboard.active_info %}
+            {% set ae = dashboard.active_info.episode %}
+            {% set info = dashboard.active_info %}
+            <h3 class="dash-active-title">#{{ ae.episode_number or '—' }} · {{ ae.title }}</h3>
+            <p class="dash-active-stage">Now on <strong>{{ info.stage_label }}</strong></p>
+            <ol class="dash-pipeline">
+                {% for step in info.steps %}
+                <li class="{% if step.done %}is-done{% endif %} {% if step.current %}is-current{% endif %}">
+                    <span class="dash-pipe-dot"></span>
+                    <span>{{ step.label }}</span>
+                </li>
+                {% endfor %}
+            </ol>
+            <div class="inline-form" style="margin-top:0.85rem">
+                {% if info.is_published %}
+                <a class="btn btn-sm btn-primary" href="/episodes/{{ ae.id }}">View record</a>
+                {% else %}
+                <a class="btn btn-sm btn-primary" href="/studio">Continue in studio</a>
+                {% endif %}
+                <a class="btn btn-sm btn-ghost" href="/episodes">Published library</a>
+            </div>
+            {% else %}
+            <p class="muted">No active episode in Studio.</p>
+            <div class="inline-form">
+                <a class="btn btn-sm btn-primary" href="/studio">Open studio</a>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="panel dash-panel">
+            <div class="side-head">
+                <h2>Production mix</h2>
+            </div>
+            <ul class="dash-status-list">
+                {% for st in ['draft', 'scripting', 'generating', 'published'] %}
+                <li>
+                    <span>{{ st|title }}</span>
+                    <strong>{{ dashboard.by_production[st]|default(0) }}</strong>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="panel dash-panel dash-span-2">
+            <div class="side-head">
+                <h2>Recent episodes</h2>
+                <a class="badge" href="/episodes">Library</a>
+            </div>
+            <div class="table-card" style="border:0;box-shadow:none">
+                <table class="data-table compact">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ep in dashboard.recent_episodes %}
+                        <tr>
+                            <td>{{ ep.episode_number or '—' }}</td>
+                            <td><strong>{{ ep.title }}</strong></td>
+                            <td><span class="badge">Published</span></td>
+                            <td>
+                                <a class="btn btn-sm" href="/episodes/{{ ep.id }}">Open</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="muted">No published episodes yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel dash-panel">
+            <div class="side-head">
+                <h2>Studio queue</h2>
+                <a class="badge" href="/studio">Open</a>
+            </div>
+            <ul class="tool-list">
+                {% for card in catalog_cards %}
+                {% if card.episode %}
+                    {% set open_href = '/studio?episode=' ~ card.episode.id %}
+                {% else %}
+                    {% set open_href = '/studio?catalog=' ~ card.id %}
+                {% endif %}
+                <li>
+                    <div class="dash-queue-row">
+                        <a class="dash-queue-link" href="{{ open_href }}">
+                            <strong>{% if card.list_number %}{{ card.list_number }}. {% endif %}{{ card.title }}</strong>
+                            <div class="muted">{{ card.episode_status }}{% if card.has_master %} · master{% endif %}</div>
+                        </a>
+                        <a class="btn btn-sm" href="{{ open_href }}">Open</a>
+                    </div>
+                </li>
+                {% else %}
+                <li class="muted">No episodes in Studio queue.</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="panel dash-panel">
+            <div class="side-head">
+                <h2>Revision notes</h2>
+            </div>
+            <div class="note-list">
+                {% for n in dashboard.recent_notes %}
+                <div class="note-item">
+                    <strong>{{ n.episode_title }}</strong>
+                    <p>{{ n.note }}</p>
+                </div>
+                {% else %}
+                <p class="muted">No revision notes yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}

@@ -27,11 +27,17 @@ Comic engine: suburban status anxiety × Gen Z digital extraction × performativ
 | JD idea | POC reality |
 |---|---|
 | Agent M orchestrator + QA | FastAPI orchestrator + logs + gateway validation |
-| Agent 0 live US trends → 3 concepts | Live ingest (Reddit RSS / Google Trends RSS / GDELT + optional NewsAPI/OpenAI) with cache/static fallback |
+| Agent 0 live US trends → 3 concepts | Web search (`ddgs`) for hot topics → filter → 3 concept cards (+ optional OpenAI writer; cache/static fallback) |
 | HITL Gate 1 concept approve | Web HITL Hub (Jinja + HTMX) |
 | Agent 1 LLM scriptwriter | Script packages / catalog prompts (HOA + Q4 prompt cut + manual catalog); editable prompts in UI |
-| Agent 2 ElevenLabs TTS | **Not built** — Vidu Q4 native audio used instead |
-| Agent 3 lip-sync / D-ID / Hedra | **Not built** — Vidu Q4 `reference2video` + FFmpeg merge |
+| Agent 2 ElevenLabs TTS | **Skipped** — dialogue + voice tags go into Vidu prompts; **audio is generated inside Vidu** (`audio: true`) |
+| Agent 3 lip-sync / D-ID / Hedra | **Skipped** — Vidu Q4 produces picture + spoken audio together; no separate lip-sync engine |
+| Studio episode mgmt / char library / queue | `/episodes`, `/characters`, mock-safe queue + clip history |
+| Script versions / dialogue edit / templates | Script stage tools: versions restore, per-line edit, prompt templates |
+| Clip history restore / export / cost | Restore archived clips; ZIP + 16:9 export; cost ledger panel |
+| Background jobs / notifications | Daemon worker processes waiting queue jobs |
+| Voice / timing for Vidu | Character audio tags + script dialogue timing feed Vidu prompts (not a TTS API) |
+| QA + continuity | Human checklists; FFmpeg last-frame extract for next-clip continuity |
 | Agent 4 social + Shopify/Printify | Draft metadata + merch mockup in UI (no live posting/store yet) |
 | Agent 5 community seeding | Draft seeding package in UI (no live posting) |
 | Telegram bot HITL | **Not built** — web dashboard only |
@@ -85,5 +91,5 @@ Episode media lives under `outputs/ep_<id>_<Title>/` with per-episode `episode.j
 ## Guiding rule for future work
 
 1. Prefer finishing a working POC path over JD completeness.  
-2. When adding features, map them to a JD agent/gateway if useful — but skip JD items that fight the current Vidu-native stack (separate TTS / lip-sync engines) unless explicitly requested.  
+2. When adding features, map them to a JD agent/gateway if useful — but **do not** add separate TTS or lip-sync engines; audio stays Vidu-native.  
 3. Update [SESSION_STATE.md](SESSION_STATE.md) whenever meaningful changes land.

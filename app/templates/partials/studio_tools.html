@@ -1,0 +1,124 @@
+<section class="panel studio-tools">
+    <div class="side-head">
+        <h3>Studio tools</h3>
+    </div>
+
+    {% if notifications %}
+    <div class="notify-box">
+        {% for n in notifications %}
+        <div class="note-item">{{ n.message }}</div>
+        {% endfor %}
+        <button class="btn btn-sm btn-ghost" type="button"
+                hx-post="/ui/notifications/read" hx-target="#workspace" hx-swap="outerHTML">Clear notifications</button>
+    </div>
+    {% endif %}
+
+    <details class="tool-block" open>
+        <summary>Script versions</summary>
+        {% if script_versions %}
+        <ul class="tool-list">
+            {% for v in script_versions %}
+            <li>
+                {{ v.label }} · {{ v.id }}
+                <button class="btn btn-sm btn-ghost" type="button"
+                        hx-post="/ui/script/version/{{ v.id }}/restore"
+                        hx-target="#workspace" hx-swap="outerHTML" hx-indicator="#busy">Restore</button>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No saved versions yet.</p>
+        {% endif %}
+        <button class="btn btn-sm" type="button"
+                hx-post="/ui/script/version" hx-target="#workspace" hx-swap="outerHTML"
+                {% if not ep.script %}disabled{% endif %}>Save current script version</button>
+        <button class="btn btn-sm btn-ghost" type="button"
+                hx-post="/ui/audio/timing/sync" hx-target="#workspace" hx-swap="outerHTML">Sync dialogue timing (for Vidu)</button>
+    </details>
+
+    <details class="tool-block">
+        <summary>Prompt templates</summary>
+        <form class="inline-form" hx-post="/ui/templates/apply" hx-target="#workspace" hx-swap="outerHTML">
+            <select class="input" name="template_id">
+                {% for t in prompt_templates %}
+                <option value="{{ t.id }}">{{ t.name }}</option>
+                {% endfor %}
+            </select>
+            <input class="input input-sm" type="number" name="scene_id" value="{{ script_scene|default(1) }}" min="1" max="4">
+            <button class="btn btn-sm" type="submit">Apply to scene</button>
+        </form>
+    </details>
+
+    <details class="tool-block">
+        <summary>Credits & usage</summary>
+        <p><strong>{{ '%.0f'|format(cost_summary.total_credits|default(0)) }}</strong> credits used ·
+           {{ cost_summary.entries|default(0) }} gens ·
+           {{ cost_summary.regenerations|default(0) }} regenerations</p>
+        <ul class="tool-list muted">
+            {% for row in cost_summary.ledger|default([]) %}
+            <li>Scene {{ row.scene_id }} · {{ '%.0f'|format(row.credits|default(0)) }} credit{% if (row.credits|default(0)) != 1 %}s{% endif %}</li>
+            {% else %}
+            <li>No generation credits logged yet.</li>
+            {% endfor %}
+        </ul>
+    </details>
+
+    <details class="tool-block">
+        <summary>Export</summary>
+        <div class="inline-form">
+            <button class="btn btn-sm" type="button" hx-post="/ui/export/zip" hx-target="#workspace" hx-swap="outerHTML">Download ZIP</button>
+            <button class="btn btn-sm btn-ghost" type="button" hx-post="/ui/export/16x9" hx-target="#workspace" hx-swap="outerHTML">Make 16:9</button>
+        </div>
+        <ul class="tool-list">
+            {% for a in export_assets %}
+            <li><a href="{{ a.url }}" download>{{ a.label }} ({{ a.aspect }})</a></li>
+            {% else %}
+            <li class="muted">No downloadable assets yet.</li>
+            {% endfor %}
+        </ul>
+    </details>
+
+    <details class="tool-block">
+        <summary>Vidu audio direction</summary>
+        <p class="muted">Spoken audio is generated <strong>inside Vidu</strong> with each clip. Edit tags on <a href="/characters">Characters</a>; put dialogue + tags in the scene prompt.</p>
+        <ul class="tool-list muted">
+            {% for v in voice_library %}
+            <li><strong>{{ v.name }}</strong> · {{ v.delivery or '—' }}<br><span class="muted">{{ v.tone or '' }} · {{ v.speed }} · {{ v.pitch }}</span></li>
+            {% endfor %}
+        </ul>
+    </details>
+
+    <details class="tool-block">
+        <summary>QA & continuity (scene {{ script_scene|default(1) }})</summary>
+        <p class="muted">Overall: <strong>{{ qa_scene.overall|default('pending') }}</strong></p>
+        {% for item in qa_scene.consistency|default([]) %}
+        <form class="inline-form" hx-post="/ui/qa/{{ script_scene|default(1) }}" hx-target="#workspace" hx-swap="outerHTML">
+            <input type="hidden" name="section" value="consistency">
+            <input type="hidden" name="check_id" value="{{ item.id }}">
+            <span>{{ item.label }}</span>
+            <select class="input input-sm" name="passed">
+                <option value="pending" {% if item.pass is none %}selected{% endif %}>?</option>
+                <option value="true" {% if item.pass is sameas true %}selected{% endif %}>Pass</option>
+                <option value="false" {% if item.pass is sameas false %}selected{% endif %}>Flag</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" type="submit">Set</button>
+        </form>
+        {% endfor %}
+        {% for item in qa_scene.visual|default([]) %}
+        <form class="inline-form" hx-post="/ui/qa/{{ script_scene|default(1) }}" hx-target="#workspace" hx-swap="outerHTML">
+            <input type="hidden" name="section" value="visual">
+            <input type="hidden" name="check_id" value="{{ item.id }}">
+            <span>{{ item.label }}</span>
+            <select class="input input-sm" name="passed">
+                <option value="pending" {% if item.pass is none %}selected{% endif %}>?</option>
+                <option value="true" {% if item.pass is sameas true %}selected{% endif %}>Pass</option>
+                <option value="false" {% if item.pass is sameas false %}selected{% endif %}>Flag</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" type="submit">Set</button>
+        </form>
+        {% endfor %}
+        <button class="btn btn-sm" type="button"
+                hx-post="/ui/continuity/{{ script_scene|default(1) }}/extract"
+                hx-target="#workspace" hx-swap="outerHTML">Extract last frame for continuity</button>
+    </details>
+</section>

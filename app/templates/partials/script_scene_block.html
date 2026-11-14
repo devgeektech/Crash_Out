@@ -71,8 +71,8 @@
                         hx-swap="outerHTML"
                         hx-indicator="#busy"
                         hx-timeout="900000"
-                        hx-confirm="Generate Vidu clip for Scene {{ active_script_scene.scene_id }} only? This can take several minutes."
-                    >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
+                    hx-confirm="Generate clip for Scene {{ active_script_scene.scene_id }} only?"
+                >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
                     <span class="muted">Autosaves while you type · single scene only</span>
                 </div>
             </form>
@@ -120,6 +120,7 @@
                 {% if active_script_lines %}
                     {% for line in active_script_lines %}
                     {% set char = (line.character or 'gary')|lower %}
+                    {% set line_i = loop.index0 %}
                     <article class="dialogue-line">
                         <div class="char-avatar-badge">
                             <img
@@ -129,12 +130,26 @@
                             >
                         </div>
                         <div class="dialogue-body">
-                            <div class="dialogue-meta">
-                                <span class="dialogue-char-name">{{ char|capitalize }}</span>
-                                <span class="badge">{{ line.time_start }}s–{{ line.time_end }}s</span>
-                                {% if line.emotion %}<span class="badge badge-warn">{{ line.emotion }}</span>{% endif %}
-                            </div>
-                            <div class="dialogue-text">{{ line.text }}</div>
+                            <form
+                                class="dialogue-edit-form"
+                                hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/line/{{ line_i }}"
+                                hx-target="#script-scene-block"
+                                hx-swap="outerHTML"
+                                hx-indicator="#busy"
+                            >
+                                <div class="dialogue-meta">
+                                    <select class="input input-sm" name="character">
+                                        {% for cid in ['gary','linda','chris','chloe'] %}
+                                        <option value="{{ cid }}" {% if char == cid %}selected{% endif %}>{{ cid|capitalize }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <input class="input input-sm" type="number" step="0.1" name="time_start" value="{{ line.time_start }}" title="start">
+                                    <input class="input input-sm" type="number" step="0.1" name="time_end" value="{{ line.time_end }}" title="end">
+                                    {% if line.emotion %}<span class="badge badge-warn">{{ line.emotion }}</span>{% endif %}
+                                    <button class="btn btn-sm btn-ghost" type="submit">Save line</button>
+                                </div>
+                                <textarea class="input dialogue-text-edit" name="text" rows="2">{{ line.text }}</textarea>
+                            </form>
                         </div>
                     </article>
                     {% endfor %}
@@ -152,9 +167,9 @@
                     hx-swap="outerHTML"
                     hx-indicator="#busy"
                     hx-timeout="900000"
-                    hx-confirm="Generate Vidu clip for Scene {{ active_script_scene.scene_id }} only? This can take several minutes."
+                    hx-confirm="Generate clip for Scene {{ active_script_scene.scene_id }} only?"
                 >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
-                <span class="muted">Renders only the active script scene via Vidu</span>
+                <span class="muted">Renders only the active script scene</span>
             </div>
             {% endif %}
         {% else %}
