@@ -10,3 +10,8 @@ imageio-ffmpeg>=0.5.0
 httpx>=0.28.0
 python-multipart>=0.0.9
 ddgs>=9.0.0
+apscheduler>=3.10.0
+tzdata>=2024.1
+# Optional Agent 0 integrations (import-guarded; install when enabling)
+psycopg2-binary>=2.9.9
+praw>=7.7.0

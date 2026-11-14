@@ -708,6 +708,64 @@ a {
     gap: 0.85rem;
 }
 
+.pitch-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.pitch-card .pitch-sources {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-top: 0.15rem;
+}
+
+.pitch-card.pitch-sensitive {
+    border-color: #d4a373;
+    background: #fff8f0;
+}
+
+.badge-warn {
+    background: #f3d2b3;
+    color: #7a3e0c;
+}
+
+.concept-edit-card {
+    cursor: default;
+    gap: 0.55rem;
+}
+
+.concept-edit-card .concept-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin: 0;
+}
+
+.concept-edit-card .concept-field-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.concept-edit-card .concept-textarea {
+    resize: vertical;
+    min-height: 2.6rem;
+    line-height: 1.4;
+}
+
+.concept-edit-card .concept-edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+}
+
+.concept-edit-card.concept-manual {
+    background: #fbfcfd;
+}
+
 .concept-card {
     text-align: left;
     border: 1px solid var(--border);

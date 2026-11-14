@@ -73,6 +73,9 @@ def _should_keep_episode(ep: "Episode", active_id: Optional[str]) -> bool:
         return True
     if _episode_has_video_files(ep):
         return True
+    # Queue-backed drafts (catalog / manual add) must survive selection switches.
+    if getattr(ep, "catalog_id", None):
+        return True
     # Manual/catalog flows approve concept before any MP4 exists. Keep them.
     if ep.script:
         return True

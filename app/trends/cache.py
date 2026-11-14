@@ -1,4 +1,4 @@
-"""Persist last successful Gate 1 concept trio so refresh never blanks."""
+"""Persist last successful Gate 1 pitch/concept set so refresh never blanks."""
 from __future__ import annotations
 
 import json
@@ -18,11 +18,11 @@ def _cache_quality_ok(concepts: List[Dict[str, Any]]) -> bool:
     """Reject stale cache entries that look like hard-news / politics noise."""
     from app.trends.filter import REJECT_KEYWORDS
 
-    for c in concepts[:3]:
-        blob = f"{c.get('title') or ''} {' '.join(c.get('source_trends') or [])}".lower()
+    for c in concepts[:5]:
+        blob = f"{c.get('title') or ''} {c.get('headline') or ''} {' '.join(c.get('source_trends') or [])}".lower()
         if any(bad in blob for bad in REJECT_KEYWORDS):
             return False
-        if not (c.get("premise") or "").strip():
+        if not (c.get("premise") or c.get("crash_out_angle") or "").strip():
             return False
     return True
 
@@ -35,7 +35,7 @@ def load_cached_concepts() -> Optional[List[Dict[str, Any]]]:
             data = json.load(f)
         concepts = data.get("concepts") if isinstance(data, dict) else data
         if isinstance(concepts, list) and len(concepts) >= 3:
-            cleaned = [dict(c) for c in concepts[:3]]
+            cleaned = [dict(c) for c in concepts[:5]]
             if not _cache_quality_ok(cleaned):
                 logger.info("Ignoring low-quality trend cache")
                 return None
@@ -52,7 +52,7 @@ def save_cached_concepts(concepts: List[Dict[str, Any]], *, meta: Optional[Dict[
         "saved_at": time.time(),
         "saved_at_iso": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "meta": meta or {},
-        "concepts": concepts[:3],
+        "concepts": concepts[:5],
     }
     try:
         os.makedirs(OUTPUT_DIR, exist_ok=True)

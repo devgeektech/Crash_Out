@@ -112,9 +112,16 @@ _silence_windows_proactor_connection_reset()
 async def _lifespan(_app: FastAPI):
     _install_windows_asyncio_exception_handler(asyncio.get_running_loop())
     from app.studio.worker import start_worker
+    from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
+    from app.trends.store import init_store
 
+    init_store()
     start_worker()
-    yield
+    start_agent0_scheduler()
+    try:
+        yield
+    finally:
+        shutdown_agent0_scheduler()
 
 
 def _script_scenes_for_episode(ep) -> list:
@@ -271,14 +278,38 @@ def refresh_concepts():
     if not ep:
         raise HTTPException(status_code=404, detail="No active episode")
     ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
-    titles = [str(c.get("title") or "") for c in (ep.available_concepts or [])[:3]]
+    titles = [
+        str(c.get("headline") or c.get("title") or "")
+        for c in (ep.available_concepts or [])[:5]
+    ]
     orchestrator.log(
         ep.id,
-        "Agent 0 ingested 3 new trending cultural topics"
-        + (f": {', '.join(titles)}" if titles else "."),
+        "Agent 0 friction pitches refreshed"
+        + (f": {', '.join(t for t in titles if t)}" if any(titles) else "."),
     )
     state_manager.save()
-    return {"concepts": ep.available_concepts}
+    return {"concepts": ep.available_concepts, "count": len(ep.available_concepts or [])}
+
+
+@app.post("/api/agent0/run")
+def api_agent0_run(dispatch_telegram: bool = False):
+    """Manual Agent 0 daily run (Top 5 pitch cards)."""
+    run = trend_ingest_agent.fetch_daily_pitches(force_refresh=True)
+    if dispatch_telegram:
+        from app.trends.telegram_dispatch import dispatch_pitch_run
+
+        dispatch_pitch_run(run)
+    return run
+
+
+@app.get("/api/agent0/latest")
+def api_agent0_latest():
+    from app.trends.store import load_latest_pitch_run
+
+    run = load_latest_pitch_run()
+    if not run:
+        raise HTTPException(status_code=404, detail="No Agent 0 run yet")
+    return run
 
 
 @app.post("/api/gateway/1/approve")

@@ -27,7 +27,7 @@ Comic engine: suburban status anxiety × Gen Z digital extraction × performativ
 | JD idea | POC reality |
 |---|---|
 | Agent M orchestrator + QA | FastAPI orchestrator + logs + gateway validation |
-| Agent 0 live US trends → 3 concepts | Web search (`ddgs`) for hot topics → filter → 3 concept cards (+ optional OpenAI writer; cache/static fallback) |
+| Agent 0 live US trends → Top 5 pitches | Layer A/B/C ingest → cluster → friction scoring → Top 5 Gate 1 pitch cards (+ cache/static fallback; optional Postgres/Telegram/cron) |
 | HITL Gate 1 concept approve | Web HITL Hub (Jinja + HTMX) |
 | Agent 1 LLM scriptwriter | Script packages / catalog prompts (HOA + Q4 prompt cut + manual catalog); editable prompts in UI |
 | Agent 2 ElevenLabs TTS | **Skipped** — dialogue + voice tags go into Vidu prompts; **audio is generated inside Vidu** (`audio: true`) |

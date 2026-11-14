@@ -85,7 +85,7 @@ Crash_Out/
 | `app/studio/` | Queue, characters, export, QA, worker |
 | `app/media/merger.py` | FFmpeg → `merged_60s.mp4` |
 | `app/agents/` | Orchestrator + Agent 0/1/4/5 |
-| `app/trends/` | Live web-search concept pipeline |
+| `app/trends/` | Agent 0 Layer A/B/C ingest, clustering, friction scoring, Top-5 pitches |
 
 ## Pages
 

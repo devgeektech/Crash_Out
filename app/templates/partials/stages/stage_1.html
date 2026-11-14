@@ -1,9 +1,20 @@
+{% set sel = ep.selected_concept or {} %}
+{% set sel_flag = (sel.sensitivity_flag or '')|upper %}
 <section class="panel stage-card">
     <div class="panel-header">
         <div>
-            <h1 class="panel-title">Select a satirical concept</h1>
+            <h1 class="panel-title">Top friction pitches</h1>
+            <p class="panel-desc muted">Edit a card, select it, then approve for scripting</p>
         </div>
         <div class="panel-actions">
+            <button
+                class="btn btn-ghost btn-sm"
+                type="button"
+                hx-post="/ui/concepts/refresh"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Refresh pitches</button>
             <button
                 class="btn btn-primary"
                 type="button"
@@ -11,60 +22,91 @@
                 hx-target="#workspace"
                 hx-swap="outerHTML"
                 hx-indicator="#busy"
-            >Approve concept</button>
+                {% if sel_flag == 'SENSITIVE_REVIEW' %}
+                hx-confirm="This pitch is flagged SENSITIVE_REVIEW. Approve for scripting anyway?"
+                {% endif %}
+            >Approve pitch</button>
         </div>
     </div>
 
-    <div class="concept-grid">
+    <div class="concept-grid pitch-grid">
         {% if ep.available_concepts %}
             {% for concept in ep.available_concepts %}
             {% set idx = loop.index0 %}
-            {% set is_empty = concept.empty or (concept.title or '')|lower == 'empty' %}
-            {% if is_empty %}
-            <div class="concept-card concept-card-empty" aria-disabled="true">
-                <div class="concept-top">
-                    <span class="badge">Concept {{ loop.index }}</span>
-                    <span class="badge">Empty</span>
-                </div>
-                <h3>Empty</h3>
-                <p class="muted">—</p>
-            </div>
-            {% else %}
-            <button
-                class="concept-card {% if idx == selected_concept_index %}selected{% endif %}"
-                type="button"
-                hx-post="/ui/concepts/select"
+            {% set is_manual = concept.manual or (concept.empty and not concept.is_pitch) %}
+            {% set flag = (concept.sensitivity_flag or '')|upper %}
+            {% set score = concept.consensus_score %}
+            {% set headline = concept.headline or concept.title or '' %}
+            {% set youth = concept.youth_sentiment_summary or concept.cultural_hook or '' %}
+            {% set angle = concept.crash_out_angle or concept.premise or '' %}
+            {% set merch = concept.proposed_merch_hook or concept.suggested_merch or '' %}
+            {% set mainstream = '' %}
+            {% set youth_src = '' %}
+            {% if concept.sources %}
+                {% set mainstream = (concept.sources.mainstream or [])|join(', ') %}
+                {% set youth_src = (concept.sources.youth_social or [])|join(', ') %}
+            {% elif concept.source_trends %}
+                {% set mainstream = concept.source_trends|join(', ') %}
+            {% endif %}
+            <form
+                class="concept-card pitch-card concept-edit-card {% if idx == selected_concept_index %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_manual %}concept-manual{% endif %}"
+                hx-post="/ui/concepts/{{ idx }}/update"
                 hx-target="#workspace"
                 hx-swap="outerHTML"
-                hx-vals='{"index": {{ idx }}}'
                 hx-indicator="#busy"
             >
                 <div class="concept-top">
-                    <span class="badge">Concept {{ loop.index }}</span>
+                    <span class="badge">#{{ concept.rank or loop.index }}</span>
+                    {% if score %}
+                    <span class="badge badge-ok">{{ '%.1f'|format(score|float) }}/10</span>
+                    {% endif %}
+                    {% if flag %}
+                    <span class="badge {% if flag == 'SENSITIVE_REVIEW' %}badge-warn{% endif %}">{{ flag }}</span>
+                    {% elif is_manual %}
+                    <span class="badge">Manual</span>
+                    {% endif %}
                     {% if idx == selected_concept_index %}<span class="badge badge-ok">Selected</span>{% endif %}
                 </div>
-                <h3>{{ concept.title }}</h3>
-                {% if concept.cultural_hook %}
-                <p class="concept-hook">{{ concept.cultural_hook }}</p>
+
+                <label class="concept-field">
+                    <span class="concept-field-label">Headline</span>
+                    <input class="input input-sm" type="text" name="headline" value="{{ headline }}" placeholder="" required>
+                </label>
+
+                <label class="concept-field">
+                    <span class="concept-field-label">Youth sentiment</span>
+                    <textarea class="input input-sm concept-textarea" name="youth_sentiment_summary" rows="2" placeholder="">{{ youth }}</textarea>
+                </label>
+
+                <label class="concept-field">
+                    <span class="concept-field-label">Crash-out angle</span>
+                    <textarea class="input input-sm concept-textarea" name="crash_out_angle" rows="3" placeholder="">{{ angle }}</textarea>
+                </label>
+
+                {% if not is_manual %}
+                <label class="concept-field">
+                    <span class="concept-field-label">Mainstream sources</span>
+                    <input class="input input-sm" type="text" name="mainstream_sources" value="{{ mainstream }}" placeholder="">
+                </label>
+                <label class="concept-field">
+                    <span class="concept-field-label">Youth sources</span>
+                    <input class="input input-sm" type="text" name="youth_sources" value="{{ youth_src }}" placeholder="">
+                </label>
                 {% endif %}
-                <p class="concept-premise">{{ concept.premise or "Satirical suburban crash-out premise." }}</p>
-                {% if concept.synopsis %}
-                <p class="concept-synopsis">{{ concept.synopsis }}</p>
-                {% endif %}
-                {% if concept.conflict %}
-                <div class="concept-meta"><strong>Conflict:</strong> {{ concept.conflict }}</div>
-                {% endif %}
-                {% if concept.tone %}
-                <div class="concept-meta"><strong>Tone:</strong> {{ concept.tone }}</div>
-                {% endif %}
-                {% if concept.suggested_merch %}
-                <div class="concept-meta"><strong>Merch:</strong> {{ concept.suggested_merch }}</div>
-                {% endif %}
-            </button>
-            {% endif %}
+
+                <label class="concept-field">
+                    <span class="concept-field-label">Merch hook</span>
+                    <input class="input input-sm" type="text" name="proposed_merch_hook" value="{{ merch }}" placeholder="">
+                </label>
+
+                <div class="concept-edit-actions">
+                    <button class="btn btn-sm" type="submit" name="action" value="save">Save</button>
+                    <button class="btn btn-sm btn-primary" type="submit" name="action" value="select">Save & select</button>
+                </div>
+            </form>
             {% endfor %}
         {% else %}
-            <div class="empty-state">No concepts available for this video.</div>
+            <div class="empty-state">No pitches yet. Hit Refresh pitches to run Agent 0.</div>
         {% endif %}
     </div>
 </section>

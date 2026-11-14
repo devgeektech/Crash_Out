@@ -447,13 +447,20 @@ def add_manual_catalog_video(
         "concept": {
             "id": f"concept_{catalog_id}",
             "title": clean_title,
-            "cultural_hook": clean_sub,
-            "premise": clean_sub,
+            "headline": clean_title,
+            "cultural_hook": "",
+            "youth_sentiment_summary": "",
+            "premise": "",
+            "crash_out_angle": "",
+            "synopsis": "",
+            "conflict": "",
+            "tone": "",
+            "suggested_merch": "",
+            "proposed_merch_hook": "",
             "characters_involved": ["gary", "linda", "chris", "chloe"],
-            "suggested_merch": clean_merch,
-            "conflict": "Manual concept",
-            "tone": "Editable prompt pack",
             "script_key": catalog_id,
+            "manual": True,
+            "empty": False,
         },
     }
     items = _load_custom_catalog()
@@ -504,41 +511,127 @@ def delete_manual_catalog_video(catalog_id: str) -> bool:
     return True
 
 
-def empty_concept(slot: int) -> Dict[str, Any]:
+def empty_concept(slot: int, *, script_key: Optional[str] = None, manual: bool = False) -> Dict[str, Any]:
+    """Blank Gate 1 slot — headings only in UI, no sample body copy."""
     return {
         "id": f"empty_{slot}",
-        "title": "Empty",
+        "title": "",
+        "headline": "",
         "premise": "",
+        "crash_out_angle": "",
         "cultural_hook": "",
-        "characters_involved": ["gary", "linda", "chris", "chloe"],
+        "youth_sentiment_summary": "",
+        "synopsis": "",
+        "conflict": "",
+        "tone": "",
         "suggested_merch": "",
+        "proposed_merch_hook": "",
+        "characters_involved": ["gary", "linda", "chris", "chloe"],
         "empty": True,
-        "script_key": None,
+        "manual": bool(manual),
+        "script_key": script_key,
+    }
+
+
+def _sanitize_manual_concept(concept: Dict[str, Any], *, script_key: str, title_fallback: str = "") -> Dict[str, Any]:
+    """Strip legacy sample filler from manual catalog concepts."""
+    c = dict(concept or {})
+    sample_blobs = {
+        "manual video",
+        "manual concept",
+        "editable prompt pack",
+        "capitalism broke my dad",
+    }
+
+    def _clean(value: Any) -> str:
+        text = str(value or "").strip()
+        return "" if text.lower() in sample_blobs else text
+
+    title = _clean(c.get("headline") or c.get("title")) or (title_fallback or "").strip()
+    return {
+        **c,
+        "id": c.get("id") or f"concept_{script_key}",
+        "title": title,
+        "headline": title,
+        "cultural_hook": _clean(c.get("cultural_hook")),
+        "youth_sentiment_summary": _clean(c.get("youth_sentiment_summary")),
+        "premise": _clean(c.get("premise")),
+        "crash_out_angle": _clean(c.get("crash_out_angle")),
+        "synopsis": _clean(c.get("synopsis")),
+        "conflict": _clean(c.get("conflict")),
+        "tone": _clean(c.get("tone")),
+        "suggested_merch": _clean(c.get("suggested_merch")),
+        "proposed_merch_hook": _clean(c.get("proposed_merch_hook")),
+        "characters_involved": c.get("characters_involved")
+        or ["gary", "linda", "chris", "chloe"],
+        "script_key": script_key,
+        "manual": True,
+        "empty": not bool(title),
     }
 
 
 def concepts_for_catalog(catalog_id: str) -> List[Dict[str, Any]]:
     """
     Gate 1 concept cards for a catalog video.
-    Video 2 (Q4 prompts): one real concept + two empty slots.
-    Manual / custom: one real concept + two empty slots.
-    Video 1: original three concepts from trend ingest.
+    Manual / custom + Q4: one primary editable card + two blank editable slots.
+    Built-in HOA: Agent 0 friction pitches (Top 5).
     """
     from app.agents.agent_0_trend_ingest import trend_ingest_agent
 
     item = get_catalog_item(catalog_id)
     if not item:
-        return [empty_concept(1), empty_concept(2), empty_concept(3)]
+        return [
+            empty_concept(1, manual=True),
+            empty_concept(2, manual=True),
+            empty_concept(3, manual=True),
+        ]
 
     if catalog_id == "hoa_q4_prompts" or item.get("custom"):
-        return [dict(item["concept"]), empty_concept(2), empty_concept(3)]
+        primary = _sanitize_manual_concept(
+            dict(item.get("concept") or {}),
+            script_key=str(item.get("script_key") or catalog_id),
+            title_fallback=str(item.get("title") or ""),
+        )
+        return [
+            primary,
+            empty_concept(2, script_key=str(item.get("script_key") or catalog_id), manual=True),
+            empty_concept(3, script_key=str(item.get("script_key") or catalog_id), manual=True),
+        ]
 
     concepts = trend_ingest_agent.fetch_trending_concepts()
-    # Keep first video's original concepts (concept 1 = HOA PDF script)
     return concepts
 
 
 def is_empty_concept(concept: Optional[Dict[str, Any]]) -> bool:
     if not concept:
         return True
-    return bool(concept.get("empty")) or (concept.get("title") or "").strip().lower() == "empty"
+    if bool(concept.get("empty")):
+        # Allow approving a manual blank only after the user filled a title/headline.
+        title = (concept.get("headline") or concept.get("title") or "").strip()
+        if concept.get("manual") and title:
+            return False
+        return True
+    return (concept.get("title") or concept.get("headline") or "").strip().lower() == "empty"
+
+
+def update_catalog_concept(catalog_id: str, concept: Dict[str, Any]) -> bool:
+    """Persist edits to a custom catalog item's primary concept card."""
+    items = _load_custom_catalog()
+    changed = False
+    for item in items:
+        if item.get("id") != catalog_id:
+            continue
+        item["concept"] = _sanitize_manual_concept(
+            concept,
+            script_key=str(item.get("script_key") or catalog_id),
+            title_fallback=str(concept.get("headline") or concept.get("title") or item.get("title") or ""),
+        )
+        # Keep queue title in sync when the primary concept headline changes.
+        new_title = str(item["concept"].get("title") or "").strip()
+        if new_title:
+            item["title"] = new_title
+        changed = True
+        break
+    if changed:
+        _save_custom_catalog(items)
+    return changed

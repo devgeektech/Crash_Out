@@ -25,6 +25,7 @@ from app.catalog import (
     list_catalog_items,
     prompt_file_path,
     refresh_hoa_q4_prompt_episode,
+    update_catalog_concept,
     update_custom_scene_prompt,
 )
 from app.config import CHARACTERS, config
@@ -623,12 +624,13 @@ def build_context(
     error: Optional[str] = None,
 ) -> Dict[str, Any]:
     ep = _ensure_episode()
-    # Re-link local / sibling renders so Video stage can show already-generated clips.
-    if _attach_local_renders(ep) or _hydrate_renders_from_siblings(ep):
-        state_manager.save()
     stage = _resolve_viewing_stage(ep, viewing_stage)
-    # Keep Concept cards in sync with catalog copy (longer premises, etc.).
-    if stage == 1 and ep.catalog_id:
+    # Queue selection must stay light — only hydrate when entering pipeline stages.
+    if stage != 0:
+        if _attach_local_renders(ep) or _hydrate_renders_from_siblings(ep):
+            state_manager.save()
+    # Load Gate 1 cards once; edits are owned by the episode (Refresh replaces them).
+    if stage == 1 and ep.catalog_id and not (ep.available_concepts or []):
         fresh = concepts_for_catalog(str(ep.catalog_id))
         if fresh:
             ep.available_concepts = fresh
@@ -752,24 +754,16 @@ def ui_studio(
 ):
     """HITL production studio — opens on the video queue (stage 0) unless a stage is requested.
 
-    Optional ``episode`` / ``catalog`` query params activate that queue item first
-    (used by Dashboard → Studio queue Open links).
+    Optional ``episode`` / ``catalog`` query params select that queue item first
+    (Dashboard → Studio queue). Selection stays on the queue — no pipeline load.
     """
-    activated: Optional[Episode] = None
     if episode:
-        activated = state_manager.set_active(episode)
-        if not activated:
+        if not state_manager.set_active(episode):
             raise HTTPException(status_code=404, detail="Episode not found")
     elif catalog:
-        activated = _activate_catalog_video(catalog)
+        _select_queue_item(catalog)
 
-    if stage is None:
-        # Deep-link from dashboard: resume at furthest stage for that episode.
-        if activated is not None:
-            stage = _stage_for_selected_episode(activated)
-        else:
-            stage = 0
-    return render(request, "studio.html", viewing_stage=stage)
+    return render(request, "studio.html", viewing_stage=0 if stage is None else stage)
 
 
 @router.get("/queue", response_class=HTMLResponse)
@@ -831,6 +825,42 @@ def _activate_catalog_video(catalog_id: str) -> Episode:
     if not item:
         raise HTTPException(status_code=404, detail="Video not found in catalog")
     return _activate_catalog_item(item)
+
+
+def _select_queue_item(item_id: str) -> Episode:
+    """Select a queue row only — set active episode, no render hydrate / stage jump."""
+    from app.studio.generation import is_final_episode, normalize_production_status
+
+    item = get_catalog_item(item_id)
+    if item:
+        related = [
+            ep
+            for ep in _related_episodes_for_item(item)
+            if normalize_production_status(getattr(ep, "production_status", None)) != "published"
+            and not is_final_episode(ep)
+        ]
+        ep = _pick_best_related_episode(related)
+        if ep:
+            state_manager.set_active(ep.id)
+            if not ep.catalog_id:
+                ep.catalog_id = str(item["id"])
+                state_manager.save()
+            return ep
+        # First select of a catalog row: create a draft shell so selection sticks.
+        ep = state_manager.create_episode(
+            title=str(item.get("title") or "Untitled video"),
+            engine="vidu",
+            catalog_id=str(item["id"]),
+            script_key=str(item.get("script_key") or item["id"]),
+        )
+        _apply_catalog_concepts(ep, str(item["id"]))
+        state_manager.save()
+        return ep
+
+    ep = state_manager.set_active(item_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+    return ep
 
 
 def _stage_for_selected_episode(ep: Episode) -> int:
@@ -916,10 +946,11 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
     )
 
 
-@router.post("/ui/catalog/{catalog_id}/select", response_class=HTMLResponse)
-def ui_select_catalog_video(request: Request, catalog_id: str):
-    """Row click: select only — stay on the Queue."""
-    ep = _activate_catalog_video(catalog_id)
+@router.post("/ui/queue/{item_id}/select", response_class=HTMLResponse)
+@router.post("/ui/catalog/{item_id}/select", response_class=HTMLResponse)
+def ui_select_queue_video(request: Request, item_id: str):
+    """Row click: select only — stay on Studio queue, do not open/load stages."""
+    ep = _select_queue_item(item_id)
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -929,10 +960,42 @@ def ui_select_catalog_video(request: Request, catalog_id: str):
     )
 
 
+@router.post("/ui/episodes/{episode_id}/select", response_class=HTMLResponse)
+def ui_select_episode(request: Request, episode_id: str):
+    """Select an existing episode in the Studio queue (no pipeline load)."""
+    ep = state_manager.set_active(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=0,
+        toast=f"Selected · {ep.title}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/episodes/{episode_id}/studio", response_class=HTMLResponse)
+def ui_open_episode_in_studio(request: Request, episode_id: str):
+    """Arrow/open: activate episode and resume at furthest approved stage."""
+    ep = state_manager.set_active(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    stage = _stage_for_selected_episode(ep)
+    gate_label = {1: "Concept", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=stage,
+        toast=f"{gate_label} · {ep.title}",
+        toast_kind="ok",
+    )
+
+
 @router.post("/ui/catalog/{catalog_id}/open", response_class=HTMLResponse)
 @router.post("/ui/catalog/{catalog_id}/gate1", response_class=HTMLResponse)
 def ui_open_catalog_video(request: Request, catalog_id: str):
-    """Open catalog video and resume at the furthest approved stage."""
+    """Arrow/open: activate catalog video and resume at furthest approved stage."""
     ep = _activate_catalog_video(catalog_id)
     stage = _stage_for_selected_episode(ep)
     gate_label = {1: "Concept", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
@@ -1095,24 +1158,131 @@ def ui_reset_episode(request: Request):
 def ui_refresh_concepts(request: Request):
     ep = _ensure_episode()
     ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
-    titles = [str(c.get("title") or "") for c in (ep.available_concepts or [])[:3]]
-    hooks = []
-    for c in (ep.available_concepts or [])[:3]:
-        trends = c.get("source_trends") or []
-        if trends:
-            hooks.append(str(trends[0]))
-    detail = ", ".join(titles) if titles else "3 concepts"
+    titles = [
+        str(c.get("headline") or c.get("title") or "")
+        for c in (ep.available_concepts or [])[:5]
+    ]
+    detail = ", ".join(t for t in titles if t) or "5 pitches"
     orchestrator.log(
         ep.id,
-        f"Agent 0 ingested 3 new trending cultural topics: {detail}"
-        + (f" (signals: {', '.join(hooks[:3])})" if hooks else ""),
+        f"Agent 0 friction run → Top pitches: {detail}",
     )
     state_manager.save()
     return render(
         request,
         "partials/htmx_workspace.html",
         viewing_stage=1,
-        toast="Concepts refreshed",
+        toast="Pitches refreshed",
+        toast_kind="ok",
+    )
+
+
+def _split_source_csv(raw: str) -> list[str]:
+    return [part.strip() for part in (raw or "").split(",") if part.strip()]
+
+
+def _apply_concept_edits(
+    concept: Dict[str, Any],
+    *,
+    headline: str,
+    youth_sentiment_summary: str,
+    crash_out_angle: str,
+    proposed_merch_hook: str,
+    mainstream_sources: str = "",
+    youth_sources: str = "",
+) -> Dict[str, Any]:
+    updated = dict(concept or {})
+    title = (headline or "").strip()
+    youth = (youth_sentiment_summary or "").strip()
+    angle = (crash_out_angle or "").strip()
+    merch = (proposed_merch_hook or "").strip()
+    updated["headline"] = title
+    updated["title"] = title
+    updated["youth_sentiment_summary"] = youth
+    updated["cultural_hook"] = youth
+    updated["crash_out_angle"] = angle
+    updated["premise"] = angle
+    updated["synopsis"] = angle
+    updated["conflict"] = angle
+    updated["proposed_merch_hook"] = merch
+    updated["suggested_merch"] = merch
+    mainstream = _split_source_csv(mainstream_sources)
+    youth_list = _split_source_csv(youth_sources)
+    if mainstream or youth_list or updated.get("sources"):
+        updated["sources"] = {
+            "mainstream": mainstream,
+            "youth_social": youth_list,
+        }
+        updated["source_trends"] = (mainstream + youth_list)[:4]
+    if title:
+        updated["empty"] = False
+    elif updated.get("manual"):
+        updated["empty"] = True
+    return updated
+
+
+@router.post("/ui/concepts/{index}/update", response_class=HTMLResponse)
+def ui_update_concept(
+    request: Request,
+    index: int,
+    headline: str = Form(""),
+    youth_sentiment_summary: str = Form(""),
+    crash_out_angle: str = Form(""),
+    proposed_merch_hook: str = Form(""),
+    mainstream_sources: str = Form(""),
+    youth_sources: str = Form(""),
+    action: str = Form("save"),
+):
+    ep = _ensure_episode()
+    concepts = list(ep.available_concepts or [])
+    if index < 0 or index >= len(concepts):
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=1,
+            error="Invalid concept card",
+        )
+    updated = _apply_concept_edits(
+        concepts[index],
+        headline=headline,
+        youth_sentiment_summary=youth_sentiment_summary,
+        crash_out_angle=crash_out_angle,
+        proposed_merch_hook=proposed_merch_hook,
+        mainstream_sources=mainstream_sources,
+        youth_sources=youth_sources,
+    )
+    concepts[index] = updated
+    ep.available_concepts = concepts
+
+    # Persist primary manual card back into custom catalog.
+    if ep.catalog_id and str(ep.catalog_id).startswith("custom_") and index == 0:
+        update_catalog_concept(str(ep.catalog_id), updated)
+
+    select = (action or "save").strip().lower() == "select"
+    if select:
+        if is_empty_concept(updated):
+            return render(
+                request,
+                "partials/htmx_workspace.html",
+                viewing_stage=1,
+                error="Add a headline before selecting this card",
+            )
+        ep.selected_concept = updated
+        if updated.get("script_key"):
+            ep.script_key = str(updated["script_key"])
+    elif ep.selected_concept:
+        # Keep selected_concept in sync when editing the active card.
+        same_id = ep.selected_concept.get("id") and ep.selected_concept.get("id") == updated.get("id")
+        same_idx = _selected_concept_index(ep) == index
+        if same_id or same_idx:
+            ep.selected_concept = updated
+
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=1,
+        toast="Pitch selected" if select else "Pitch saved",
         toast_kind="ok",
     )
 
@@ -1134,7 +1304,7 @@ def ui_select_concept(request: Request, index: int = Form(...)):
             request,
             "partials/htmx_workspace.html",
             viewing_stage=1,
-            error="That concept slot is empty",
+            error="Add a headline before selecting this card",
         )
     ep.selected_concept = chosen
     if chosen.get("script_key"):
@@ -1145,6 +1315,9 @@ def ui_select_concept(request: Request, index: int = Form(...)):
 
 @router.post("/ui/gateway/1/approve", response_class=HTMLResponse)
 def ui_approve_gateway_1(request: Request):
+    from app.trends.schema import is_sensitive_pitch
+    from app.trends.store import remember_episode_topic
+
     ep = _ensure_episode()
     concepts = ep.available_concepts or []
     selected = ep.selected_concept
@@ -1155,10 +1328,16 @@ def ui_approve_gateway_1(request: Request):
             request,
             "partials/htmx_workspace.html",
             viewing_stage=1,
-            error="Select a concept first",
+            error="Select a pitch first",
         )
+    ep.selected_concept = selected
 
     try:
+        if is_sensitive_pitch(selected):
+            orchestrator.log(
+                ep.id,
+                f"SENSITIVE_REVIEW pitch approved by human: {selected.get('headline') or selected.get('title')}",
+            )
         orchestrator.approve_gateway(ep.id, 1, {"selected_concept": selected})
         script_key = selected.get("script_key") or ep.script_key or "hoa_violation"
         ep.script_key = script_key
@@ -1169,10 +1348,17 @@ def ui_approve_gateway_1(request: Request):
         if not passed:
             raise HTTPException(status_code=422, detail=qa_msg)
         ep.script = script_data
-        ep.merch_punchline = script_data.get("merch_punchline_trigger")
+        ep.merch_punchline = script_data.get("merch_punchline_trigger") or selected.get(
+            "proposed_merch_hook"
+        ) or selected.get("suggested_merch")
         ep.status = "WAITING_GATEWAY_2"
         ep.current_gateway = 2
         set_production_status(ep, "scripting")
+        remember_episode_topic(
+            ep.id,
+            title=ep.title,
+            label=str(selected.get("headline") or selected.get("title") or ep.title),
+        )
         state_manager.save()
     except HTTPException as exc:
         return render(

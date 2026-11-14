@@ -1,16 +1,28 @@
 """
-Agent 0 pipeline: collect → filter → write 3 concepts → cache.
-Always returns 3 cards (live, cache, or static fallback).
+Agent 0 pipeline: Layer A/B/C fetch → cluster → friction score → Top 5 pitches.
+Always returns concepts adapted from pitches (Gate 1 compatible).
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.trends.cache import load_cached_concepts, save_cached_concepts
-from app.trends.concept_writer import write_concepts
-from app.trends.filter import filter_trends
+from app.trends.cluster import cluster_items
+from app.trends.friction import score_clusters
+from app.trends.schema import (
+    empty_pitch_run,
+    normalize_pitch_run,
+    pitches_to_concepts,
+    today_run_date,
+)
 from app.trends.sources import collect_all_trends
+from app.trends.store import (
+    load_latest_pitch_run,
+    load_prior_topic_embeddings,
+    save_pitch_run,
+    save_raw_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +30,7 @@ logger = logging.getLogger(__name__)
 def static_fallback_concepts() -> List[Dict[str, Any]]:
     """Hardcoded Gate 1 cards — last resort when live + cache fail."""
     from app.catalog import VIDEO_CATALOG
+    from app.trends.schema import pitch_to_concept
 
     first = dict(VIDEO_CATALOG[0]["concept"])
     first.setdefault(
@@ -34,90 +47,170 @@ def static_fallback_concepts() -> List[Dict[str, Any]]:
         "title": "Linda's Stanley Cup Emotional Support Crisis",
         "cultural_hook": (
             "Consumerist tumbler obsession, pastel aesthetic mania, and the way suburban "
-            "wellness culture turns a spilled drink into a family referendum on love, "
-            "loyalty, and resale-market inflation."
+            "wellness culture turns a spilled drink into a family referendum on love."
         ),
         "premise": (
-            "Linda drops her limited-edition 40oz pastel lavender Stanley in the driveway "
-            "and treats the dent like a bereavement. She demands a driveway vigil, a "
-            "replacement at $95 resale, and a family Instagram story apologizing to the "
-            "hydration community. Gary refuses to subsidize another tumbler while the HOA "
-            "fine and Chloe's merch Shopify are already draining the account. Linda "
-            "retaliates by photographing Gary's lawn-parked sedan and drafting an HOA "
-            "complaint about 'visual clutter and masculine energy leakage.' Chris rates "
-            "the drama as mid engagement; Chloe polls whether Mom replaces the cup before "
-            "Dad replaces the transmission."
+            "Linda drops her limited-edition Stanley and treats the dent like a bereavement "
+            "while Gary refuses the resale markup and Chloe polls the driveway vigil."
         ),
-        "synopsis": (
-            "A side-path crash-out where status objects outrank joint finances. Linda's "
-            "emotional-support tumbler becomes the proxy fight for every unpaid bill, "
-            "while the kids package the argument as content and Gary discovers the HOA "
-            "email thread already includes his license plate."
-        ),
-        "source_trends": [
-            "Stanley Cup Collector Frenzy",
-            "Target Black Friday Meltdown",
-            "Suburban Wellness",
-        ],
+        "synopsis": "Status objects outrank joint finances in a suburban crash-out.",
+        "source_trends": ["Stanley Cup Collector Frenzy", "Suburban Wellness"],
         "characters_involved": ["gary", "linda", "chris", "chloe"],
         "suggested_merch": "Emotionally Dependent on Hydration",
-        "conflict": (
-            "Suburban status symbols and performative wellness vs household solvency — "
-            "Linda weaponizes the HOA while Gary refuses the resale markup."
-        ),
-        "tone": "Passive-aggressive suburban melodrama with content-farm siblings",
+        "conflict": "Performative wellness vs household solvency.",
+        "tone": "Passive-aggressive suburban melodrama",
         "script_key": "hoa_violation",
     }
+    # Pad to 5 with pitch-shaped extras derived from catalog themes
+    extras = [
+        pitch_to_concept(
+            {
+                "rank": 4,
+                "headline": "Quiet-Quitting Kids Rate Dad's Tariff Rant as Mid",
+                "consensus_score": 7.2,
+                "sources": {
+                    "mainstream": ["cost of living"],
+                    "youth_social": ["r/antiwork"],
+                },
+                "youth_sentiment_summary": "Gen Z clips parental meltdowns for engagement.",
+                "crash_out_angle": (
+                    "Gary practices a kitchen-island rally speech while Chris open-sources the "
+                    "family budget and Chloe sells merch mid-rant."
+                ),
+                "proposed_merch_hook": "Capitalism broke my dad",
+                "sensitivity_flag": "SAFE",
+            }
+        ),
+        pitch_to_concept(
+            {
+                "rank": 5,
+                "headline": "HOA Board Threatens Lawn Signs After PTA Livestream",
+                "consensus_score": 7.0,
+                "sources": {
+                    "mainstream": ["suburban local news"],
+                    "youth_social": ["r/HOA"],
+                },
+                "youth_sentiment_summary": "Teens treat HOA drama as free reality TV.",
+                "crash_out_angle": (
+                    "Linda weaponizes vibrational HOA language while Chloe livestreams the "
+                    "board email thread and Gary parks on the lawn in protest."
+                ),
+                "proposed_merch_hook": "Optics are catastrophic",
+                "sensitivity_flag": "SAFE",
+            }
+        ),
+    ]
     first.setdefault("script_key", "hoa_violation")
     second.setdefault("script_key", "hoa_q4_prompts")
-    return [first, second, third]
+    return [first, second, third] + extras
+
+
+def fetch_daily_pitch_run(*, force_refresh: bool = True) -> Dict[str, Any]:
+    """
+    Full Agent 0 run → Top 5 pitch cards (client schema).
+    """
+    run_date = today_run_date()
+    meta: Dict[str, Any] = {
+        "mode": "unknown",
+        "raw_count": 0,
+        "cluster_count": 0,
+        "layer_counts": {"A": 0, "B": 0, "C": 0},
+    }
+    try:
+        raw = collect_all_trends()
+        meta["raw_count"] = len(raw)
+        for it in raw:
+            layer = str(it.get("layer") or "?").upper()
+            if layer in meta["layer_counts"]:
+                meta["layer_counts"][layer] += 1
+        save_raw_items(run_date, raw)
+
+        prior = load_prior_topic_embeddings(days=30)
+        clusters = cluster_items(raw, prior_embeddings=prior)
+        meta["cluster_count"] = len(clusters)
+
+        if clusters:
+            pitches = score_clusters(clusters, run_date=run_date)
+            if len(pitches) >= 1:
+                meta["mode"] = "live"
+                run = normalize_pitch_run(pitches, run_date=run_date, meta=meta)
+                save_pitch_run(run)
+                logger.info(
+                    "Agent 0 live pitches: raw=%s clusters=%s pitches=%s layers=%s",
+                    meta["raw_count"],
+                    meta["cluster_count"],
+                    len(run["pitches"]),
+                    meta["layer_counts"],
+                )
+                return run
+            meta["error"] = "scorer returned no pitches"
+        else:
+            meta["error"] = "no clusters"
+    except Exception as exc:
+        logger.exception("Agent 0 live pipeline failed: %s", exc)
+        meta["error"] = str(exc)
+
+    cached_run = load_latest_pitch_run()
+    if cached_run and cached_run.get("pitches"):
+        cached_run = dict(cached_run)
+        cached_run["meta"] = {**(cached_run.get("meta") or {}), **meta, "mode": "cache"}
+        logger.info("Agent 0 serving cached pitch run")
+        return cached_run
+
+    # Build pitches from static concepts
+    concepts = static_fallback_concepts()
+    from app.trends.schema import normalize_pitch
+
+    pitches = []
+    for i, c in enumerate(concepts[:5], 1):
+        pitches.append(
+            normalize_pitch(
+                {
+                    "rank": i,
+                    "headline": c.get("title"),
+                    "consensus_score": 6.5,
+                    "sources": {
+                        "mainstream": (c.get("source_trends") or [])[:2],
+                        "youth_social": (c.get("source_trends") or [])[2:4],
+                    },
+                    "youth_sentiment_summary": c.get("cultural_hook"),
+                    "crash_out_angle": c.get("premise") or c.get("synopsis"),
+                    "proposed_merch_hook": c.get("suggested_merch"),
+                    "sensitivity_flag": "SAFE",
+                },
+                rank=i,
+                run_date=run_date,
+            )
+        )
+    meta["mode"] = "static_fallback"
+    run = normalize_pitch_run(pitches, run_date=run_date, meta=meta)
+    save_pitch_run(run)
+    logger.info("Agent 0 serving static fallback pitches")
+    return run
 
 
 def fetch_live_concepts() -> List[Dict[str, Any]]:
     """
-    Produce exactly 3 Gate 1 concepts.
-    Prefer live trends; else cache; else static fallback.
+    Gate 1 entrypoint: Top 5 pitch cards adapted to concept shape.
     """
-    meta: Dict[str, Any] = {"mode": "unknown", "trend_count": 0, "filtered_count": 0}
-    try:
-        raw = collect_all_trends()
-        meta["trend_count"] = len(raw)
-        filtered = filter_trends(raw)
-        meta["filtered_count"] = len(filtered)
-        # If theme filter is too strict, still use top web-search hits (reject list already applied in filter).
-        seed = filtered if filtered else [
-            t for t in raw[:18]
-            if t.get("title")
-        ]
-        meta["seed_count"] = len(seed)
-        if seed:
-            concepts = write_concepts(seed)
-            if len(concepts) >= 3:
-                meta["mode"] = "live" if filtered else "live_unfiltered"
-                save_cached_concepts(concepts[:3], meta=meta)
-                logger.info(
-                    "Agent 0 live concepts: %s search hits → %s filtered → %s seeded → 3 cards",
-                    meta["trend_count"],
-                    meta["filtered_count"],
-                    meta["seed_count"],
-                )
-                return concepts[:3]
-            logger.warning("Concept writer returned %s cards; trying cache", len(concepts))
-        else:
-            logger.warning("No web-search trends available (raw=%s)", meta["trend_count"])
-    except Exception as exc:
-        logger.exception("Live trend pipeline failed: %s", exc)
-        meta["error"] = str(exc)
+    run = fetch_daily_pitch_run()
+    concepts = pitches_to_concepts(run)
+    if len(concepts) >= 3:
+        save_cached_concepts(concepts, meta=run.get("meta") or {})
+        return concepts[:5]
 
     cached = load_cached_concepts()
     if cached:
-        meta["mode"] = "cache"
-        logger.info("Agent 0 serving cached concepts")
-        return cached
+        return cached[:5]
 
-    meta["mode"] = "static_fallback"
     fallback = static_fallback_concepts()
-    # Seed cache so next offline open still has something stable.
-    save_cached_concepts(fallback, meta=meta)
-    logger.info("Agent 0 serving static fallback concepts")
-    return fallback
+    save_cached_concepts(fallback, meta={"mode": "static_fallback"})
+    return fallback[:5]
+
+
+def get_latest_run_or_refresh(*, refresh: bool = False) -> Dict[str, Any]:
+    if not refresh:
+        existing = load_latest_pitch_run()
+        if existing and existing.get("pitches"):
+            return existing
+    return fetch_daily_pitch_run()

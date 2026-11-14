@@ -104,8 +104,35 @@ def fetch_web_search_trends() -> List[Dict[str, Any]]:
 
 
 def collect_all_trends() -> List[Dict[str, Any]]:
-    """Gather + dedupe hot topics from web search."""
-    bucket = fetch_web_search_trends()
+    """Gather + dedupe hot topics across Layers A/B/C (with web-search soft fill)."""
+    bucket: List[Dict[str, Any]] = []
+    try:
+        from app.trends.sources_a import collect_layer_a
+
+        bucket.extend(collect_layer_a())
+    except Exception as exc:
+        logger.warning("Layer A failed: %s", exc)
+    try:
+        from app.trends.sources_b import collect_layer_b
+
+        bucket.extend(collect_layer_b())
+    except Exception as exc:
+        logger.warning("Layer B failed: %s", exc)
+    try:
+        from app.trends.sources_c import collect_layer_c
+
+        bucket.extend(collect_layer_c())
+    except Exception as exc:
+        logger.warning("Layer C failed: %s", exc)
+
+    # Soft fill if layered sources are thin (offline / blocked network)
+    if len(bucket) < 25:
+        for item in fetch_web_search_trends():
+            item = dict(item)
+            item.setdefault("layer", "A")
+            item.setdefault("outlet", "Web")
+            bucket.append(item)
+
     seen = set()
     unique: List[Dict[str, Any]] = []
     for item in bucket:
@@ -113,6 +140,10 @@ def collect_all_trends() -> List[Dict[str, Any]]:
         if not key or key in seen:
             continue
         seen.add(key)
+        if not item.get("layer"):
+            item = dict(item)
+            item["layer"] = "A"
         unique.append(item)
     unique.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+    logger.info("Agent 0 collected %s unique raw items", len(unique))
     return unique

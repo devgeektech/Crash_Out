@@ -7,6 +7,18 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-14 — Agent 0 client friction-intersection engine
+
+Completed:
+- Layer A/B/C collectors (`sources_a/b/c.py`) with graceful key/RSS fallbacks + web-search soft fill.
+- Embedding/Jaccard clustering (`cluster.py`) + weighted LLM/heuristic friction scoring (`friction.py`).
+- Top **5** client pitch schema → Gate 1 UI (`stage_1.html`); SENSITIVE_REVIEW requires confirm.
+- File + optional Postgres/pgvector store (`store.py`); 30-day episode topic memory on approve.
+- APScheduler daily 06:00 America/New_York + Telegram dispatch (env-gated).
+- APIs: `POST /api/agent0/run`, `GET /api/agent0/latest`.
+
+---
+
 ### 2026-11-13 — Production statuses Draft→Scripting→Generating→Published
 
 Completed:

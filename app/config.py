@@ -33,9 +33,27 @@ class PlatformCredentials(BaseModel):
         os.getenv("VIDU_PROMPT_MAX_CHARS", str(VIDU_PROMPT_MAX_CHARS))
     )
 
-    # Agent 0 — optional LLM concept writer (web search needs no keys)
+    # Agent 0 — friction scoring / embeddings (optional; heuristic fallback)
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_embed_model: str = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+
+    # Agent 0 Layer A
+    newsapi_api_key: str = os.getenv("NEWSAPI_API_KEY", "")
+    gnews_api_key: str = os.getenv("GNEWS_API_KEY", "")
+    serpapi_api_key: str = os.getenv("SERPAPI_API_KEY", "")
+
+    # Agent 0 Layer B
+    reddit_client_id: str = os.getenv("REDDIT_CLIENT_ID", "")
+    reddit_client_secret: str = os.getenv("REDDIT_CLIENT_SECRET", "")
+    reddit_user_agent: str = os.getenv("REDDIT_USER_AGENT", "CrashOutAgent0/1.0")
+    youtube_api_key: str = os.getenv("YOUTUBE_API_KEY", "")
+
+    # Agent 0 ops
+    database_url: str = os.getenv("DATABASE_URL", "")
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    agent0_schedule_enabled: str = os.getenv("AGENT0_SCHEDULE_ENABLED", "false")
 
     # mock = never call Vidu (default while credits empty); vidu = live API
     video_engine: str = os.getenv("VIDEO_ENGINE", "mock").strip().lower() or "mock"

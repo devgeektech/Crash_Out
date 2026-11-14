@@ -129,9 +129,9 @@
             <ul class="tool-list">
                 {% for card in catalog_cards %}
                 {% if card.episode %}
-                    {% set open_href = '/studio?episode=' ~ card.episode.id %}
+                    {% set open_href = '/studio?episode=' ~ card.episode.id ~ '&stage=0' %}
                 {% else %}
-                    {% set open_href = '/studio?catalog=' ~ card.id %}
+                    {% set open_href = '/studio?catalog=' ~ card.id ~ '&stage=0' %}
                 {% endif %}
                 <li>
                     <div class="dash-queue-row">

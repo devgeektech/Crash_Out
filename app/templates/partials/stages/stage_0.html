@@ -42,11 +42,20 @@
     <div class="video-queue-list" role="listbox" aria-label="Video queue">
         {% if catalog_cards %}
             {% for card in catalog_cards %}
-            <div class="video-queue-row {% if ep.catalog_id == card.id %}is-active{% endif %}" role="option" aria-selected="{{ 'true' if ep.catalog_id == card.id else 'false' }}">
+            {% set card_ep = card.episode %}
+            {% set is_selected = (card_ep and ep.id == card_ep.id) or (ep.catalog_id and ep.catalog_id == card.id) %}
+            {% if card_ep %}
+                {% set select_url = '/ui/episodes/' ~ card_ep.id ~ '/select' %}
+                {% set open_url = '/ui/episodes/' ~ card_ep.id ~ '/studio' %}
+            {% else %}
+                {% set select_url = '/ui/queue/' ~ card.id ~ '/select' %}
+                {% set open_url = '/ui/catalog/' ~ card.id ~ '/gate1' %}
+            {% endif %}
+            <div class="video-queue-row {% if is_selected %}is-active{% endif %}" role="option" aria-selected="{{ 'true' if is_selected else 'false' }}">
                 <button
                     class="video-queue-select"
                     type="button"
-                    hx-post="/ui/catalog/{{ card.id }}/select"
+                    hx-post="{{ select_url }}"
                     hx-target="#workspace"
                     hx-swap="outerHTML"
                     hx-indicator="#busy"
@@ -78,9 +87,9 @@
                 <button
                     class="video-queue-arrow"
                     type="button"
-                    title="Open Gateway 2"
-                    aria-label="Open Gateway 2 for {{ card.title }}"
-                    hx-post="/ui/catalog/{{ card.id }}/gate1"
+                    title="Open episode"
+                    aria-label="Open {{ card.title }}"
+                    hx-post="{{ open_url }}"
                     hx-target="#workspace"
                     hx-swap="outerHTML"
                     hx-indicator="#busy"
