@@ -59,6 +59,12 @@ ehthumbs.db
 outputs/*
 !outputs/.gitkeep
 
+# Local SQLite auth DB + encryption material
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # Local caches / temp
 *.log
 *.tmp

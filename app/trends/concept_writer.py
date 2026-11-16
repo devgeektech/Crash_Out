@@ -242,7 +242,7 @@ def _normalize_concept(raw: Dict[str, Any], *, index: int) -> Dict[str, Any]:
         chars = ["gary", "linda", "chris", "chloe"]
     return {
         "id": str(raw.get("id") or f"concept_live_{stamp}_{index}"),
-        "title": str(raw.get("title") or f"Live Concept {index}").strip(),
+        "title": str(raw.get("title") or f"Live Pitch {index}").strip(),
         "cultural_hook": str(raw.get("cultural_hook") or "").strip(),
         "premise": str(raw.get("premise") or "").strip(),
         "synopsis": str(raw.get("synopsis") or "").strip(),

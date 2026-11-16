@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Crash Out{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ static_cache_bust() }}">
+</head>
+<body class="auth-body" data-page="{{ page|default('login') }}">
+    <div class="auth-shell">
+        <div class="auth-backdrop" aria-hidden="true">
+            <img
+                class="auth-backdrop-img"
+                src="/static/assets/brand/crash_out_family.png"
+                alt=""
+            >
+            <div class="auth-backdrop-shade"></div>
+        </div>
+
+        <main class="auth-main">
+            <div class="auth-center">
+                <a class="brand auth-brand" href="/login">
+                    <div class="brand-mark">
+                        <img src="/static/assets/brand/crash_out_badge.jpg" alt="">
+                    </div>
+                    <div class="brand-copy">
+                        <div class="brand-title"><span class="brand-title-crash">CRASH</span> <span class="brand-title-out">OUT</span></div>
+                        <div class="brand-sub muted">Production Studio</div>
+                    </div>
+                </a>
+                <p class="auth-tagline">Sign in to Open the Crash Out Production Studio</p>
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+</body>
+</html>

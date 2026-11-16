@@ -19,25 +19,62 @@
         <div class="busy-bar-fill"></div>
     </div>
 
-    <header class="site-header">
-        <a class="brand" href="/">
-            <div class="brand-mark" aria-hidden="true">
-                <img src="/static/assets/brand/crash_out_badge.jpg" alt="">
-            </div>
-            <div class="brand-copy">
-                <div class="brand-title"><span class="brand-title-crash">CRASH</span> <span class="brand-title-out">OUT</span></div>
-                <div class="brand-sub muted">Production Studio</div>
-            </div>
-        </a>
-        <nav class="site-nav" aria-label="Primary">
-            <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/">Dashboard</a>
-            <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio?stage=0">Studio</a>
-            <a class="nav-link {% if page == 'episodes' %}active{% endif %}" href="/episodes">Episodes</a>
-            <a class="nav-link {% if page == 'characters' %}active{% endif %}" href="/characters">Characters</a>
-        </nav>
-    </header>
+    <div class="app-shell">
+        <aside class="site-sidebar" aria-label="App navigation">
+            <a class="brand" href="/">
+                <div class="brand-mark" aria-hidden="true">
+                    <img src="/static/assets/brand/crash_out_badge.jpg" alt="">
+                </div>
+                <div class="brand-copy">
+                    <div class="brand-title"><span class="brand-title-crash">CRASH</span> <span class="brand-title-out">OUT</span></div>
+                    <div class="brand-sub muted">Production Studio</div>
+                </div>
+            </a>
 
-    {% block content %}{% endblock %}
+            <nav class="site-nav" aria-label="Primary">
+                <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/">
+                    <span class="nav-icon" aria-hidden="true">◆</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio?stage=0">
+                    <span class="nav-icon" aria-hidden="true">▶</span>
+                    <span class="nav-label">Studio</span>
+                </a>
+                <a class="nav-link {% if page == 'episodes' %}active{% endif %}" href="/episodes">
+                    <span class="nav-icon" aria-hidden="true">☰</span>
+                    <span class="nav-label">Episodes</span>
+                </a>
+                <a class="nav-link {% if page == 'characters' %}active{% endif %}" href="/characters">
+                    <span class="nav-icon" aria-hidden="true">◎</span>
+                    <span class="nav-label">Characters</span>
+                </a>
+                <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
+                    <span class="nav-icon" aria-hidden="true">⚙</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-foot">
+                {% if user %}
+                <div class="sidebar-user">
+                    <span class="sidebar-user-name">{{ user.name }}</span>
+                    <span class="sidebar-user-email muted">{{ user.email }}</span>
+                </div>
+                <a class="nav-link sidebar-logout" href="/logout">
+                    <span class="nav-icon" aria-hidden="true">⎋</span>
+                    <span class="nav-label">Sign out</span>
+                </a>
+                {% else %}
+                <span class="sidebar-foot-label">Crash Out</span>
+                <span class="sidebar-foot-meta muted">Pipeline workspace</span>
+                {% endif %}
+            </div>
+        </aside>
+
+        <div class="app-main">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
 
     <div id="toast-host">
         {% include "partials/toast.html" %}

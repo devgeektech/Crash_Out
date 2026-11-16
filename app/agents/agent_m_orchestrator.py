@@ -18,12 +18,12 @@ class AgentMOrchestrator:
     # ================= QA & Validation Rules =================
 
     def validate_concept_qa(self, concept: Dict[str, Any]) -> Tuple[bool, str]:
-        """Verify episode concept completeness."""
+        """Verify episode pitch completeness."""
         required = ["title", "premise", "cultural_hook", "characters_involved"]
         for field in required:
             if field not in concept or not concept[field]:
-                return False, f"Missing required concept field: {field}"
-        return True, "Concept QA Passed: Complete premise and cultural hook."
+                return False, f"Missing required pitch field: {field}"
+        return True, "Pitch QA Passed: Complete premise and cultural hook."
 
     def validate_script_qa(self, script_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Validate 4 equal scenes, 40–60s total, merch trigger, and prompt budget."""
@@ -91,7 +91,7 @@ class AgentMOrchestrator:
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
         if gateway_num == 1:
-            # Human approves Concept
+            # Human approves Pitch
             selected_concept = payload.get("selected_concept")
             passed, reason = self.validate_concept_qa(selected_concept)
             if not passed:
@@ -101,7 +101,7 @@ class AgentMOrchestrator:
             episode.title = selected_concept["title"]
             episode.status = "CONCEPT_APPROVED"
             episode.current_gateway = 2
-            self.log(episode_id, f"HITL Gateway 1 Approved: Concept '{episode.title}' signed off.")
+            self.log(episode_id, f"HITL Gateway 1 Approved: Pitch '{episode.title}' signed off.")
 
         elif gateway_num == 2:
             # Human approves Script & Merch

@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.catalog import get_hoa_q4_prompt_episode
 from app.config import (
@@ -111,10 +112,14 @@ _silence_windows_proactor_connection_reset()
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _install_windows_asyncio_exception_handler(asyncio.get_running_loop())
+    from app.auth_users import ensure_auth_ready
+    from app.db import init_db
     from app.studio.worker import start_worker
     from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
     from app.trends.store import init_store
 
+    init_db()
+    ensure_auth_ready()
     init_store()
     start_worker()
     start_agent0_scheduler()
@@ -138,6 +143,19 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
+from app.security import session_secret  # noqa: E402
+from app.auth_middleware import AuthMiddleware  # noqa: E402
+
+# Order matters: last added runs first. Auth sees the session cookie.
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret(),
+    session_cookie="crash_out_session",
+    same_site="lax",
+    https_only=False,
+    max_age=60 * 60 * 24 * 14,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -149,8 +167,10 @@ app.add_middleware(
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 # Register UI routes before static mounts so /ui/* is never shadowed.
+from app.auth_routes import router as auth_router  # noqa: E402
 from app.ui import router as ui_router  # noqa: E402
 
+app.include_router(auth_router)
 app.include_router(ui_router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

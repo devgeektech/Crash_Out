@@ -73,6 +73,7 @@ from app.paths import (
     build_episode_folder_name,
     scene_file_candidates,
 )
+from app.auth_middleware import get_current_user
 from app.state import Episode, state_manager
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -248,20 +249,20 @@ def _resolve_master_video(ep: Episode) -> Dict[str, Any]:
 
 STAGE_LABELS = {
     0: "Queue",
-    1: "Concept",
+    1: "Pitch",
     2: "Script",
     3: "Video",
     4: "Publish",
     5: "Seeding",
 }
 
-# Letter marks shown in the stepper (Q / C / S / V / P / E)
+# Letter marks shown in the stepper (Q / P / S / V / Pb / E)
 STAGE_MARKS = {
     0: "Q",
-    1: "C",
+    1: "P",
     2: "S",
     3: "V",
-    4: "P",
+    4: "Pb",
     5: "E",
 }
 
@@ -333,7 +334,7 @@ def _resolve_viewing_stage(ep: Episode, viewing_stage: Optional[int]) -> int:
         if stage in DISABLED_STAGES:
             return 3
         return stage
-    # Default landing: video queue (before Concept)
+    # Default landing: video queue (before Pitch)
     return 0
 
 
@@ -658,6 +659,7 @@ def build_context(
 
     ctx = {
         "request": request,
+        "user": get_current_user(request),
         "ep": ep,
         "viewing_stage": stage,
         "show_completed": show_completed,
@@ -734,6 +736,7 @@ def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
     """Shared chrome context for non-pipeline pages (nav, toast, engine badge)."""
     ctx = {
         "request": request,
+        "user": get_current_user(request),
         "page": page,
         "platform": _platform_status(),
         "toast": extra.pop("toast", None),
@@ -1076,7 +1079,7 @@ def ui_open_episode_in_studio(request: Request, episode_id: str):
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
     stage = _stage_for_selected_episode(ep)
-    gate_label = {1: "Concept", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
+    gate_label = {1: "Pitch", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1092,7 +1095,7 @@ def ui_open_catalog_video(request: Request, catalog_id: str):
     """Arrow/open: activate catalog video and resume at furthest approved stage."""
     ep = _activate_catalog_video(catalog_id)
     stage = _stage_for_selected_episode(ep)
-    gate_label = {1: "Concept", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
+    gate_label = {1: "Pitch", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1152,7 +1155,7 @@ def ui_generate_script_scene_clip(request: Request, scene_id: int):
             "partials/htmx_workspace.html",
             viewing_stage=2,
             script_scene=scene_id,
-            error="No script loaded. Approve a concept first.",
+            error="No script loaded. Approve a pitch first.",
         )
 
     try:
@@ -1351,7 +1354,7 @@ def ui_update_concept(
             request,
             "partials/htmx_workspace.html",
             viewing_stage=1,
-            error="Invalid concept card",
+            error="Invalid pitch card",
         )
     # Pitch card UI: Title / youth sentiment / crash-out / merch are editable; sources stay read-only.
     updated = _apply_concept_edits(
@@ -1418,7 +1421,7 @@ def ui_select_concept(request: Request, index: int = Form(...)):
             request,
             "partials/htmx_workspace.html",
             viewing_stage=1,
-            error="Invalid concept selection",
+            error="Invalid pitch selection",
         )
     chosen = concepts[index]
     if is_empty_concept(chosen):
@@ -1508,7 +1511,7 @@ def ui_approve_gateway_1(request: Request):
         "partials/htmx_workspace.html",
         viewing_stage=2,
         script_scene=1,
-        toast="Concept approved · status Scripting",
+        toast="Pitch approved · status Scripting",
         toast_kind="ok",
     )
 

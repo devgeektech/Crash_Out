@@ -82,12 +82,12 @@ def active_stage_label(ep: Episode) -> str:
     """Human stage label for dashboard / studio chrome."""
     prod = normalize_production_status(getattr(ep, "production_status", None))
     labels = {
-        "draft": "Concept",
+        "draft": "Pitch",
         "scripting": "Script",
         "generating": "Video",
         "published": "Published",
     }
-    return labels.get(prod, "Concept")
+    return labels.get(prod, "Pitch")
 
 
 def ensure_episode_numbers() -> bool:
@@ -390,7 +390,7 @@ def studio_dashboard_snapshot() -> Dict[str, Any]:
             "steps": [
                 {
                     "id": "draft",
-                    "label": "Concept",
+                    "label": "Pitch",
                     "done": prod in ("scripting", "generating", "published"),
                     "current": prod == "draft",
                 },

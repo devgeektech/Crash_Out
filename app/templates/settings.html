@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Settings — Crash Out{% endblock %}
+
+{% block content %}
+<section class="page-shell settings-page">
+    <div class="page-head">
+        <div>
+            <h1>Settings</h1>
+            <p class="muted">Profile, password, and encrypted Vidu credentials.</p>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="auth-alert settings-alert" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <div class="settings-grid">
+        <article class="panel settings-panel">
+            <header class="panel-header">
+                <h2>Profile</h2>
+            </header>
+            <form class="settings-form" method="post" action="/settings/profile">
+                <label class="field">
+                    <span class="field-label">Display name</span>
+                    <input class="input" type="text" name="display_name" value="{{ user.display_name }}" required maxlength="80">
+                </label>
+                <label class="field">
+                    <span class="field-label">Email</span>
+                    <input class="input" type="email" name="email" value="{{ user.email }}" required>
+                </label>
+                <div class="settings-actions">
+                    <button class="btn btn-primary" type="submit">Save profile</button>
+                </div>
+            </form>
+        </article>
+
+        <article class="panel settings-panel">
+            <header class="panel-header">
+                <h2>Password</h2>
+            </header>
+            <form class="settings-form" method="post" action="/settings/password" autocomplete="off">
+                <label class="field">
+                    <span class="field-label">Current password</span>
+                    <input class="input" type="password" name="current_password" required autocomplete="current-password">
+                </label>
+                <label class="field">
+                    <span class="field-label">New password</span>
+                    <input class="input" type="password" name="new_password" required minlength="8" autocomplete="new-password">
+                </label>
+                <label class="field">
+                    <span class="field-label">Confirm new password</span>
+                    <input class="input" type="password" name="new_password_confirm" required minlength="8" autocomplete="new-password">
+                </label>
+                <div class="settings-actions">
+                    <button class="btn btn-primary" type="submit">Change password</button>
+                </div>
+            </form>
+        </article>
+
+        <article class="panel settings-panel settings-panel-wide">
+            <header class="panel-header">
+                <div>
+                    <h2>Vidu API</h2>
+                    <p class="muted settings-secure-note">
+                        API keys are encrypted at rest (Fernet / AES). Passwords are hashed with bcrypt and never stored in plain text.
+                    </p>
+                </div>
+            </header>
+            <form class="settings-form" method="post" action="/settings/vidu" autocomplete="off">
+                <div class="settings-key-status">
+                    {% if settings.has_vidu_key %}
+                    <span class="status-chip status-ok">Key on file</span>
+                    <span class="mono muted settings-key-mask">{{ settings.vidu_key_masked }}</span>
+                    <button class="btn btn-danger btn-sm settings-clear-key" type="submit" name="clear_vidu_key" value="1">Clear stored key</button>
+                    {% else %}
+                    <span class="status-chip">No key saved</span>
+                    <span class="muted">Add a key to run live Vidu generation.</span>
+                    {% endif %}
+                </div>
+
+                <label class="field">
+                    <span class="field-label">New Vidu API key</span>
+                    <input class="input" type="password" name="vidu_api_key" placeholder="Paste key to replace — leave blank to keep current" autocomplete="off">
+                </label>
+
+                <div class="field-row settings-vidu-row">
+                    <label class="field">
+                        <span class="field-label">Vidu account email</span>
+                        <input class="input" type="email" name="vidu_email" value="{{ settings.vidu_email }}" placeholder="optional">
+                    </label>
+                    <label class="field">
+                        <span class="field-label">Resolution</span>
+                        <select class="input" name="vidu_resolution">
+                            {% for value, label in vidu_resolution_options %}
+                            <option value="{{ value }}" {% if value == selected_vidu_resolution %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="field-row settings-vidu-row">
+                    <label class="field">
+                        <span class="field-label">Model</span>
+                        <select class="input" name="vidu_model">
+                            {% for value, label in vidu_model_options %}
+                            <option value="{{ value }}" {% if value == selected_vidu_model %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">Reference model</span>
+                        <select class="input" name="vidu_reference_model">
+                            {% for value, label in vidu_reference_model_options %}
+                            <option value="{{ value }}" {% if value == selected_vidu_reference_model %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn-primary" type="submit">Save Vidu settings</button>
+                </div>
+            </form>
+        </article>
+    </div>
+</section>
+{% endblock %}
