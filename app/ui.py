@@ -4,6 +4,7 @@ Jinja + HTMX UI helpers and routes for the Crash Out HITL hub.
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -30,8 +31,11 @@ from app.catalog import (
 )
 from app.config import CHARACTERS, config
 from app.studio.characters import (
+    format_speed_hint,
     get_character,
     list_characters,
+    normalize_pitch_hint,
+    save_character_audio,
     save_character_image,
     update_character,
 )
@@ -72,7 +76,18 @@ from app.paths import (
 from app.state import Episode, state_manager
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+STATIC_CSS_PATH = os.path.join(os.path.dirname(__file__), "static", "css", "app.css")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+
+def _static_cache_bust() -> str:
+    try:
+        return str(int(os.path.getmtime(STATIC_CSS_PATH)))
+    except OSError:
+        return "1"
+
+
+templates.env.globals["static_cache_bust"] = _static_cache_bust
 
 router = APIRouter(tags=["ui"])
 
@@ -546,21 +561,19 @@ def _catalog_cards() -> list:
         latest = _pick_best_related_episode(related)
         if latest:
             _attach_local_renders(latest)
+        display_title = (
+            latest.title
+            if latest and (latest.title or "").strip()
+            else str(item.get("title") or "Untitled")
+        )
         cards.append(
             {
                 **item,
+                "title": display_title,
                 "list_number": index,
                 "episode": latest,
                 "episode_status": (latest.status.replace("_", " ").title() if latest else "Not started"),
                 "gateway": latest.current_gateway if latest else None,
-                "has_master": bool(
-                    latest
-                    and (
-                        latest.merged_video_url
-                        or latest.scenes_merged
-                        or _episode_has_local_renders(latest)
-                    )
-                ),
             }
         )
     # Newer catalog entries first (highest number on top).
@@ -605,7 +618,6 @@ def _studio_queue_cards() -> list:
                 "episode": ep,
                 "episode_status": (prod or "draft").replace("_", " ").title(),
                 "gateway": ep.current_gateway,
-                "has_master": bool(ep.merged_video_url or ep.scenes_merged),
                 "custom": bool(ep.catalog_id and str(ep.catalog_id).startswith("custom_")),
             }
         )
@@ -699,7 +711,18 @@ def render(
     ctx = build_context(request, viewing_stage, **kwargs)
     # Starlette 1.x: TemplateResponse(request, name, context)
     # Pass a plain dict copy so every template key is present.
-    return templates.TemplateResponse(request, template_name, dict(ctx))
+    response = templates.TemplateResponse(request, template_name, dict(ctx))
+    # Keep /studio?stage=N[&scene=] in the address bar so hard refresh resumes here.
+    push_templates = {
+        "partials/htmx_workspace.html",
+        "partials/script_scene_block.html",
+    }
+    if viewing_stage is not None and template_name in push_templates:
+        scene = kwargs.get("script_scene")
+        if scene is None and int(viewing_stage) == 2:
+            scene = ctx.get("script_scene")
+        response.headers["HX-Push-Url"] = _studio_push_url(int(viewing_stage), scene)
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -745,31 +768,100 @@ def ui_home(request: Request):
     )
 
 
+def _select_top_queue_item() -> Optional[Episode]:
+    """Select the first (top) Studio queue row so Queue always has an active video."""
+    cards = _studio_queue_cards()
+    if not cards:
+        return None
+    top = cards[0]
+    ep = top.get("episode")
+    if ep is not None and getattr(ep, "id", None):
+        selected = state_manager.set_active(ep.id)
+        if selected:
+            return selected
+    item_id = str(top.get("id") or "").strip()
+    if not item_id:
+        return None
+    try:
+        return _select_queue_item(item_id)
+    except HTTPException:
+        return None
+
+
+def _remember_studio_ui(
+    ep: Episode,
+    stage: Optional[int],
+    scene: Optional[int] = None,
+    *,
+    persist: bool = True,
+) -> None:
+    """Persist last Studio stage/scene so hard refresh can restore it."""
+    if stage is None:
+        return
+    ep.studio_ui_stage = int(stage)
+    if scene is not None:
+        ep.studio_ui_scene = int(scene)
+    ep.updated_at = time.time()
+    if persist:
+        state_manager.save()
+
+
+def _studio_push_url(stage: int, scene: Optional[int] = None) -> str:
+    url = f"/studio?stage={int(stage)}"
+    if int(stage) == 2 and scene is not None:
+        url += f"&scene={int(scene)}"
+    return url
+
+
 @router.get("/studio", response_class=HTMLResponse)
 def ui_studio(
     request: Request,
     stage: Optional[int] = None,
+    scene: Optional[int] = None,
     episode: Optional[str] = None,
     catalog: Optional[str] = None,
 ):
-    """HITL production studio — opens on the video queue (stage 0) unless a stage is requested.
+    """HITL production studio.
 
-    Optional ``episode`` / ``catalog`` query params select that queue item first
-    (Dashboard → Studio queue). Selection stays on the queue — no pipeline load.
+    Bare ``/studio`` (nav / other pages) always opens Queue with the top video
+    selected. Pass ``stage=`` to keep a pipeline tab on hard refresh.
+    ``episode`` / ``catalog`` selects that queue item (still Queue unless
+    ``stage`` is also provided).
     """
+    queue_select = False
     if episode:
         if not state_manager.set_active(episode):
             raise HTTPException(status_code=404, detail="Episode not found")
+        queue_select = True
     elif catalog:
         _select_queue_item(catalog)
+        queue_select = True
 
-    return render(request, "studio.html", viewing_stage=0 if stage is None else stage)
+    # Coming from another page / bare Studio link → Queue + top row selected.
+    if stage is None:
+        stage = 0
+        if not queue_select:
+            _select_top_queue_item()
+            queue_select = True
+    elif stage == 0 and not queue_select:
+        _select_top_queue_item()
+        queue_select = True
+
+    ep = state_manager.get_active_episode()
+
+    if scene is None and stage == 2 and ep and getattr(ep, "studio_ui_scene", None):
+        scene = int(ep.studio_ui_scene)
+
+    if ep:
+        _remember_studio_ui(ep, stage, scene if stage == 2 else None)
+
+    return render(request, "studio.html", viewing_stage=stage, script_scene=scene)
 
 
 @router.get("/queue", response_class=HTMLResponse)
 def ui_queue_redirect(request: Request):
     """Legacy URL — Queue was renamed to Studio."""
-    return RedirectResponse(url="/studio", status_code=303)
+    return RedirectResponse(url="/studio?stage=0", status_code=303)
 
 
 def _apply_catalog_concepts(ep: Episode, catalog_id: str) -> None:
@@ -782,6 +874,8 @@ def _apply_catalog_concepts(ep: Episode, catalog_id: str) -> None:
 
 
 def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
+    from app.studio.naming import make_studio_episode_name
+
     catalog_id = str(item["id"])
     related = _related_episodes_for_item(item)
     ep = _pick_best_related_episode(related)
@@ -789,11 +883,9 @@ def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
         state_manager.set_active(ep.id)
         ep.catalog_id = catalog_id
         ep.script_key = str(item.get("script_key") or catalog_id)
-        # Keep the catalog title unless this episode already has renders under another name.
-        if not _episode_has_local_renders(ep):
-            ep.title = str(item.get("title") or ep.title)
-        elif not ep.title:
-            ep.title = str(item.get("title") or ep.title)
+        # Keep Episode_Date_Time naming; do not overwrite with catalog marketing titles.
+        if not (ep.title or "").strip():
+            ep.title = make_studio_episode_name()
         # Refresh concept cards, but do not rewind an already-approved episode.
         already_past_gate1 = bool(ep.script) or int(ep.current_gateway or 1) >= 2
         if not already_past_gate1:
@@ -805,18 +897,18 @@ def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
                 ep.available_concepts = concepts
         _hydrate_renders_from_siblings(ep)
         state_manager.save()
-        orchestrator.log(ep.id, f"Selected queue video '{item.get('title')}'.")
+        orchestrator.log(ep.id, f"Selected queue video '{ep.title}'.")
         return ep
 
     ep = state_manager.create_episode(
-        title=str(item.get("title") or "Untitled video"),
+        title=make_studio_episode_name(),
         engine="vidu",
         catalog_id=catalog_id,
         script_key=str(item.get("script_key") or catalog_id),
     )
     _apply_catalog_concepts(ep, catalog_id)
     state_manager.save()
-    orchestrator.log(ep.id, f"Selected queue video '{item.get('title')}' → Gate 1.")
+    orchestrator.log(ep.id, f"Selected queue video '{ep.title}' → Gate 1.")
     return ep
 
 
@@ -847,8 +939,10 @@ def _select_queue_item(item_id: str) -> Episode:
                 state_manager.save()
             return ep
         # First select of a catalog row: create a draft shell so selection sticks.
+        from app.studio.naming import make_studio_episode_name
+
         ep = state_manager.create_episode(
-            title=str(item.get("title") or "Untitled video"),
+            title=make_studio_episode_name(),
             engine="vidu",
             catalog_id=str(item["id"]),
             script_key=str(item.get("script_key") or item["id"]),
@@ -1020,6 +1114,10 @@ def ui_stage(
     char: str = "gary",
     scene: Optional[int] = None,
 ):
+    ep = _ensure_episode()
+    if scene is None and stage_num == 2 and getattr(ep, "studio_ui_scene", None):
+        scene = int(ep.studio_ui_scene)
+    _remember_studio_ui(ep, stage_num, scene if stage_num == 2 else None)
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1032,6 +1130,8 @@ def ui_stage(
 @router.get("/ui/script/scene/{scene_id}", response_class=HTMLResponse)
 def ui_script_scene(request: Request, scene_id: int):
     """Gate 2: swap only the active scene panel + tab strip."""
+    ep = _ensure_episode()
+    _remember_studio_ui(ep, 2, scene_id)
     return render(
         request,
         "partials/script_scene_block.html",
@@ -1188,27 +1288,35 @@ def _apply_concept_edits(
     youth_sentiment_summary: str,
     crash_out_angle: str,
     proposed_merch_hook: str,
+    tone: str = "",
+    conflict: str = "",
+    synopsis: str = "",
     mainstream_sources: str = "",
     youth_sources: str = "",
+    touch_sources: bool = False,
 ) -> Dict[str, Any]:
     updated = dict(concept or {})
     title = (headline or "").strip()
     youth = (youth_sentiment_summary or "").strip()
     angle = (crash_out_angle or "").strip()
     merch = (proposed_merch_hook or "").strip()
+    tone_val = (tone or "").strip()
+    conflict_val = (conflict or "").strip()
+    synopsis_val = (synopsis or "").strip()
     updated["headline"] = title
     updated["title"] = title
     updated["youth_sentiment_summary"] = youth
     updated["cultural_hook"] = youth
     updated["crash_out_angle"] = angle
     updated["premise"] = angle
-    updated["synopsis"] = angle
-    updated["conflict"] = angle
+    updated["synopsis"] = synopsis_val or angle
+    updated["conflict"] = conflict_val or angle
+    updated["tone"] = tone_val
     updated["proposed_merch_hook"] = merch
     updated["suggested_merch"] = merch
-    mainstream = _split_source_csv(mainstream_sources)
-    youth_list = _split_source_csv(youth_sources)
-    if mainstream or youth_list or updated.get("sources"):
+    if touch_sources:
+        mainstream = _split_source_csv(mainstream_sources)
+        youth_list = _split_source_csv(youth_sources)
         updated["sources"] = {
             "mainstream": mainstream,
             "youth_social": youth_list,
@@ -1229,6 +1337,9 @@ def ui_update_concept(
     youth_sentiment_summary: str = Form(""),
     crash_out_angle: str = Form(""),
     proposed_merch_hook: str = Form(""),
+    tone: str = Form(""),
+    conflict: str = Form(""),
+    synopsis: str = Form(""),
     mainstream_sources: str = Form(""),
     youth_sources: str = Form(""),
     action: str = Form("save"),
@@ -1242,14 +1353,19 @@ def ui_update_concept(
             viewing_stage=1,
             error="Invalid concept card",
         )
+    # Pitch card UI: Title / youth sentiment / crash-out / merch are editable; sources stay read-only.
     updated = _apply_concept_edits(
         concepts[index],
         headline=headline,
         youth_sentiment_summary=youth_sentiment_summary,
         crash_out_angle=crash_out_angle,
         proposed_merch_hook=proposed_merch_hook,
+        tone=tone,
+        conflict=conflict,
+        synopsis=synopsis,
         mainstream_sources=mainstream_sources,
         youth_sources=youth_sources,
+        touch_sources=False,
     )
     concepts[index] = updated
     ep.available_concepts = concepts
@@ -1278,6 +1394,12 @@ def ui_update_concept(
             ep.selected_concept = updated
 
     state_manager.save()
+    # Inline card autosave: keep focus (no workspace remount). Select still reloads.
+    if not select and (
+        (request.headers.get("HX-Request") or "").lower() == "true"
+        and "workspace" not in (request.headers.get("HX-Target") or "")
+    ):
+        return HTMLResponse("")
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1354,10 +1476,14 @@ def ui_approve_gateway_1(request: Request):
         ep.status = "WAITING_GATEWAY_2"
         ep.current_gateway = 2
         set_production_status(ep, "scripting")
+        from app.studio.naming import apply_confirmed_pitch_title
+
+        pitch_label = str(selected.get("headline") or selected.get("title") or "").strip()
+        apply_confirmed_pitch_title(ep, pitch_label)
         remember_episode_topic(
             ep.id,
             title=ep.title,
-            label=str(selected.get("headline") or selected.get("title") or ep.title),
+            label=pitch_label or ep.title,
         )
         state_manager.save()
     except HTTPException as exc:
@@ -1375,10 +1501,13 @@ def ui_approve_gateway_1(request: Request):
             error=str(exc),
         )
 
+    _remember_studio_ui(ep, 2, 1, persist=False)
+    state_manager.save()
     return render(
         request,
         "partials/htmx_workspace.html",
         viewing_stage=2,
+        script_scene=1,
         toast="Concept approved · status Scripting",
         toast_kind="ok",
     )
@@ -1397,6 +1526,7 @@ def ui_update_merch(request: Request, punchline: str = Form(...)):
         request,
         "partials/htmx_workspace.html",
         viewing_stage=2,
+        script_scene=getattr(ep, "studio_ui_scene", None),
         toast="Merch line updated",
         toast_kind="ok",
     )
@@ -1439,6 +1569,8 @@ def ui_approve_gateway_2(request: Request):
             error=str(exc),
         )
 
+    _remember_studio_ui(ep, 3, persist=False)
+    state_manager.save()
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1698,7 +1830,7 @@ def ui_episode_record(request: Request, episode_id: str):
         raise HTTPException(status_code=404, detail="Episode not found")
     if not is_final_episode(ep):
         # In-progress shows belong in Studio, not the records library.
-        return RedirectResponse(url="/studio", status_code=303)
+        return RedirectResponse(url="/studio?stage=0", status_code=303)
 
     if _attach_local_renders(ep) or _hydrate_renders_from_siblings(ep):
         state_manager.save_episode(ep.id)
@@ -1727,7 +1859,7 @@ def ui_episodes_create(request: Request, title: str = Form("New Episode")):
     ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
     state_manager.save()
     orchestrator.log(ep.id, f"Created episode #{ep.episode_number}: {ep.title}")
-    return RedirectResponse(url="/studio", status_code=303)
+    return RedirectResponse(url="/studio?stage=0", status_code=303)
 
 
 @router.post("/ui/episodes/{episode_id}/open", response_class=HTMLResponse)
@@ -1758,7 +1890,10 @@ def ui_episodes_rename(request: Request, episode_id: str, title: str = Form(...)
     # Studio renames stay in Studio; published records return to the library view.
     if is_final_episode(ep):
         return RedirectResponse(url=f"/episodes/{episode_id}", status_code=303)
-    return RedirectResponse(url="/studio", status_code=303)
+    stage = getattr(ep, "studio_ui_stage", None)
+    if stage is None:
+        stage = 0
+    return RedirectResponse(url=f"/studio?stage={int(stage)}", status_code=303)
 
 
 @router.post("/ui/episodes/{episode_id}/autosave", response_class=HTMLResponse)
@@ -1818,6 +1953,7 @@ def ui_production_note(
 @router.post("/ui/script/version", response_class=HTMLResponse)
 def ui_script_version(request: Request, label: str = Form("")):
     ep = _ensure_episode()
+    scene = getattr(ep, "studio_ui_scene", None)
     try:
         save_script_version(ep, label=label)
         state_manager.save()
@@ -1826,12 +1962,14 @@ def ui_script_version(request: Request, label: str = Form("")):
             request,
             "partials/htmx_workspace.html",
             viewing_stage=2,
+            script_scene=scene,
             error=str(exc),
         )
     return render(
         request,
         "partials/htmx_workspace.html",
         viewing_stage=2,
+        script_scene=scene,
         toast="Script version saved",
         toast_kind="ok",
     )
@@ -1922,8 +2060,8 @@ def ui_characters_save(
                 "visual_prompt": visual_prompt,
                 "voice": {
                     "tone": voice_tone,
-                    "speed": voice_speed,
-                    "pitch": voice_pitch,
+                    "speed": format_speed_hint(voice_speed),
+                    "pitch": normalize_pitch_hint(voice_pitch),
                     "delivery": voice_delivery,
                 },
             },
@@ -1948,6 +2086,33 @@ async def ui_characters_image(
         tmp_path = tmp.name
     try:
         save_character_image(char_id, tmp_path, ext=suffix)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+    return RedirectResponse(url=f"/characters?char_id={char_id}", status_code=303)
+
+
+@router.post("/ui/characters/{char_id}/audio", response_class=HTMLResponse)
+async def ui_characters_audio(
+    request: Request,
+    char_id: str,
+    audio: UploadFile = File(...),
+):
+    import tempfile
+
+    suffix = os.path.splitext(audio.filename or "")[1] or ".mp3"
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+    try:
+        save_character_audio(char_id, tmp_path, ext=suffix)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     finally:

@@ -12,9 +12,10 @@
                 aria-disabled="true"
                 title="Coming soon"
                 {% else %}
-                hx-get="/ui/stage/{{ num }}"
+                hx-get="/ui/stage/{{ num }}{% if num == 2 and script_scene %}?scene={{ script_scene }}{% endif %}"
                 hx-target="#workspace"
                 hx-swap="outerHTML"
+                hx-push-url="/studio?stage={{ num }}{% if num == 2 and script_scene %}&scene={{ script_scene }}{% endif %}"
                 hx-indicator="#busy"
                 {% endif %}
             >

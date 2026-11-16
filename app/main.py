@@ -332,6 +332,13 @@ def approve_gateway_1(payload: Dict[str, Any] = Body(...)):
     ep.status = "WAITING_GATEWAY_2"
     ep.current_gateway = 2
     set_production_status(ep, "scripting")
+    from app.studio.naming import apply_confirmed_pitch_title
+
+    selected = ep.selected_concept or payload.get("selected_concept") or {}
+    apply_confirmed_pitch_title(
+        ep,
+        str(selected.get("headline") or selected.get("title") or "").strip(),
+    )
     state_manager.save()
     return ep.dict()
 

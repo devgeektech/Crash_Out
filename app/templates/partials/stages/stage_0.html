@@ -62,12 +62,11 @@
                 >
                     <span class="video-queue-num" aria-label="Video {{ card.list_number }}">{{ card.list_number }}</span>
                     <div class="video-queue-copy">
-                        <h3>{{ card.title }}</h3>
-                        <p>{{ card.subtitle }}</p>
+                        <h3>{% if card_ep %}{{ card_ep.title }}{% else %}{{ card.title }}{% endif %}</h3>
+                        {% if card.subtitle and not card_ep %}<p>{{ card.subtitle }}</p>{% endif %}
                         <div class="video-queue-meta">
                             <span class="badge">{{ card.duration_label }}</span>
                             <span class="badge">{{ card.episode_status }}</span>
-                            {% if card.has_master %}<span class="badge badge-ok">Has master</span>{% endif %}
                         </div>
                     </div>
                 </button>

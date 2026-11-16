@@ -79,11 +79,14 @@
     </details>
 
     <details class="tool-block">
-        <summary>Vidu audio direction</summary>
-        <p class="muted">Spoken audio is generated <strong>inside Vidu</strong> with each clip. Edit tags on <a href="/characters">Characters</a>; put dialogue + tags in the scene prompt.</p>
+        <summary>Character voice</summary>
+        <p class="muted">Tags + reference samples from <a href="/characters">Characters</a> go into Vidu scene prompts.</p>
         <ul class="tool-list muted">
             {% for v in voice_library %}
-            <li><strong>{{ v.name }}</strong> · {{ v.delivery or '—' }}<br><span class="muted">{{ v.tone or '' }} · {{ v.speed }} · {{ v.pitch }}</span></li>
+            <li>
+                <strong>{{ v.name }}</strong> · {{ v.delivery or '—' }}
+                <br><span class="muted">{{ v.tone or '' }} · {{ v.speed }} · {{ v.pitch }}{% if v.sample_file %} · sample{% endif %}</span>
+            </li>
             {% endfor %}
         </ul>
     </details>

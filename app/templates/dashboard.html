@@ -8,7 +8,7 @@
         <div class="brand-hero-copy">
             <h1>Production dashboard</h1>
             <p>Pipeline health, episode status, and credit usage.</p>
-            <a class="btn btn-primary" href="/studio">Open studio</a>
+            <a class="btn btn-primary" href="/studio?stage=0">Open studio</a>
         </div>
     </div>
 
@@ -62,14 +62,14 @@
                 {% if info.is_published %}
                 <a class="btn btn-sm btn-primary" href="/episodes/{{ ae.id }}">View record</a>
                 {% else %}
-                <a class="btn btn-sm btn-primary" href="/studio">Continue in studio</a>
+                <a class="btn btn-sm btn-primary" href="/studio?stage=0">Continue in studio</a>
                 {% endif %}
                 <a class="btn btn-sm btn-ghost" href="/episodes">Published library</a>
             </div>
             {% else %}
             <p class="muted">No active episode in Studio.</p>
             <div class="inline-form">
-                <a class="btn btn-sm btn-primary" href="/studio">Open studio</a>
+                <a class="btn btn-sm btn-primary" href="/studio?stage=0">Open studio</a>
             </div>
             {% endif %}
         </section>
@@ -124,7 +124,7 @@
         <section class="panel dash-panel">
             <div class="side-head">
                 <h2>Studio queue</h2>
-                <a class="badge" href="/studio">Open</a>
+                <a class="badge" href="/studio?stage=0">Open</a>
             </div>
             <ul class="tool-list">
                 {% for card in catalog_cards %}
@@ -137,7 +137,7 @@
                     <div class="dash-queue-row">
                         <a class="dash-queue-link" href="{{ open_href }}">
                             <strong>{% if card.list_number %}{{ card.list_number }}. {% endif %}{{ card.title }}</strong>
-                            <div class="muted">{{ card.episode_status }}{% if card.has_master %} · master{% endif %}</div>
+                            <div class="muted">{{ card.episode_status }}</div>
                         </a>
                         <a class="btn btn-sm" href="{{ open_href }}">Open</a>
                     </div>

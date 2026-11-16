@@ -146,6 +146,10 @@ class Episode(BaseModel):
     sla_metrics: Dict[str, float] = {}
     gate_history: List[Dict[str, Any]] = []
 
+    # Last Studio UI position (survives hard refresh when URL is bare /studio)
+    studio_ui_stage: Optional[int] = None
+    studio_ui_scene: Optional[int] = None
+
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 
@@ -393,7 +397,7 @@ class StateManager:
 
     def create_episode(
         self,
-        title: str = "New Episode",
+        title: Optional[str] = None,
         engine: str = "mock",
         *,
         catalog_id: Optional[str] = None,
@@ -402,6 +406,10 @@ class StateManager:
     ) -> Episode:
         from app.engines.factory import engine_display_name, video_engine_mode
         from app.studio.generation import next_episode_number
+        from app.studio.naming import make_studio_episode_name
+
+        # Studio queue convention: Episode_YYYYMMDD_HHMMSS until pitch confirm.
+        resolved_title = (title or "").strip() or make_studio_episode_name()
 
         # Include counter so create+duplicate in the same second never collide.
         base = int(time.time())
@@ -415,11 +423,11 @@ class StateManager:
             for other in self.episodes.values()
             if (other.output_folder or "").strip()
         }
-        folder = resolve_episode_folder(ep_id, title, taken=taken)
+        folder = resolve_episode_folder(ep_id, resolved_title, taken=taken)
         mode = video_engine_mode()
         episode = Episode(
             id=ep_id,
-            title=title,
+            title=resolved_title,
             episode_number=int(episode_number or next_episode_number()),
             output_folder=folder,
             selected_engine=engine or mode,

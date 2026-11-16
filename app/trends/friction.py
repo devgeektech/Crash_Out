@@ -46,7 +46,7 @@ Return ONLY valid JSON:
       "brand_safety": 1-10,
       "sensitivity_flag": "SAFE" | "SENSITIVE_REVIEW",
       "youth_sentiment_summary": "one sentence Gen Z take",
-      "crash_out_angle": "one Pearson-family kitchen/driveway escalation beat",
+      "crash_out_angle": "detailed Pearson-family escalation (3-5 sentences)",
       "proposed_merch_hook": "short hoodie-ready phrase",
       "sources": {
         "mainstream": ["outlet or trend labels"],
@@ -61,7 +61,9 @@ Rules:
 - Reject / mark SENSITIVE_REVIEW for mass tragedies, graphic violence, sexual exploitation of minors, or active war atrocities.
 - brand_safety 10 = clearly safe comedy fuel; lower if borderline.
 - Produce at most 5 pitches, ranked by editorial strength (you may omit weak clusters).
-- crash_out_angle must involve the Pearson family satirical lens.
+- crash_out_angle MUST be detailed (3–5 sentences): specific setting (kitchen/driveway/Zoom),
+  what Gary/Linda/Chris/Chloe each do, the viral/content beat, and how it escalates into a crash-out.
+  Do not write a single short line — make it production-ready episode fuel.
 """
 
 
@@ -247,8 +249,14 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
             mainstream = ["mainstream signal"]
         headline = str(cluster.get("label") or "Suburban friction story")
         angle = (
-            f"Gary doomscrolls '{headline}' at the kitchen island while Linda reframes it as a "
-            f"wellness boundary, Chloe livestreams the fight, and Chris rates the engagement mid."
+            f"In the Pearson kitchen, Gary doomscrolls a push alert about '{headline}' and starts "
+            f"narrating it like a rally speech while his stress watch flashes CRITICAL. "
+            f"Linda interrupts with vibrational HOA optics language, insisting the family cannot "
+            f"look 'chaotically online' in front of the cul-de-sac. Chloe already has a vertical "
+            f"livestream framed on Gary's reflection in the toaster, selling the meltdown as content, "
+            f"while Chris open-sources the household budget in the comments to prove Dad is cooked. "
+            f"The beat escalates when Gary tries to ban phones mid-sentence and accidentally "
+            f"confirms every joke the kids are clipping for the algorithm."
         )
         pitches.append(
             normalize_pitch(

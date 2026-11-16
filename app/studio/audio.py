@@ -14,7 +14,7 @@ from app.state import Episode
 
 
 def voice_library_snapshot() -> List[Dict[str, Any]]:
-    """Vidu audio-direction tags from the character library."""
+    """Character voice tags + optional reference sample URLs for Vidu."""
     out = []
     for c in list_characters():
         voice = dict(c.get("voice") or {})
@@ -26,6 +26,8 @@ def voice_library_snapshot() -> List[Dict[str, Any]]:
                 "pitch": voice.get("pitch") or "medium",
                 "speed": voice.get("speed") or "1.0x",
                 "delivery": voice.get("delivery") or voice.get("audio_tag") or "",
+                "sample_file": voice.get("sample_file") or "",
+                "audio_url": c.get("audio_url") or "",
             }
         )
     return out

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ static_cache_bust() }}">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body
@@ -31,7 +31,7 @@
         </a>
         <nav class="site-nav" aria-label="Primary">
             <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="/">Dashboard</a>
-            <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio">Studio</a>
+            <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio?stage=0">Studio</a>
             <a class="nav-link {% if page == 'episodes' %}active{% endif %}" href="/episodes">Episodes</a>
             <a class="nav-link {% if page == 'characters' %}active{% endif %}" href="/characters">Characters</a>
         </nav>

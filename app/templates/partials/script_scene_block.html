@@ -12,6 +12,7 @@
             hx-get="/ui/script/scene/{{ sid }}"
             hx-target="#script-scene-block"
             hx-swap="outerHTML"
+            hx-push-url="/studio?stage=2&scene={{ sid }}"
             hx-indicator="#busy"
         >
             <span class="scene-tab-num">{{ sid }}</span>

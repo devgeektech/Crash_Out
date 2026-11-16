@@ -16,6 +16,16 @@
                 : `${n} characters`;
     }
 
+    function autosizeConceptField(el) {
+        if (!el || !el.matches || !el.matches("textarea.concept-inline")) return;
+        el.style.height = "auto";
+        el.style.height = `${Math.max(el.scrollHeight, 28)}px`;
+    }
+
+    function autosizeAllConceptFields(root) {
+        (root || document).querySelectorAll("textarea.concept-inline").forEach(autosizeConceptField);
+    }
+
     document.addEventListener("input", (event) => {
         const el = event.target;
         if (el && el.matches && el.matches("textarea[data-live-char-count]")) {
@@ -23,7 +33,20 @@
             const status = document.getElementById("script-save-status");
             if (status) status.textContent = "";
         }
+        if (el && el.matches && el.matches("textarea.concept-inline")) {
+            autosizeConceptField(el);
+        }
     });
+
+    document.body.addEventListener("htmx:afterSwap", () => {
+        autosizeAllConceptFields(document);
+    });
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => autosizeAllConceptFields(document));
+    } else {
+        autosizeAllConceptFields(document);
+    }
 
     let pendingDeleteUrl = null;
 

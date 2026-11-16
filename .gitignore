@@ -74,10 +74,16 @@ tmp/
 *.mov
 *.wav
 *.mp3
-# Keep character reference art tracked
+# Keep character reference art + voice samples tracked
 !characters/**/*.png
 !characters/**/*.jpg
 !characters/**/*.webp
+!characters/**/*_voice_sample.mp3
+!characters/**/*_voice_sample.wav
+!characters/**/*_voice_sample.m4a
+!characters/**/*_voice_sample.ogg
+!characters/**/*_voice_sample.webm
+!characters/**/*_voice_sample.aac
 
 # Notebooks / misc
 .ipynb_checkpoints/

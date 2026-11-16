@@ -4,7 +4,7 @@
     <div class="panel-header">
         <div>
             <h1 class="panel-title">Top friction pitches</h1>
-            <p class="panel-desc muted">Edit a card, select it, then approve for scripting</p>
+            <p class="panel-desc muted">Click text to edit · Select to choose · then approve</p>
         </div>
         <div class="panel-actions">
             <button
@@ -29,12 +29,12 @@
         </div>
     </div>
 
-    <div class="concept-grid pitch-grid">
+    <div class="concept-grid concept-grid-3">
         {% if ep.available_concepts %}
             {% for concept in ep.available_concepts %}
             {% set idx = loop.index0 %}
-            {% set is_manual = concept.manual or (concept.empty and not concept.is_pitch) %}
-            {% set flag = (concept.sensitivity_flag or '')|upper %}
+            {% set is_blank = concept.empty and not (concept.headline or concept.title) %}
+            {% set flag = (concept.sensitivity_flag or 'SAFE')|upper %}
             {% set score = concept.consensus_score %}
             {% set headline = concept.headline or concept.title or '' %}
             {% set youth = concept.youth_sentiment_summary or concept.cultural_hook or '' %}
@@ -48,62 +48,98 @@
             {% elif concept.source_trends %}
                 {% set mainstream = concept.source_trends|join(', ') %}
             {% endif %}
-            <form
-                class="concept-card pitch-card concept-edit-card {% if idx == selected_concept_index %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_manual %}concept-manual{% endif %}"
-                hx-post="/ui/concepts/{{ idx }}/update"
-                hx-target="#workspace"
-                hx-swap="outerHTML"
-                hx-indicator="#busy"
+            <article
+                class="concept-card concept-card-live {% if idx == selected_concept_index %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_blank %}concept-card-empty{% endif %}"
+                data-concept-card
             >
                 <div class="concept-top">
-                    <span class="badge">#{{ concept.rank or loop.index }}</span>
-                    {% if score %}
-                    <span class="badge badge-ok">{{ '%.1f'|format(score|float) }}/10</span>
-                    {% endif %}
-                    {% if flag %}
-                    <span class="badge {% if flag == 'SENSITIVE_REVIEW' %}badge-warn{% endif %}">{{ flag }}</span>
-                    {% elif is_manual %}
-                    <span class="badge">Manual</span>
-                    {% endif %}
-                    {% if idx == selected_concept_index %}<span class="badge badge-ok">Selected</span>{% endif %}
+                    <div class="concept-top-left">
+                        <span class="badge">#{{ concept.rank or loop.index }}</span>
+                        {% if score %}
+                        <span class="badge badge-ok">{{ '%.1f'|format(score|float) }}/10</span>
+                        {% endif %}
+                        <span class="badge {% if flag == 'SENSITIVE_REVIEW' %}badge-warn{% endif %}">{{ flag }}</span>
+                        {% if idx == selected_concept_index %}<span class="badge badge-ok">Selected</span>{% endif %}
+                    </div>
+                    <button
+                        class="btn btn-sm {% if idx == selected_concept_index %}btn-primary{% else %}btn-ghost{% endif %}"
+                        type="button"
+                        hx-post="/ui/concepts/select"
+                        hx-target="#workspace"
+                        hx-swap="outerHTML"
+                        hx-vals='{"index": {{ idx }}}'
+                        hx-indicator="#busy"
+                        {% if is_blank and not headline %}disabled{% endif %}
+                    >{% if idx == selected_concept_index %}Selected{% else %}Select{% endif %}</button>
                 </div>
 
-                <label class="concept-field">
-                    <span class="concept-field-label">Headline</span>
-                    <input class="input input-sm" type="text" name="headline" value="{{ headline }}" placeholder="" required>
-                </label>
+                <form
+                    class="concept-inline-form"
+                    hx-post="/ui/concepts/{{ idx }}/update"
+                    hx-swap="none"
+                    hx-trigger="change delay:400ms, keyup changed delay:800ms"
+                    data-concept-inline-form
+                >
+                    <input type="hidden" name="action" value="save">
 
-                <label class="concept-field">
-                    <span class="concept-field-label">Youth sentiment</span>
-                    <textarea class="input input-sm concept-textarea" name="youth_sentiment_summary" rows="2" placeholder="">{{ youth }}</textarea>
-                </label>
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Title</span>
+                        <input
+                            class="concept-inline concept-inline-title"
+                            type="text"
+                            name="headline"
+                            value="{{ headline }}"
+                            placeholder="Headline"
+                            required
+                            aria-label="Title"
+                        >
+                    </div>
 
-                <label class="concept-field">
-                    <span class="concept-field-label">Crash-out angle</span>
-                    <textarea class="input input-sm concept-textarea" name="crash_out_angle" rows="3" placeholder="">{{ angle }}</textarea>
-                </label>
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Youth Sentiment</span>
+                        <textarea
+                            class="concept-inline concept-inline-hook"
+                            name="youth_sentiment_summary"
+                            rows="2"
+                            placeholder="—"
+                            aria-label="Youth Sentiment"
+                        >{{ youth }}</textarea>
+                    </div>
 
-                {% if not is_manual %}
-                <label class="concept-field">
-                    <span class="concept-field-label">Mainstream sources</span>
-                    <input class="input input-sm" type="text" name="mainstream_sources" value="{{ mainstream }}" placeholder="">
-                </label>
-                <label class="concept-field">
-                    <span class="concept-field-label">Youth sources</span>
-                    <input class="input input-sm" type="text" name="youth_sources" value="{{ youth_src }}" placeholder="">
-                </label>
-                {% endif %}
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Crash-Out angle</span>
+                        <textarea
+                            class="concept-inline concept-inline-body concept-inline-angle"
+                            name="crash_out_angle"
+                            rows="7"
+                            placeholder="—"
+                            aria-label="Crash-Out angle"
+                        >{{ angle }}</textarea>
+                    </div>
 
-                <label class="concept-field">
-                    <span class="concept-field-label">Merch hook</span>
-                    <input class="input input-sm" type="text" name="proposed_merch_hook" value="{{ merch }}" placeholder="">
-                </label>
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Mainstream Sources</span>
+                        <p class="concept-readonly">{{ mainstream or '—' }}</p>
+                    </div>
 
-                <div class="concept-edit-actions">
-                    <button class="btn btn-sm" type="submit" name="action" value="save">Save</button>
-                    <button class="btn btn-sm btn-primary" type="submit" name="action" value="select">Save & select</button>
-                </div>
-            </form>
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Youth Sources</span>
+                        <p class="concept-readonly">{{ youth_src or '—' }}</p>
+                    </div>
+
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Merch Hook</span>
+                        <input
+                            class="concept-inline concept-inline-meta"
+                            type="text"
+                            name="proposed_merch_hook"
+                            value="{{ merch }}"
+                            placeholder="—"
+                            aria-label="Merch Hook"
+                        >
+                    </div>
+                </form>
+            </article>
             {% endfor %}
         {% else %}
             <div class="empty-state">No pitches yet. Hit Refresh pitches to run Agent 0.</div>

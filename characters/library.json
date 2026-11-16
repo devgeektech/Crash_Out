@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": 1794569505.3295727,
+  "updated_at": 1794661498.822044,
   "characters": {
     "gary": {
       "id": "gary",
@@ -14,12 +14,12 @@
       "image_file": "gary_9x16.png",
       "voice": {
         "tone": "Soft therapist voice that spikes into nasal high-volume Trumpian hyperbole.",
-        "speed": "1.15x",
+        "speed": "1.25",
         "pitch": "medium",
         "delivery": "[Gary, stressed suburban dad]:",
-        "sample_file": ""
+        "sample_file": "gary_voice_sample.mp3"
       },
-      "updated_at": 1794569505.3295603
+      "updated_at": 1794661498.8220425
     },
     "linda": {
       "id": "linda",
@@ -36,9 +36,9 @@
         "speed": "1.05x",
         "pitch": "medium",
         "delivery": "[Linda, breathy wellness panic]:",
-        "sample_file": ""
+        "sample_file": "linda_voice_sample.mp3"
       },
-      "updated_at": 1794569505.3295662
+      "updated_at": 1794660962.1695023
     },
     "chris": {
       "id": "chris",
@@ -55,9 +55,9 @@
         "speed": "0.9x",
         "pitch": "medium",
         "delivery": "[Chris, deadpan monotone]:",
-        "sample_file": ""
+        "sample_file": "chris_voice_sample.mp3"
       },
-      "updated_at": 1794569505.3295696
+      "updated_at": 1794661272.22637
     },
     "chloe": {
       "id": "chloe",
@@ -74,9 +74,9 @@
         "speed": "1.15x",
         "pitch": "medium",
         "delivery": "[Chloe, influencer smirk]:",
-        "sample_file": ""
+        "sample_file": "chloe_voice_sample.mp3"
       },
-      "updated_at": 1794569505.3295715
+      "updated_at": 1794661285.5586438
     }
   }
 }
