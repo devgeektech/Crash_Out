@@ -10,6 +10,14 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 ### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
 
 Completed:
+- **Production Server Deployment & Live Launch**:
+  - Merged `users/dev/vikas/update` into `master` and pushed to GitHub remote `origin/master`.
+  - Pulled latest `master` codebase onto the AWS EC2 instance (`13.51.79.99` at `/var/www/Crash_Out`).
+  - Deployed production environment `.env` with AWS S3 credentials and OpenAI API keys.
+  - Installed system dependencies including static `ffmpeg 7.0.2` and Python packages (`requirements.txt`, `openai`).
+  - Initialized Docker stack running PostgreSQL 16 (`pgvector`) with vector extensions and ran database migrations.
+  - Configured and started persistent `crashout.service` systemd daemon on port 8000 and reverse-proxied with Nginx on port 80.
+  - Confirmed live HTTP response on `http://13.51.79.99/login`.
 - **Refined Sr. No. Typography**: Adjusted serial number values from heavy bold (700) to dark semi-bold (`font-weight: 600; color: var(--text);`) across [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css) and templates ([stage_0.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_0.html), [episodes.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/episodes.html), [credits.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/credits.html), [dashboard.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/dashboard.html)) for a cleaner, balanced look.
 - **Universal Bold Sr. No. Styling**: Updated `.data-table tbody td.col-num` in [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css#L2573-L2579) to enforce `font-weight: 700 !important; color: var(--text) !important;`, ensuring the serial numbers are prominently and consistently bolded across all tables without CSS inheritance overrides.
 - **Agent 0 Studio Queue Table Structure**:

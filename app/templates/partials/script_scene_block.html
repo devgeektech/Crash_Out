@@ -14,11 +14,10 @@
             hx-swap="outerHTML"
             hx-push-url="/studio?stage=2&scene={{ sid }}"
             hx-indicator="#busy"
+            style="justify-content: center; text-align: center;"
         >
-            <span class="scene-tab-num">Clip {{ sid }}</span>
-            <span class="scene-tab-copy">
-                <strong>{{ sc.title }}</strong>
-                <span>{{ sc.duration_sec }}s · {{ sc.time_range }}</span>
+            <span class="scene-tab-num" style="font-size: 0.95rem; font-weight: 700; height: auto; padding: 0.35rem 0.9rem;">
+                Clip {{ sid }}
             </span>
         </button>
         {% endfor %}
@@ -34,8 +33,7 @@
             >
                 <div class="script-scene-meta script-edit-meta">
                     <div class="script-edit-heading">
-                        <div class="panel-kicker">Clip {{ active_script_scene.scene_id }}</div>
-                        <h2 class="script-scene-title">{{ active_script_scene.title }}</h2>
+                        <h2 class="script-scene-title">Clip {{ active_script_scene.scene_id }}</h2>
                         <p class="panel-desc muted" style="margin: 0.15rem 0 0;">
                             {{ active_script_scene.time_range }} · {{ active_script_scene.duration_sec }}s · Lead: {{ (active_script_scene.primary_character or 'gary')|capitalize }}
                         </p>
