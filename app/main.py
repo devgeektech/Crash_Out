@@ -925,7 +925,7 @@ def system_health():
     from app.storage import s3_service
     from app.temporal_setup import TEMPORAL_HOST
 
-    db_status = "postgresql" if is_postgres() else "sqlite"
+    db_status = "postgresql" if is_postgres() else "disconnected"
     return {
         "status": "healthy",
         "database": {

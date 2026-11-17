@@ -1,43 +1,35 @@
 """
-Database connection, session management, and schema initialization.
-Supports PostgreSQL (via psycopg2) when DATABASE_URL is set, with graceful
-fallback to SQLite for zero-config offline development.
+Database connection, session management, and schema initialization for PostgreSQL.
 """
 from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from app.paths import PROJECT_ROOT
+import psycopg2
+import psycopg2.extras
 
 logger = logging.getLogger("app.db")
-
-DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-DEFAULT_DB_PATH = os.path.join(DATA_DIR, "app.db")
 
 _lock = threading.RLock()
 _initialized = False
 
 
 def database_url() -> str:
+    """Return the configured PostgreSQL connection string."""
     return (os.getenv("DATABASE_URL") or "").strip()
 
 
 def is_postgres() -> bool:
+    """Check if PostgreSQL connection URL is configured."""
     return bool(database_url())
 
 
-def db_path() -> str:
-    override = (os.getenv("APP_DB_PATH") or "").strip()
-    return override or DEFAULT_DB_PATH
-
-
 class DictCursorWrapper:
-    """Wrapper to make PostgreSQL cursor results behave like SQLite Rows (dictionary/key access)."""
+    """Wrapper to make PostgreSQL cursor results behave with dictionary/key access."""
 
     def __init__(self, cursor):
         self._cursor = cursor
@@ -72,33 +64,27 @@ class DictCursorWrapper:
 
 
 class DBConnectionWrapper:
-    """Unified wrapper around sqlite3.Connection and psycopg2.connection.
+    """Connection wrapper around psycopg2.connection.
 
-    Converts '?' parameter placeholders to '%s' when targeting PostgreSQL,
-    so application code can use consistent query patterns.
+    Converts '?' parameter placeholders to '%s' so existing query patterns
+    continue to work seamlessly with psycopg2.
     """
 
-    def __init__(self, raw_conn, is_pg: bool):
+    def __init__(self, raw_conn):
         self._conn = raw_conn
-        self._is_pg = is_pg
+        self._is_pg = True
 
     def execute(self, query: str, params: Optional[Tuple[Any, ...]] = None):
-        if self._is_pg:
-            # Convert ? placeholders to %s for PostgreSQL
-            pg_query = query.replace("?", "%s")
-            cur = self._conn.cursor()
-            cur.execute(pg_query, params or ())
-            return DictCursorWrapper(cur)
-        else:
-            return self._conn.execute(query, params or ())
+        # Convert ? placeholders to %s for PostgreSQL
+        pg_query = query.replace("?", "%s")
+        cur = self._conn.cursor()
+        cur.execute(pg_query, params or ())
+        return DictCursorWrapper(cur)
 
     def executescript(self, script: str):
-        if self._is_pg:
-            cur = self._conn.cursor()
-            cur.execute(script)
-            cur.close()
-        else:
-            self._conn.executescript(script)
+        cur = self._conn.cursor()
+        cur.execute(script)
+        cur.close()
 
     def commit(self):
         self._conn.commit()
@@ -110,48 +96,24 @@ class DBConnectionWrapper:
         self._conn.close()
 
 
-def _connect_sqlite() -> sqlite3.Connection:
-    path = db_path()
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
 def _connect_postgres():
     url = database_url()
+    if not url:
+        raise RuntimeError("DATABASE_URL environment variable is not set. PostgreSQL is required.")
     try:
-        import psycopg2
-        import psycopg2.extras
-
         conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
         return conn
     except Exception as exc:
-        logger.warning("PostgreSQL connection to %s failed: %s. Falling back to SQLite.", url, exc)
-        return None
+        logger.error("Failed to connect to PostgreSQL at %s: %s", url, exc)
+        raise RuntimeError(f"Could not connect to PostgreSQL: {exc}") from exc
 
 
 @contextmanager
 def get_conn() -> Iterator[DBConnectionWrapper]:
+    """Yield a PostgreSQL connection context with transaction commit/rollback."""
     with _lock:
-        if is_postgres():
-            pg_conn = _connect_postgres()
-            if pg_conn is not None:
-                wrapper = DBConnectionWrapper(pg_conn, is_pg=True)
-                try:
-                    yield wrapper
-                    wrapper.commit()
-                except Exception:
-                    wrapper.rollback()
-                    raise
-                finally:
-                    wrapper.close()
-                return
-
-        # Fallback / Default SQLite
-        raw_sqlite = _connect_sqlite()
-        wrapper = DBConnectionWrapper(raw_sqlite, is_pg=False)
+        pg_conn = _connect_postgres()
+        wrapper = DBConnectionWrapper(pg_conn)
         try:
             yield wrapper
             wrapper.commit()
@@ -163,95 +125,146 @@ def get_conn() -> Iterator[DBConnectionWrapper]:
 
 
 def init_db() -> None:
-    """Create auth, settings, and core application schema in PostgreSQL or SQLite."""
+    """Create schema and apply all pending migrations with version history in PostgreSQL."""
     global _initialized
-    with get_conn() as conn:
-        if conn._is_pg:
-            # PostgreSQL Schema
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    email VARCHAR(255) NOT NULL UNIQUE,
-                    password_hash TEXT NOT NULL,
-                    display_name VARCHAR(255) NOT NULL DEFAULT '',
-                    created_at DOUBLE PRECISION NOT NULL,
-                    updated_at DOUBLE PRECISION NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS user_settings (
-                    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    vidu_api_key_enc TEXT NOT NULL DEFAULT '',
-                    vidu_email VARCHAR(255) NOT NULL DEFAULT '',
-                    vidu_model VARCHAR(100) NOT NULL DEFAULT '',
-                    vidu_reference_model VARCHAR(100) NOT NULL DEFAULT '',
-                    vidu_resolution VARCHAR(50) NOT NULL DEFAULT '',
-                    updated_at DOUBLE PRECISION NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS episodes (
-                    id VARCHAR(100) PRIMARY KEY,
-                    title VARCHAR(255) NOT NULL,
-                    status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
-                    current_gateway INTEGER NOT NULL DEFAULT 1,
-                    cultural_hook TEXT DEFAULT '',
-                    merch_punchline TEXT DEFAULT '',
-                    payload JSONB DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ DEFAULT NOW()
-                );
-
-                CREATE TABLE IF NOT EXISTS system_audit_logs (
-                    id SERIAL PRIMARY KEY,
-                    event_type VARCHAR(100) NOT NULL,
-                    actor VARCHAR(100) DEFAULT 'system',
-                    details JSONB DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-                CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
-                """
-            )
-            logger.info("Initialized PostgreSQL application tables (users, user_settings, episodes, audit_logs).")
-        else:
-            # SQLite Schema
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                    password_hash TEXT NOT NULL,
-                    display_name TEXT NOT NULL DEFAULT '',
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS user_settings (
-                    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                    vidu_api_key_enc TEXT NOT NULL DEFAULT '',
-                    vidu_email TEXT NOT NULL DEFAULT '',
-                    vidu_model TEXT NOT NULL DEFAULT '',
-                    vidu_reference_model TEXT NOT NULL DEFAULT '',
-                    vidu_resolution TEXT NOT NULL DEFAULT '',
-                    updated_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS episodes (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'DRAFT',
-                    current_gateway INTEGER NOT NULL DEFAULT 1,
-                    cultural_hook TEXT DEFAULT '',
-                    merch_punchline TEXT DEFAULT '',
-                    payload TEXT DEFAULT '{}',
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-                """
-            )
-            logger.info("Initialized SQLite application tables (users, user_settings, episodes).")
-
+    from app.migrations import run_migrations
+    applied = run_migrations()
+    if applied:
+        logger.info("Applied %d database migration(s) on startup.", len(applied))
+    else:
+        logger.info("PostgreSQL database schema is up to date.")
     _initialized = True
+
+
+# ---------------------------------------------------------------------------
+# Database Helper Functions for Episodes, Pitches & Scripts
+# ---------------------------------------------------------------------------
+
+def save_episode_to_db(
+    episode_id: str,
+    title: str,
+    status: str = "DRAFT",
+    tokens: int = 0,
+    *,
+    episode_number: int = 0,
+    current_gateway: int = 1,
+    cultural_hook: str = "",
+    merch_punchline: str = "",
+    payload: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Insert or update an episode with Title, Status, and Tokens in PostgreSQL."""
+    import json
+    payload_json = json.dumps(payload or {})
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO episodes (
+                id, title, status, tokens, episode_number, current_gateway,
+                cultural_hook, merch_punchline, payload, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                status = EXCLUDED.status,
+                tokens = EXCLUDED.tokens,
+                episode_number = EXCLUDED.episode_number,
+                current_gateway = EXCLUDED.current_gateway,
+                cultural_hook = EXCLUDED.cultural_hook,
+                merch_punchline = EXCLUDED.merch_punchline,
+                payload = EXCLUDED.payload,
+                updated_at = NOW()
+            """,
+            (episode_id, title, status, int(tokens), int(episode_number), int(current_gateway), cultural_hook, merch_punchline, payload_json),
+        )
+
+
+def save_pitches_to_db(
+    episode_id: str,
+    pitches: List[Dict[str, Any]],
+    selected_pitch_number: Optional[int] = None,
+) -> None:
+    """
+    Save the 5 pitches for an episode in PostgreSQL.
+    Sets is_selected to True for the chosen pitch number.
+    """
+    import json
+
+    with get_conn() as conn:
+        conn.execute("DELETE FROM pitches WHERE episode_id = ?", (episode_id,))
+
+        for idx, pitch in enumerate(pitches[:5], start=1):
+            p_num = int(pitch.get("pitch_number") or idx)
+            is_sel = bool(pitch.get("is_selected") or (selected_pitch_number == p_num))
+            title = str(pitch.get("title") or pitch.get("headline") or f"Pitch {p_num}")
+            hook = str(pitch.get("hook") or pitch.get("cultural_hook") or "")
+            synopsis = str(pitch.get("synopsis") or pitch.get("description") or "")
+            target_audience = str(pitch.get("target_audience") or pitch.get("youth_sentiment_summary") or "")
+            merch_idea = str(pitch.get("merch_idea") or pitch.get("merch_punchline") or "")
+            payload_json = json.dumps(pitch)
+
+            conn.execute(
+                """
+                INSERT INTO pitches (
+                    episode_id, pitch_number, title, hook, synopsis,
+                    target_audience, merch_idea, is_selected, payload, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW())
+                """,
+                (episode_id, p_num, title, hook, synopsis, target_audience, merch_idea, is_sel, payload_json),
+            )
+
+
+def update_selected_pitch(episode_id: str, pitch_number: int) -> None:
+    """Update selected pitch to is_selected = True and reset others to False in PostgreSQL."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE pitches
+            SET is_selected = (pitch_number = ?), updated_at = NOW()
+            WHERE episode_id = ?
+            """,
+            (int(pitch_number), episode_id),
+        )
+
+
+def save_scripts_to_db(episode_id: str, scenes: List[Dict[str, Any]]) -> None:
+    """
+    Store all scripts for the 4 video scenes for the given episode in PostgreSQL.
+    """
+    import json
+
+    with get_conn() as conn:
+        for idx, scene in enumerate(scenes[:4], start=1):
+            v_num = int(scene.get("video_number") or scene.get("scene_id") or idx)
+            title = str(scene.get("scene_title") or scene.get("title") or f"Scene {v_num}")
+            character = str(scene.get("character") or scene.get("character_id") or "")
+            dialogue = str(scene.get("dialogue") or scene.get("dialogue_text") or scene.get("text") or "")
+            visual = str(scene.get("visual_prompt") or scene.get("prompt") or scene.get("video_prompt") or "")
+            audio = str(scene.get("audio_prompt") or scene.get("audio") or "")
+            duration = int(scene.get("duration_sec") or scene.get("duration") or 15)
+            payload_json = json.dumps(scene)
+
+            conn.execute(
+                """
+                INSERT INTO scripts (
+                    episode_id, video_number, scene_title, character, dialogue,
+                    visual_prompt, audio_prompt, duration_sec, payload, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, NOW())
+                ON CONFLICT (episode_id, video_number) DO UPDATE SET
+                    scene_title = EXCLUDED.scene_title,
+                    character = EXCLUDED.character,
+                    dialogue = EXCLUDED.dialogue,
+                    visual_prompt = EXCLUDED.visual_prompt,
+                    audio_prompt = EXCLUDED.audio_prompt,
+                    duration_sec = EXCLUDED.duration_sec,
+                    payload = EXCLUDED.payload,
+                    updated_at = NOW()
+                """,
+                (episode_id, v_num, title, character, dialogue, visual, audio, duration, payload_json),
+            )
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    init_db()
+    print("PostgreSQL tables initialized successfully.")

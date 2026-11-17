@@ -9,25 +9,41 @@ import time
 from typing import List, Dict, Any, Optional
 import imageio_ffmpeg
 
-def merge_scene_videos(scene_video_paths: List[str], output_path: str) -> Dict[str, Any]:
+def merge_scene_videos(
+    scene_video_paths: List[str],
+    output_path: str,
+    intro_path: Optional[str] = None,
+    outro_path: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Concatenates a list of scene MP4 files into a single merged master video.
+    Optionally prepends intro_path and appends outro_path if provided.
     
     Args:
         scene_video_paths: List of absolute file paths to sequential scene MP4s (e.g. 4 clips).
         output_path: Absolute destination path for the merged master MP4.
+        intro_path: Optional absolute file path to intro video.
+        outro_path: Optional absolute file path to outro video.
         
     Returns:
         Dict with status, output_path, duration_sec, file_size_bytes, and error if any.
     """
     start_time = time.time()
     
-    if not scene_video_paths:
+    # Collect all paths including optional intro and outro
+    all_paths: List[str] = []
+    if intro_path and os.path.isfile(intro_path) and os.path.getsize(intro_path) > 1000:
+        all_paths.append(intro_path)
+    all_paths.extend(scene_video_paths or [])
+    if outro_path and os.path.isfile(outro_path) and os.path.getsize(outro_path) > 1000:
+        all_paths.append(outro_path)
+
+    if not all_paths:
         return {"success": False, "error": "No scene video paths provided for merging."}
     
     # Verify all input files exist
     valid_paths = []
-    for p in scene_video_paths:
+    for p in all_paths:
         if p and os.path.exists(p) and os.path.getsize(p) > 1000:
             valid_paths.append(p)
         else:

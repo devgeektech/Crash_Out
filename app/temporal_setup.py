@@ -79,8 +79,11 @@ try:
         logger.info("[Temporal Activity] Merging episode video for %s...", episode_id)
         ep = state_manager.get_episode(episode_id)
         if ep:
-            output_path, count = merge_scene_videos(ep)
-            return {"output_path": output_path, "count": count, "status": "SUCCESS"}
+            from app.main import merge_episode_scenes
+            res = merge_episode_scenes(ep)
+            if res.get("success"):
+                return {"output_path": ep.merged_video_url or res.get("output_path"), "count": len(ep.scene_videos), "status": "SUCCESS"}
+            return {"status": "FAILED", "error": res.get("error")}
         return {"status": "FAILED", "error": "Episode not found"}
 
     @activity.defn
