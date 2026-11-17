@@ -3,9 +3,12 @@ Jinja + HTMX UI helpers and routes for the Crash Out HITL hub.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger("app.ui")
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -1258,9 +1261,26 @@ def ui_reset_episode(request: Request):
 
 
 @router.post("/ui/concepts/refresh", response_class=HTMLResponse)
-def ui_refresh_concepts(request: Request):
+@router.post("/ui/scheduler/mock-run", response_class=HTMLResponse)
+def ui_mock_scheduler_run(request: Request):
+    """Manually triggers the Agent 0 daily scheduler (which normally runs daily at 6:00 AM UTC)."""
+    from app.trends.scheduler import run_daily_agent0_job
+    from app.db import save_pitches_to_db
+
     ep = _ensure_episode()
-    ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
+    try:
+        run_res = run_daily_agent0_job()
+        pitches = run_res.get("pitches") or []
+        if pitches:
+            ep.available_concepts = pitches
+            try:
+                save_pitches_to_db(ep.id, pitches)
+            except Exception as dberr:
+                logger.debug("Failed to persist scheduler pitches to DB: %s", dberr)
+    except Exception as exc:
+        logger.warning("Mock scheduler run fallback: %s", exc)
+        ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
+
     titles = [
         str(c.get("headline") or c.get("title") or "")
         for c in (ep.available_concepts or [])[:5]
@@ -1268,14 +1288,14 @@ def ui_refresh_concepts(request: Request):
     detail = ", ".join(t for t in titles if t) or "5 pitches"
     orchestrator.log(
         ep.id,
-        f"Agent 0 friction run → Top pitches: {detail}",
+        f"Mock Scheduler manually executed (06:00 UTC job) → Top pitches: {detail}",
     )
     state_manager.save()
     return render(
         request,
         "partials/htmx_workspace.html",
         viewing_stage=1,
-        toast="Pitches refreshed",
+        toast="Mock Scheduler executed (6:00 AM UTC job ran)",
         toast_kind="ok",
     )
 

@@ -1,5 +1,5 @@
 """
-Daily Agent 0 cadence — 06:00 America/New_York via APScheduler.
+Daily Agent 0 cadence — 06:00 UTC via APScheduler.
 
 Enable with AGENT0_SCHEDULE_ENABLED=true (default false in local POC).
 """
@@ -57,18 +57,20 @@ def start_agent0_scheduler() -> Optional[Any]:
 
     hour = 6
     minute = 0
+    timezone = "UTC"
     try:
         import os
 
         hour = int(os.getenv("AGENT0_SCHEDULE_HOUR", "6"))
         minute = int(os.getenv("AGENT0_SCHEDULE_MINUTE", "0"))
+        timezone = (os.getenv("AGENT0_SCHEDULE_TIMEZONE", "UTC") or "UTC").strip()
     except ValueError:
         pass
 
-    sched = BackgroundScheduler(timezone="America/New_York")
+    sched = BackgroundScheduler(timezone=timezone)
     sched.add_job(
         run_daily_agent0_job,
-        CronTrigger(hour=hour, minute=minute, timezone="America/New_York"),
+        CronTrigger(hour=hour, minute=minute, timezone=timezone),
         id="agent0_daily",
         replace_existing=True,
         max_instances=1,
@@ -77,9 +79,10 @@ def start_agent0_scheduler() -> Optional[Any]:
     sched.start()
     _scheduler = sched
     logger.info(
-        "Agent 0 scheduler started — daily %02d:%02d America/New_York",
+        "Agent 0 scheduler started — daily %02d:%02d %s",
         hour,
         minute,
+        timezone,
     )
     return sched
 
