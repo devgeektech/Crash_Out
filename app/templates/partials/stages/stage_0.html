@@ -4,38 +4,16 @@
             <h1 class="panel-title">Studio queue</h1>
         </div>
         <div class="panel-actions">
-            <details class="video-add-details">
-                <summary class="btn btn-primary btn-sm">Add</summary>
-                <form
-                    class="video-add-form"
-                    hx-post="/ui/queue/add"
-                    hx-target="#workspace"
-                    hx-swap="outerHTML"
-                    hx-indicator="#busy"
-                >
-                    <div class="field">
-                        <label for="manual-video-title">Title</label>
-                        <input
-                            id="manual-video-title"
-                            type="text"
-                            name="title"
-                            placeholder="New video title"
-                            required
-                            autofocus
-                        >
-                    </div>
-                    <div class="field">
-                        <label for="manual-video-subtitle">Subtitle</label>
-                        <input
-                            id="manual-video-subtitle"
-                            type="text"
-                            name="subtitle"
-                            placeholder="Short description (optional)"
-                        >
-                    </div>
-                    <button class="btn btn-primary btn-sm" type="submit">Add video</button>
-                </form>
-            </details>
+            <button
+                class="btn btn-primary btn-sm"
+                hx-post="/ui/queue/mockup"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                title="Mockup 06:00 UTC scheduler: Ingest trends, generate 5 pitches & add video"
+            >
+                Mockup
+            </button>
         </div>
     </div>
 

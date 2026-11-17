@@ -96,6 +96,33 @@ def init_store() -> None:
                 )
                 """
             )
+            # Dedicated table for generated pitch uniqueness & validation
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS generated_pitches (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    run_date TEXT NOT NULL,
+                    rank INT,
+                    headline TEXT NOT NULL,
+                    youth_sentiment_summary TEXT,
+                    crash_out_angle TEXT NOT NULL,
+                    proposed_merch_hook TEXT,
+                    sensitivity_flag TEXT DEFAULT 'SAFE',
+                    consensus_score FLOAT DEFAULT 0.0,
+                    sources JSONB,
+                    score_breakdown JSONB,
+                    embedding {embedding_type},
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+            if has_vector:
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_pitches_embedding 
+                    ON generated_pitches USING hnsw (embedding vector_cosine_ops)
+                    """
+                )
         logger.info("Agent 0 Postgres store ready (vector_support=%s)", has_vector)
     except Exception as exc:
         logger.warning("Agent 0 Postgres init failed: %s", exc)
@@ -129,11 +156,85 @@ def save_pitch_run(run: Dict[str, Any]) -> Dict[str, Any]:
                     "INSERT INTO agent0_pitch_runs (run_date, payload) VALUES (%s, %s)",
                     (cleaned["run_date"], json.dumps(cleaned)),
                 )
+                # Also store individual pitches into generated_pitches
+                for p in cleaned.get("pitches") or []:
+                    emb = p.get("embedding")
+                    vec = emb if (isinstance(emb, list) and len(emb) == 1536) else None
+                    cur.execute(
+                        """
+                        INSERT INTO generated_pitches 
+                        (run_date, rank, headline, youth_sentiment_summary, crash_out_angle, 
+                         proposed_merch_hook, sensitivity_flag, consensus_score, sources, score_breakdown, embedding)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            cleaned["run_date"],
+                            p.get("rank"),
+                            p.get("headline") or "",
+                            p.get("youth_sentiment_summary") or "",
+                            p.get("crash_out_angle") or "",
+                            p.get("proposed_merch_hook") or "",
+                            p.get("sensitivity_flag") or "SAFE",
+                            p.get("consensus_score") or 0.0,
+                            json.dumps(p.get("sources") or {}),
+                            json.dumps(p.get("score_breakdown") or {}),
+                            vec,
+                        ),
+                    )
         except Exception as exc:
             logger.warning("Failed to persist pitch run to Postgres: %s", exc)
         finally:
             conn.close()
     return cleaned
+
+
+def find_similar_pitches(
+    embedding: List[float],
+    *,
+    threshold: float = 0.82,
+    limit: int = 5,
+    days: int = 60,
+) -> List[Dict[str, Any]]:
+    """
+    Search historical pitches using pgvector cosine similarity (<=> operator).
+    Returns pitches with similarity (1 - distance) >= threshold.
+    """
+    if not embedding or len(embedding) != 1536:
+        return []
+    conn = _pg_conn()
+    if not conn:
+        return []
+    similar: List[Dict[str, Any]] = []
+    try:
+        with conn, conn.cursor() as cur:
+            # Note: 1 - (embedding <=> vec) is cosine similarity
+            cur.execute(
+                """
+                SELECT 
+                    id, headline, crash_out_angle, run_date,
+                    1 - (embedding <=> %s::vector) AS similarity
+                FROM generated_pitches
+                WHERE embedding IS NOT NULL
+                  AND created_at >= NOW() - (%s || ' days')::interval
+                  AND 1 - (embedding <=> %s::vector) >= %s
+                ORDER BY embedding <=> %s::vector ASC
+                LIMIT %s;
+                """,
+                (embedding, str(int(days)), embedding, threshold, embedding, limit),
+            )
+            for row in cur.fetchall() or []:
+                similar.append({
+                    "id": str(row[0]),
+                    "headline": row[1],
+                    "crash_out_angle": row[2],
+                    "run_date": row[3],
+                    "similarity": round(float(row[4]), 4),
+                })
+    except Exception as exc:
+        logger.debug("pgvector similarity search failed: %s", exc)
+    finally:
+        conn.close()
+    return similar
 
 
 def load_latest_pitch_run() -> Optional[Dict[str, Any]]:

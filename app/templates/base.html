@@ -20,7 +20,14 @@
     </div>
 
     <div class="app-shell">
-        <aside class="site-sidebar" aria-label="App navigation">
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="site-sidebar">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+        </button>
+        <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
+        <aside id="site-sidebar" class="site-sidebar" aria-label="App navigation">
             <a class="brand" href="/">
                 <div class="brand-mark" aria-hidden="true">
                     <img src="/static/assets/brand/crash_out_badge.jpg" alt="">
@@ -38,7 +45,7 @@
                 </a>
                 <a class="nav-link {% if page == 'studio' %}active{% endif %}" href="/studio?stage=0">
                     <span class="nav-icon" aria-hidden="true">▶</span>
-                    <span class="nav-label">Studio</span>
+                    <span class="nav-label">Agent Studio</span>
                 </a>
                 <a class="nav-link {% if page == 'episodes' %}active{% endif %}" href="/episodes">
                     <span class="nav-icon" aria-hidden="true">☰</span>
@@ -46,7 +53,7 @@
                 </a>
                 <a class="nav-link {% if page == 'characters' %}active{% endif %}" href="/characters">
                     <span class="nav-icon" aria-hidden="true">◎</span>
-                    <span class="nav-label">Characters</span>
+                    <span class="nav-label">Characters Library</span>
                 </a>
                 <a class="nav-link {% if page == 'settings' %}active{% endif %}" href="/settings">
                     <span class="nav-icon" aria-hidden="true">⚙</span>

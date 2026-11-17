@@ -102,7 +102,7 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
     api_key = (config.openai_api_key or "").strip()
     if not api_key or not clusters:
         return []
-    model = (config.openai_model or "gpt-4o-mini").strip()
+    model = (config.openai_model or "gpt-6-luna").strip()
     brief = "\n\n".join(_cluster_brief(c, i) for i, c in enumerate(clusters[:18], 1))
     user = (
         "Score these event clusters for CRASH OUT daily pitch cards. "
@@ -288,20 +288,88 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
 
 
 def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
+    from app.trends.cluster import embed_texts, cosine
+    from app.trends.store import find_similar_pitches
+
     scored = score_clusters_with_llm(clusters, run_date=run_date)
-    if len(scored) >= 3:
-        return scored[:5]
-    heuristic = score_clusters_heuristic(clusters, run_date=run_date)
-    if scored:
-        # Fill remaining slots from heuristic
-        seen = {str(p.get("headline") or "").lower() for p in scored}
+    candidates = list(scored) if len(scored) >= 3 else []
+    if not candidates:
+        heuristic = score_clusters_heuristic(clusters, run_date=run_date)
+        candidates = heuristic
+
+    # Fill remaining slots from heuristic if needed
+    if scored and len(candidates) < 10:
+        heuristic = score_clusters_heuristic(clusters, run_date=run_date)
+        seen = {str(p.get("headline") or "").lower() for p in candidates}
         for p in heuristic:
-            if str(p.get("headline") or "").lower() in seen:
-                continue
-            scored.append(p)
-            if len(scored) >= 5:
+            if str(p.get("headline") or "").lower() not in seen:
+                candidates.append(p)
+                seen.add(str(p.get("headline") or "").lower())
+
+    # Generate embeddings for candidate pitches for similarity validation
+    pitch_texts = [
+        f"{p.get('headline') or ''}. {p.get('youth_sentiment_summary') or ''} {p.get('crash_out_angle') or ''}"
+        for p in candidates
+    ]
+    embeddings = embed_texts(pitch_texts) or []
+
+    valid_pitches: List[Dict[str, Any]] = []
+    accepted_embeddings: List[List[float]] = []
+
+    for i, p in enumerate(candidates):
+        emb = embeddings[i] if (embeddings and i < len(embeddings)) else None
+        is_duplicate = False
+
+        if emb and len(emb) == 1536:
+            # 1. Intra-batch uniqueness check against already accepted pitches in this run
+            for prev_emb in accepted_embeddings:
+                sim = cosine(emb, prev_emb)
+                if sim >= 0.82:
+                    logger.info("Skipping candidate pitch '%s' - too similar to current batch (%.2f)", p.get("headline"), sim)
+                    is_duplicate = True
+                    break
+
+            # 2. Historical database check via pgvector
+            if not is_duplicate:
+                similar_hist = find_similar_pitches(emb, threshold=0.82, limit=1)
+                if similar_hist:
+                    matched = similar_hist[0]
+                    logger.info(
+                        "Skipping candidate pitch '%s' - matches historical pitch '%s' (similarity: %s)",
+                        p.get("headline"),
+                        matched.get("headline"),
+                        matched.get("similarity"),
+                    )
+                    is_duplicate = True
+
+            if not is_duplicate:
+                p["embedding"] = emb
+                accepted_embeddings.append(emb)
+        else:
+            # Fallback when embeddings are not available: Jaccard text comparison
+            from app.trends.cluster import jaccard
+            p_text = pitch_texts[i]
+            for prev_p in valid_pitches:
+                prev_text = f"{prev_p.get('headline') or ''}. {prev_p.get('crash_out_angle') or ''}"
+                if jaccard(p_text, prev_text) >= 0.65:
+                    is_duplicate = True
+                    break
+
+        if not is_duplicate:
+            valid_pitches.append(p)
+            if len(valid_pitches) >= 5:
                 break
-        for i, p in enumerate(scored[:5], 1):
-            p["rank"] = i
-        return scored[:5]
-    return heuristic
+
+    # If strict filtering left us with fewer than 5, backfill from remaining candidates to keep system resilient
+    if len(valid_pitches) < 5:
+        existing_ids = {p.get("cluster_id") or p.get("headline") for p in valid_pitches}
+        for p in candidates:
+            ident = p.get("cluster_id") or p.get("headline")
+            if ident not in existing_ids:
+                valid_pitches.append(p)
+                if len(valid_pitches) >= 5:
+                    break
+
+    for i, p in enumerate(valid_pitches[:5], 1):
+        p["rank"] = i
+    return valid_pitches[:5]

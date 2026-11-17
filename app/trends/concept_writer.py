@@ -53,7 +53,7 @@ def _write_with_openai(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     api_key = (config.openai_api_key or "").strip()
     if not api_key:
         return []
-    model = (config.openai_model or "gpt-4o-mini").strip()
+    model = (config.openai_model or "gpt-6-luna").strip()
     user = (
         "Using these latest US cultural signals (last ~24-48h), invent exactly 3 "
         "original CRASH OUT episode concepts. Cite 2-4 source_trends titles from "

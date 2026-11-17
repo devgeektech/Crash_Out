@@ -98,25 +98,6 @@
                     </label>
                 </div>
 
-                <div class="field-row settings-vidu-row">
-                    <label class="field">
-                        <span class="field-label">Model</span>
-                        <select class="input" name="vidu_model">
-                            {% for value, label in vidu_model_options %}
-                            <option value="{{ value }}" {% if value == selected_vidu_model %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="field">
-                        <span class="field-label">Reference model</span>
-                        <select class="input" name="vidu_reference_model">
-                            {% for value, label in vidu_reference_model_options %}
-                            <option value="{{ value }}" {% if value == selected_vidu_reference_model %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </div>
-
                 <div class="settings-actions">
                     <button class="btn btn-primary" type="submit">Save Vidu settings</button>
                 </div>

@@ -3,7 +3,35 @@
 Living log of meaningful project changes. Keep this updated as work lands.  
 Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md).
 
-**Refs:** [JD_RFP_CRASH_OUT.md](JD_RFP_CRASH_OUT.md) (idea) · [ARCHITECTURE.md](ARCHITECTURE.md) · `README.md`
+**Refs:** [JD_RFP_CRASH_OUT.md](JD_RFP_CRASH_OUT.md) (idea) · [ARCHITECTURE.md](ARCHITECTURE.md) · `README.md` · `AGENTS.md`
+
+---
+
+### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
+
+Completed:
+- **JWT Authentication**: Implemented JSON Web Token (JWT) authentication for login. Tokens are generated upon login and accepted via both `Authorization: Bearer <token>` headers (for API clients) and secure HTTP-only cookies (`crashout_jwt`) for web UI session persistence. Added `POST /api/auth/token` API endpoint for programmatic token generation.
+- **LLM Model Upgrade**: Set default OpenAI model to `gpt-6-luna` across `.env`, `.env.example`, `app/config.py`, `app/trends/concept_writer.py`, and `app/trends/friction.py`.
+- **Cleaned Mockup & Test Artifacts**: Purged all mock test directories (`ep_mock_test`, test episodes `ep_1794*`, dummy `.mp4` chunks, stale pitch caches) and reset `pipeline_index.json` and `custom_catalog.json` to clean state.
+- **Clean Gateway 1 Pitches Page**: Removed redundant "Mock Scheduler" button from Stage 1 (Top Friction Pitches) action bar so the single canonical mock runner lives on the Studio Queue ("Mockup" button).
+- **Studio Queue Mockup Scheduler Button**: Replaced manual "Add" dropdown in Stage 0 Studio Queue with a one-click **"Mockup"** button that executes the full daily 06:00 UTC scheduler pipeline (fetches live Layer A/B/C trends, runs clustering, friction scoring, vector deduplication), creates a new video entry in the queue, and immediately loads all 5 generated Pitch Cards in Gateway 1.
+- **Free Direct Data Providers ($0 Cost Optimization)**:
+  - Google Trends US: Using free Google Trends US RSS feed (`https://trends.google.com/trending/rss?geo=US`).
+  - Mainstream US News: Direct free RSS feeds from AP, Reuters, CNN, Fox News, NY Post, Morning Brew, The Verge, and Google News US without requiring SerpApi / SearchApi paid plans.
+  - Reddit: Official free Reddit PRAW API and public JSON listing fallback for target subreddits.
+  - YouTube: Official YouTube Data API v3 (free tier).
+  - Know Your Meme: Official direct RSS feed (`https://knowyourmeme.com/newsfeed.rss`).
+- **Docker Compose Stack**: Created `docker-compose.yml` and `docker/init-scripts/01-init.sql` combining PostgreSQL 16 (`pgvector/pgvector:pg16`), Temporal Auto-Setup Server, and Temporal UI.
+- **Pgvector Pitch Deduplication**: Enhanced `store.py` and `friction.py` with cosine similarity vector comparison ($\ge 0.82$) preventing duplicate pitches within current batches and against historical runs.
+- **06:00 UTC Scheduled Runs**: Configured dual daily schedule via Temporal native schedule (`DailyAgent0Workflow` on `0 6 * * *`) and APScheduler fallback.
+- **Temporal S3 Video Sync**: Added `sync_episode_videos_to_s3_activity` to upload rendered scenes and master merged 9:16 videos directly to Amazon S3.
+- **UI & Navigation Modernization**:
+  - Renamed *Studio* -> *Agent Studio* and *Characters* -> *Characters Library*.
+  - Simplified Settings: Removed deprecated *Model* and *Reference model* dropdowns from Vidu settings.
+  - Sidebar Layout: Fixed sidebar to left across viewports; converted to 3-line hamburger drawer on screens $\le 980\text{px}$.
+  - Episodes Management: Updated table column header from *Production* to *Status*.
+  - Typography: Enforced bold headers (`h1`–`h6` & `<th>`) and clean unbolded table body cells (`td`).
+- **Developer Guidelines**: Created `AGENTS.md` specifying architecture, patterns, fallback rules, and session logging protocols.
 
 ---
 

@@ -206,6 +206,61 @@
         }
     });
 
+    // Mobile / Narrow Sidebar Toggle (Hamburger menu)
+    function setupSidebarToggle() {
+        const toggleBtn = document.getElementById("sidebar-toggle");
+        const sidebar = document.getElementById("site-sidebar");
+        const backdrop = document.getElementById("sidebar-backdrop");
+
+        if (!toggleBtn || !sidebar) return;
+
+        function closeSidebar() {
+            sidebar.classList.remove("sidebar-open");
+            if (backdrop) backdrop.classList.remove("show");
+            toggleBtn.setAttribute("aria-expanded", "false");
+        }
+
+        function openSidebar() {
+            sidebar.classList.add("sidebar-open");
+            if (backdrop) backdrop.classList.add("show");
+            toggleBtn.setAttribute("aria-expanded", "true");
+        }
+
+        toggleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (sidebar.classList.contains("sidebar-open")) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+
+        if (backdrop) {
+            backdrop.addEventListener("click", closeSidebar);
+        }
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && sidebar.classList.contains("sidebar-open")) {
+                closeSidebar();
+            }
+        });
+
+        // Close menu when clicking nav links on narrow screens
+        sidebar.querySelectorAll(".nav-link").forEach((link) => {
+            link.addEventListener("click", () => {
+                if (window.innerWidth <= 980) {
+                    closeSidebar();
+                }
+            });
+        });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupSidebarToggle);
+    } else {
+        setupSidebarToggle();
+    }
+
     document.body.addEventListener("htmx:responseError", () => {
         const toast = document.getElementById("toast");
         if (!toast) return;

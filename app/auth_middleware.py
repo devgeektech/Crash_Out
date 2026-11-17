@@ -16,8 +16,11 @@ from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.auth_users import User, apply_user_credentials_to_config, get_user_by_id
+from app.security import create_access_token, decode_access_token
 
 SESSION_USER_KEY = "user_id"
+JWT_COOKIE_NAME = "crashout_jwt"
+JWT_HEADER_PREFIX = "bearer "
 
 PUBLIC_EXACT: Set[str] = {
     "/login",
@@ -44,6 +47,28 @@ def is_public_path(path: str) -> bool:
 
 
 def current_user_id(request: Request) -> Optional[int]:
+    # 1. Check Authorization: Bearer <JWT>
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith(JWT_HEADER_PREFIX):
+        token = auth_header[len(JWT_HEADER_PREFIX):].strip()
+        payload = decode_access_token(token)
+        if payload and payload.get("sub"):
+            try:
+                return int(payload["sub"])
+            except (ValueError, TypeError):
+                pass
+
+    # 2. Check JWT cookie
+    jwt_cookie = request.cookies.get(JWT_COOKIE_NAME)
+    if jwt_cookie:
+        payload = decode_access_token(jwt_cookie)
+        if payload and payload.get("sub"):
+            try:
+                return int(payload["sub"])
+            except (ValueError, TypeError):
+                pass
+
+    # 3. Fallback to session cookie
     raw = request.session.get(SESSION_USER_KEY)
     try:
         return int(raw) if raw is not None else None
@@ -63,16 +88,21 @@ def get_current_user(request: Request) -> Optional[User]:
     return user
 
 
-def login_user(request: Request, user: User) -> None:
+def login_user(request: Request, user: User) -> str:
+    """Logs in user, sets session, configures user creds, and returns signed JWT access token."""
     request.session.clear()
     request.session[SESSION_USER_KEY] = int(user.id)
     request.state.user = user
     apply_user_credentials_to_config(user.id)
+    token = create_access_token(user_id=user.id, email=user.email)
+    request.state.jwt_token = token
+    return token
 
 
 def logout_user(request: Request) -> None:
     request.session.clear()
     request.state.user = None
+    request.state.jwt_token = None
 
 
 def _wants_html(scope: Scope) -> bool:

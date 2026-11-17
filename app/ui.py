@@ -971,6 +971,68 @@ def _stage_for_selected_episode(ep: Episode) -> int:
     return stage
 
 
+@router.post("/ui/queue/mockup", response_class=HTMLResponse)
+def ui_mockup_queue_scheduler(request: Request):
+    """
+    Mockup the complete 06:00 UTC scheduler run:
+    1. Triggers Agent 0 to fetch live trends from all layers.
+    2. Clusters, friction-scores, and generates/deduplicates the Top 5 Pitch Cards.
+    3. Adds a new video in the queue with the 5 pitch cards attached and activates it in Gate 1.
+    """
+    from app.trends.scheduler import run_daily_agent0_job
+    from app.studio.naming import make_studio_episode_name
+    from app.trends.schema import pitches_to_concepts
+
+    try:
+        # Run the full scheduler pipeline
+        run = run_daily_agent0_job()
+        pitches = run.get("pitches") or []
+        concepts = pitches_to_concepts(run)
+
+        headline = pitches[0].get("headline") if pitches else "Daily Trend Ingest Run"
+        merch = pitches[0].get("proposed_merch_hook") if pitches else "Capitalism broke my dad"
+
+        # Create a catalog item for this scheduler mock run
+        item = add_manual_catalog_video(
+            title=headline,
+            subtitle=f"Agent 0 Mockup ({len(pitches)} Pitches) · {run.get('run_date')}",
+            merch=merch or "Capitalism broke my dad",
+        )
+
+        # Activate the episode and populate with the 5 generated pitch cards
+        catalog_id = str(item["id"])
+        ep = state_manager.create_episode(
+            title=make_studio_episode_name(),
+            engine="vidu",
+            catalog_id=catalog_id,
+            script_key=str(item.get("script_key") or catalog_id),
+        )
+        ep.available_concepts = concepts
+        if concepts:
+            ep.selected_concept = concepts[0]
+            if concepts[0].get("script_key"):
+                ep.script_key = str(concepts[0]["script_key"])
+
+        state_manager.save()
+        orchestrator.log(ep.id, f"Mockup scheduler executed: Generated {len(concepts)} pitch cards.")
+
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=1,  # Open directly to Gate 1 (Pitch Cards)
+            toast=f"Mockup complete · {len(concepts)} Pitches generated!",
+            toast_kind="ok",
+        )
+    except Exception as exc:
+        logger.exception("Queue mockup scheduler failed: %s", exc)
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=0,
+            error=f"Mockup scheduler error: {exc}",
+        )
+
+
 @router.post("/ui/queue/add", response_class=HTMLResponse)
 @router.post("/ui/catalog/add", response_class=HTMLResponse)
 def ui_add_catalog_video(

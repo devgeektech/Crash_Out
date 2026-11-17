@@ -47,12 +47,31 @@ try:
 
     @activity.defn
     async def run_trend_ingest_activity() -> Dict[str, Any]:
-        """Activity: Agent 0 fetches trends and scores friction."""
+        """Activity: Agent 0 fetches trends, scores friction, and validates pitch uniqueness via pgvector."""
         from app.agents.agent_0_trend_ingest import trend_ingest_agent
 
-        logger.info("[Temporal Activity] Executing Agent 0 Trend Ingestion...")
-        concepts = trend_ingest_agent.get_daily_concepts()
-        return {"concepts": concepts}
+        logger.info("[Temporal Activity] Executing Agent 0 Trend Ingestion & Pitch Deduplication...")
+        run = trend_ingest_agent.fetch_daily_pitches(force_refresh=True)
+        concepts = trend_ingest_agent.fetch_trending_concepts()
+        return {"run_date": run.get("run_date"), "pitches": run.get("pitches") or [], "concepts": concepts}
+
+    @activity.defn
+    async def sync_episode_videos_to_s3_activity(episode_id: str) -> Dict[str, Any]:
+        """Activity: Upload merged video and scene clips to Amazon S3."""
+        from app.state import state_manager
+        from app.storage import s3_storage
+
+        logger.info("[Temporal Activity] Syncing episode videos to S3 for episode %s...", episode_id)
+        if not s3_storage.is_configured:
+            logger.info("S3 storage not configured; skipping remote upload.")
+            return {"status": "SKIPPED", "reason": "S3 not configured"}
+
+        ep = state_manager.get_episode(episode_id)
+        if not ep:
+            return {"status": "FAILED", "error": "Episode not found"}
+
+        res = s3_storage.sync_episode_outputs(episode_id)
+        return {"status": "SUCCESS", "s3_sync": res}
 
     @activity.defn
     async def run_scriptwriter_activity(concept: Dict[str, Any]) -> Dict[str, Any]:
@@ -120,6 +139,19 @@ try:
         return {}
 
     @workflow.defn
+    class DailyAgent0Workflow:
+        """Temporal Workflow running daily Agent 0 trend ingestion and deduplicated pitch generation."""
+
+        @workflow.run
+        async def run(self) -> Dict[str, Any]:
+            logger.info("Executing scheduled DailyAgent0Workflow...")
+            result = await workflow.execute_activity(
+                run_trend_ingest_activity,
+                start_to_close_timeout=timedelta(minutes=8),
+            )
+            return result
+
+    @workflow.defn
     class CrashOutProductionWorkflow:
         """Temporal Workflow orchestrating end-to-end production with human approval pauses."""
 
@@ -170,6 +202,13 @@ try:
                 start_to_close_timeout=timedelta(minutes=5),
             )
 
+            # Sync processed episode assets & merged video to AWS S3
+            await workflow.execute_activity(
+                sync_episode_videos_to_s3_activity,
+                args=[episode_id],
+                start_to_close_timeout=timedelta(minutes=10),
+            )
+
             # Wait for Gateway 3 Human Approval (Video Review)
             await workflow.wait_condition(lambda: 3 in self.approved_gateways)
 
@@ -201,6 +240,48 @@ except Exception as _temporal_import_err:
     CrashOutProductionWorkflow = None  # type: ignore
 
 
+async def schedule_daily_agent0_cron():
+    """
+    Register a recurring Temporal Schedule for 06:00 UTC daily Agent 0 run.
+    Uses Temporal server's native Schedule client when available.
+    """
+    client = await get_temporal_client()
+    if not client:
+        return None
+
+    try:
+        from temporalio.client import Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
+
+        schedule_id = "agent0-daily-6am-utc"
+        try:
+            handle = client.get_schedule_handle(schedule_id)
+            desc = await handle.describe()
+            logger.info("Temporal Schedule '%s' already registered (status: active)", schedule_id)
+            return handle
+        except Exception:
+            # Not found; create it
+            pass
+
+        # Cron: 06:00 UTC every day -> minute 0, hour 6
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                DailyAgent0Workflow.run,
+                id=f"agent0-scheduled-run",
+                task_queue=TEMPORAL_TASK_QUEUE,
+            ),
+            spec=ScheduleSpec(
+                cron_expressions=["0 6 * * *"],
+                time_zone_name="UTC",
+            ),
+        )
+        handle = await client.create_schedule(schedule_id, schedule)
+        logger.info("Created Temporal native Schedule '%s' at 06:00 UTC daily", schedule_id)
+        return handle
+    except Exception as exc:
+        logger.warning("Temporal native schedule registration note: %s", exc)
+        return None
+
+
 async def run_temporal_worker():
     """Start standalone worker listening on task queue."""
     from temporalio.worker import Worker
@@ -213,12 +294,13 @@ async def run_temporal_worker():
     worker = Worker(
         client,
         task_queue=TEMPORAL_TASK_QUEUE,
-        workflows=[CrashOutProductionWorkflow],
+        workflows=[CrashOutProductionWorkflow, DailyAgent0Workflow],
         activities=[
             run_trend_ingest_activity,
             run_scriptwriter_activity,
             render_vidu_scene_activity,
             merge_episode_video_activity,
+            sync_episode_videos_to_s3_activity,
             run_publisher_activity,
             run_seeder_activity,
         ],

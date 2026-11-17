@@ -120,7 +120,7 @@ async def _lifespan(_app: FastAPI):
     from app.studio.worker import start_worker
     from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
     from app.trends.store import init_store
-    from app.temporal_setup import get_temporal_client
+    from app.temporal_setup import get_temporal_client, schedule_daily_agent0_cron
 
     init_db()
     ensure_auth_ready()
@@ -128,8 +128,13 @@ async def _lifespan(_app: FastAPI):
     start_worker()
     start_agent0_scheduler()
 
-    # Optional background check/connection for Temporal
-    asyncio.create_task(get_temporal_client())
+    # Optional background check/connection for Temporal & 6am UTC schedule registration
+    async def _init_temporal_background():
+        client = await get_temporal_client()
+        if client:
+            await schedule_daily_agent0_cron()
+
+    asyncio.create_task(_init_temporal_background())
 
     try:
         yield

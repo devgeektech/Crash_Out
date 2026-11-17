@@ -15,6 +15,18 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_TRENDS_RSS = "https://trends.google.com/trending/rss?geo=US"
 
+# Free Direct RSS Feeds requested by client (no paid API plan needed)
+MAINSTREAM_RSS_FEEDS = [
+    ("Associated Press", "https://news.google.com/rss/search?q=when:24h+allinurl:apnews.com&hl=en-US&gl=US&ceid=US:en"),
+    ("Reuters", "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=en-US&gl=US&ceid=US:en"),
+    ("CNN", "http://rss.cnn.com/rss/cnn_topstories.rss"),
+    ("Fox News", "https://moxie.foxnews.com/google-publisher/latest.xml"),
+    ("New York Post", "https://nypost.com/feed/"),
+    ("Morning Brew", "https://www.morningbrew.com/daily/stories.rss"),
+    ("The Verge", "https://www.theverge.com/rss/index.xml"),
+    ("Google News US", "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"),
+]
+
 BRIEFING_FEEDS = [
     ("Axios AM", "https://api.axios.com/feed/"),
     ("CNBC Make It", "https://www.cnbc.com/id/10001147/device/rss/rss.html"),
@@ -118,6 +130,29 @@ def fetch_google_trends_us() -> List[Dict[str, Any]]:
                 raw={"approx_traffic": traffic},
             )
         )
+    return out
+
+
+def fetch_mainstream_rss() -> List[Dict[str, Any]]:
+    """Fetch free direct RSS feeds from AP, Reuters, CNN, Fox News, NY Post, Morning Brew, The Verge & Google News."""
+    out: List[Dict[str, Any]] = []
+    for label, url in MAINSTREAM_RSS_FEEDS:
+        rows = _fetch_rss(url)
+        for i, row in enumerate(rows[:15]):
+            title = row.get("title") or ""
+            if not title:
+                continue
+            out.append(
+                _item(
+                    title=title,
+                    source="mainstream_rss",
+                    url=row.get("link") or "",
+                    score=85.0 - i,
+                    snippet=(row.get("description") or "")[:400],
+                    outlet=label,
+                )
+            )
+        time.sleep(0.1)
     return out
 
 
@@ -262,15 +297,21 @@ def fetch_serpapi_trends_fallback() -> List[Dict[str, Any]]:
 
 
 def collect_layer_a() -> List[Dict[str, Any]]:
-    """Mainstream / parent-suburban signal layer."""
+    """Mainstream / parent-suburban signal layer using free direct sources."""
     bucket: List[Dict[str, Any]] = []
+    # 1. Free Google Trends US RSS
     bucket.extend(fetch_google_trends_us())
+    
+    # 2. Free direct mainstream RSS feeds (AP, Reuters, CNN, Fox News, NY Post, Morning Brew, The Verge, Google News)
+    bucket.extend(fetch_mainstream_rss())
+    bucket.extend(fetch_briefing_rss())
+
+    # 3. Optional fallbacks if API keys are provided in .env (no error if unconfigured)
     if not any(i.get("source") == "google_trends" for i in bucket):
         bucket.extend(fetch_serpapi_trends_fallback())
     bucket.extend(fetch_newsapi_headlines())
     if not any(i.get("source") in {"newsapi", "gnews"} for i in bucket):
         bucket.extend(fetch_gnews_headlines())
-    bucket.extend(fetch_briefing_rss())
     # Soft web-search boost for suburban economic panic themes when wires are thin
     if len(bucket) < 20:
         try:

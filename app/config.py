@@ -35,7 +35,7 @@ class PlatformCredentials(BaseModel):
 
     # Agent 0 — friction scoring / embeddings (optional; heuristic fallback)
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-6-luna")
     openai_embed_model: str = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
     # Agent 0 Layer A

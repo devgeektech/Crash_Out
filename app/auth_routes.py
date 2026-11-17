@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth_middleware import get_current_user, login_user, logout_user
+from app.auth_middleware import JWT_COOKIE_NAME, get_current_user, login_user, logout_user
 from app.auth_users import (
     apply_user_credentials_to_config,
     authenticate,
@@ -146,8 +146,37 @@ def login_submit(
             ),
             status_code=400,
         )
-    login_user(request, user)
-    return RedirectResponse(_safe_next(next), status_code=303)
+    token = login_user(request, user)
+    response = RedirectResponse(_safe_next(next), status_code=303)
+    response.set_cookie(
+        key=JWT_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=86400 * 7,  # 7 days
+    )
+    return response
+
+
+@router.post("/api/auth/token")
+def api_auth_token(
+    email: str = Form(...),
+    password: str = Form(...),
+):
+    """API endpoint to obtain a JWT access token programmatically."""
+    from fastapi import HTTPException
+
+    user = authenticate(email, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    from app.security import create_access_token
+
+    token = create_access_token(user_id=user.id, email=user.email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
+    }
 
 
 @router.get("/signup")
@@ -163,7 +192,9 @@ def signup_removed(next: Optional[str] = None):
 @router.post("/logout")
 def logout(request: Request):
     logout_user(request)
-    return RedirectResponse("/login", status_code=303)
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(key=JWT_COOKIE_NAME)
+    return response
 
 
 @router.get("/settings", response_class=HTMLResponse)

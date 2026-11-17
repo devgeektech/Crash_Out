@@ -107,7 +107,7 @@
                         {% for ep in dashboard.recent_episodes %}
                         <tr>
                             <td>{{ ep.episode_number or '—' }}</td>
-                            <td><strong>{{ ep.title }}</strong></td>
+                            <td><span class="ep-title-text">{{ ep.title }}</span></td>
                             <td><span class="badge">Published</span></td>
                             <td>
                                 <a class="btn btn-sm" href="/episodes/{{ ep.id }}">Open</a>

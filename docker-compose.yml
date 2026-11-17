@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. PostgreSQL 16 with pgvector Extension
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: crashout-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+    ports:
+      # Bound to 127.0.0.1 for EC2 security (local app access / ssh tunnel only)
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - crashout-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # 2. Temporal Auto-Setup Server (Migrations + Engine)
+  # ---------------------------------------------------------------------------
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: crashout-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres_password}
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - BIND_ON_IP=0.0.0.0
+      - TEMPORAL_BROADCAST_ADDRESS=temporal
+    ports:
+      - "127.0.0.1:7233:7233" # gRPC API
+    networks:
+      - crashout-network
+
+  # ---------------------------------------------------------------------------
+  # 3. Temporal Web UI
+  # ---------------------------------------------------------------------------
+  temporal-ui:
+    image: temporalio/ui:2.26.2
+    container_name: crashout-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "8080:8080"
+    networks:
+      - crashout-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  crashout-network:
+    driver: bridge

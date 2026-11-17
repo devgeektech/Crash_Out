@@ -50,6 +50,35 @@ def session_secret() -> str:
     return generated
 
 
+def create_access_token(user_id: int, email: str, expires_delta_hours: int = 24) -> str:
+    """Generate a signed JWT access token for user authentication."""
+    import datetime
+    import jwt
+
+    secret = session_secret()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expire = now + datetime.timedelta(hours=expires_delta_hours)
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "iat": now,
+        "exp": expire,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def decode_access_token(token: str) -> Optional[dict]:
+    """Validate and decode a signed JWT access token."""
+    import jwt
+
+    secret = session_secret()
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        return payload
+    except Exception:
+        return None
+
+
 def _fernet_key() -> bytes:
     raw = (os.getenv("SECRET_ENCRYPTION_KEY") or "").strip()
     if raw:

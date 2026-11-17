@@ -16,16 +16,16 @@
                 <tr>
                     <th>#</th>
                     <th>Title</th>
-                    <th>Production</th>
+                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for ep in episodes %}
                 <tr class="{% if ep.id == active_id %}is-active{% endif %}">
-                    <td>{{ ep.episode_number }}</td>
-                    <td>
-                        <strong>{{ ep.title }}</strong>
+                    <td class="col-num">{{ ep.episode_number }}</td>
+                    <td class="col-title">
+                        <span class="ep-title-text">{{ ep.title }}</span>
                         <div class="muted mono">{{ ep.id }}</div>
                     </td>
                     <td><span class="badge">{{ ep.production_status|default('published')|title }}</span></td>
@@ -37,7 +37,7 @@
                 <tr>
                     <td colspan="4" class="muted">
                         No finished episodes yet. Create and run shows in
-                        <a href="/studio">Studio</a> — they appear here after all gateways are approved.
+                        <a href="/studio?stage=0">Agent Studio</a> — they appear here after all gateways are approved.
                     </td>
                 </tr>
                 {% endfor %}

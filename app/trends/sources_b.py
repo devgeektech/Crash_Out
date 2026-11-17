@@ -120,9 +120,9 @@ def fetch_reddit_layer() -> List[Dict[str, Any]]:
     bucket: List[Dict[str, Any]] = []
     for sub in subs:
         bucket.extend(_reddit_listing(sub, sort="hot", limit=12))
-        time.sleep(0.35)
+        time.sleep(0.1)
         bucket.extend(_reddit_listing(sub, sort="rising", limit=8))
-        time.sleep(0.35)
+        time.sleep(0.1)
     return bucket
 
 

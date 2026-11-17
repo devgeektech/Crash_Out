@@ -8,15 +8,6 @@
         </div>
         <div class="panel-actions">
             <button
-                class="btn btn-ghost btn-sm"
-                type="button"
-                hx-post="/ui/scheduler/mock-run"
-                hx-target="#workspace"
-                hx-swap="outerHTML"
-                hx-indicator="#busy"
-                title="Runs the Agent 0 daily scheduler manually (scheduled for 6:00 AM UTC)"
-            >Mock Scheduler</button>
-            <button
                 class="btn btn-primary"
                 type="button"
                 hx-post="/ui/gateway/1/approve"
@@ -143,7 +134,7 @@
             </article>
             {% endfor %}
         {% else %}
-            <div class="empty-state">No pitches yet. Click "Mock Scheduler" to trigger the 6:00 AM UTC job manually.</div>
+            <div class="empty-state">No pitches yet. Run Mockup from Studio Queue to generate pitches.</div>
         {% endif %}
     </div>
 </section>
