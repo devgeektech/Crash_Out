@@ -91,7 +91,22 @@ def _static_cache_bust() -> str:
         return "1"
 
 
+def _get_total_credits_used() -> float:
+    """Calculate cumulative credits consumed across all episodes."""
+    try:
+        from app.state import state_manager
+        from app.studio.generation import cost_summary
+
+        total = 0.0
+        for ep in state_manager.episodes.values():
+            total += float(cost_summary(ep).get("total_credits") or 0.0)
+        return round(total, 1)
+    except Exception:
+        return 0.0
+
+
 templates.env.globals["static_cache_bust"] = _static_cache_bust
+templates.env.globals["get_total_credits_used"] = _get_total_credits_used
 
 router = APIRouter(tags=["ui"])
 
@@ -251,22 +266,22 @@ def _resolve_master_video(ep: Episode) -> Dict[str, Any]:
     return {"has_video": False, "playable_url": None, "merged": bool(ep.scenes_merged)}
 
 STAGE_LABELS = {
-    0: "Queue",
-    1: "Pitch",
-    2: "Script",
-    3: "Video",
-    4: "Publish",
-    5: "Seeding",
+    0: "Agent 0 (Queue & Ingest)",
+    1: "Agent 1 (Pitches)",
+    2: "Agent 2 (Script)",
+    3: "Agent 3 (Video)",
+    4: "Agent 4 (Publish)",
+    5: "Agent 5 (Seeding)",
 }
 
-# Letter marks shown in the stepper (Q / P / S / V / Pb / E)
+# Letter marks shown in the stepper (A0 / A1 / A2 / A3 / A4 / A5)
 STAGE_MARKS = {
-    0: "Q",
-    1: "P",
-    2: "S",
-    3: "V",
-    4: "Pb",
-    5: "E",
+    0: "A0",
+    1: "A1",
+    2: "A2",
+    3: "A3",
+    4: "A4",
+    5: "A5",
 }
 
 # Gates not ready yet — shown in stepper but not clickable
@@ -819,6 +834,45 @@ def _studio_push_url(stage: int, scene: Optional[int] = None) -> str:
     return url
 
 
+@router.get("/credits", response_class=HTMLResponse)
+def ui_credits_page(request: Request):
+    """Episode-by-episode credits usage and Video Generations details."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/credits", status_code=303)
+
+    from app.studio.generation import cost_summary
+
+    breakdown = []
+    total = 0.0
+    for ep in state_manager.episodes.values():
+        c_info = cost_summary(ep)
+        ep_total = float(c_info.get("total_credits") or 0.0)
+        total += ep_total
+        breakdown.append(
+            {
+                "id": ep.id,
+                "title": ep.title or ep.id,
+                "episode_number": ep.episode_number,
+                "status": getattr(ep, "production_status", None) or getattr(ep, "status", None) or "draft",
+                "by_scene": c_info.get("by_scene") or {},
+                "total_credits": ep_total,
+            }
+        )
+    breakdown.sort(key=lambda r: (r["total_credits"], r.get("episode_number") or 0), reverse=True)
+
+    return templates.TemplateResponse(
+        request,
+        "credits.html",
+        _shell_context(
+            request,
+            "credits",
+            total_credits=round(total, 1),
+            episode_breakdown=breakdown,
+        ),
+    )
+
+
 @router.get("/studio", response_class=HTMLResponse)
 def ui_studio(
     request: Request,
@@ -1070,7 +1124,7 @@ def ui_add_catalog_video(
 @router.post("/ui/queue/{catalog_id}/delete", response_class=HTMLResponse)
 @router.post("/ui/catalog/{catalog_id}/delete", response_class=HTMLResponse)
 def ui_delete_catalog_video(request: Request, catalog_id: str):
-    """Delete a manually added queue video (built-ins are protected)."""
+    """Delete a queue video."""
     item = get_catalog_item(catalog_id)
     if not item:
         return render(
@@ -1078,13 +1132,6 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
             "partials/htmx_workspace.html",
             viewing_stage=0,
             error="Video not found.",
-        )
-    if not item.get("custom"):
-        return render(
-            request,
-            "partials/htmx_workspace.html",
-            viewing_stage=0,
-            error="Built-in videos cannot be deleted.",
         )
 
     delete_manual_catalog_video(catalog_id)

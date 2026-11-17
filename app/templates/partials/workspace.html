@@ -67,7 +67,7 @@
         </div>
     </div>
 
-    <main class="main-wrapper {% if viewing_stage != 0 %}main-wrapper-single{% endif %}">
+    <main class="main-wrapper main-wrapper-single">
         <div class="center-content">
             {% if viewing_stage == 0 %}
                 {% include "partials/stages/stage_0.html" %}
@@ -84,30 +84,5 @@
                 {% include "partials/stages/stage_locked.html" %}
             {% endif %}
         </div>
-
-        {% if viewing_stage == 0 %}
-        <aside class="side-pane">
-            <section class="panel">
-                <div class="side-head">
-                    <h3>Revision notes</h3>
-                </div>
-                <form method="post" class="note-form"
-                      hx-post="/ui/production/note" hx-target="#workspace" hx-swap="outerHTML" hx-indicator="#busy">
-                    <textarea class="input" name="note" rows="3" placeholder="Revision note" required></textarea>
-                    <button class="btn btn-sm btn-primary" type="submit">Add note</button>
-                </form>
-                <div class="note-list">
-                    {% for n in (revision_notes|default([]))[:5] %}
-                    <div class="note-item">
-                        <strong>{{ n.episode_title|default(ep.title) }}</strong>
-                        <p>{{ n.note }}</p>
-                    </div>
-                    {% else %}
-                    <p class="muted">No revision notes yet.</p>
-                    {% endfor %}
-                </div>
-            </section>
-        </aside>
-        {% endif %}
     </main>
 </div>

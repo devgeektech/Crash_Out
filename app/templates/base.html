@@ -61,6 +61,18 @@
                 </a>
             </nav>
 
+            <a class="sidebar-credits-panel {% if page == 'credits' %}active{% endif %}" href="/credits" title="View episode-by-episode credits breakdown">
+                <div class="credits-panel-head">
+                    <span class="credits-panel-icon" aria-hidden="true">⚡</span>
+                    <span class="credits-panel-title">Credits Used</span>
+                </div>
+                <div class="credits-panel-val">
+                    <strong>{{ '%.1f'|format(get_total_credits_used()|default(0.0)) }}</strong>
+                    <span class="credits-unit">credits</span>
+                </div>
+                <div class="credits-panel-sub muted">Video Generations</div>
+            </a>
+
             <div class="sidebar-foot">
                 {% if user %}
                 <div class="sidebar-user">

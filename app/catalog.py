@@ -345,9 +345,35 @@ def _save_custom_catalog(items: List[Dict[str, Any]]) -> None:
         json.dump({"items": items}, fh, indent=2)
 
 
+DELETED_CATALOG_FILE = os.path.join(OUTPUT_DIR, "deleted_catalog.json")
+
+
+def _load_deleted_builtin_ids() -> set[str]:
+    if not os.path.exists(DELETED_CATALOG_FILE):
+        return set()
+    try:
+        with open(DELETED_CATALOG_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return set(data if isinstance(data, list) else data.get("ids", []))
+    except Exception:
+        return set()
+
+
+def _save_deleted_builtin_id(item_id: str) -> None:
+    current = _load_deleted_builtin_ids()
+    current.add(item_id)
+    try:
+        with open(DELETED_CATALOG_FILE, "w", encoding="utf-8") as fh:
+            json.dump(list(current), fh, indent=2)
+    except Exception:
+        pass
+
+
 def list_catalog_items() -> List[Dict[str, Any]]:
-    """Built-in catalog first, then manually added videos (stable numbering)."""
-    return list(VIDEO_CATALOG) + _load_custom_catalog()
+    """Built-in catalog first, then manually added videos (excluding deleted)."""
+    deleted_ids = _load_deleted_builtin_ids()
+    builtins = [it for it in VIDEO_CATALOG if it.get("id") not in deleted_ids]
+    return builtins + _load_custom_catalog()
 
 
 def get_catalog_item(catalog_id: str) -> Optional[Dict[str, Any]]:
@@ -502,13 +528,18 @@ def update_custom_scene_prompt(catalog_id: str, scene_id: int, source_prompt: st
 
 
 def delete_manual_catalog_video(catalog_id: str) -> bool:
-    """Remove a manually added catalog video. Built-in items cannot be deleted."""
+    """Remove a catalog video (custom or built-in)."""
     items = _load_custom_catalog()
     kept = [item for item in items if item.get("id") != catalog_id]
-    if len(kept) == len(items):
-        return False
-    _save_custom_catalog(kept)
-    return True
+    if len(kept) != len(items):
+        _save_custom_catalog(kept)
+        return True
+    # If not in custom catalog, check built-in and mark as deleted
+    for it in VIDEO_CATALOG:
+        if it.get("id") == catalog_id:
+            _save_deleted_builtin_id(catalog_id)
+            return True
+    return False
 
 
 def empty_concept(slot: int, *, script_key: Optional[str] = None, manual: bool = False) -> Dict[str, Any]:

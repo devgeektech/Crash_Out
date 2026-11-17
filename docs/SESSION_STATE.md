@@ -10,6 +10,29 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 ### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
 
 Completed:
+- **Agent Roster Numbering Re-alignment**:
+  - Re-aligned Agent stage designations across Agent Studio pipeline:
+    - **Stage 0**: Agent 0 (Queue & Ingest)
+    - **Stage 1**: Agent 1 (Pitches)
+    - **Stage 2**: Agent 2 (Script)
+    - **Stage 3**: Agent 3 (Video)
+    - **Stage 4**: Agent 4 (Publish)
+    - **Stage 5**: Agent 5 (Seeding)
+  - Updated stepper labels, letter marks (`A0`, `A1`, `A2`, `A3`, `A4`, `A5`), and card headers across `app/ui.py` and `app/templates/partials/stages/stage_*.html`.
+- **Dashboard Button Update**: Replaced "Open studio" buttons on the Production Dashboard ([dashboard.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/dashboard.html)) with **Agent Studio** for consistent naming across the studio workflow.
+- **Dedicated Credits Usage Page & Clickable Sidebar Link**:
+  - Made the **Credits Used** widget in the left sidebar clickable, routing to `/credits` with active tab indicators and hover animations.
+  - Built `app/templates/credits.html` with KPI counters (Total Credits, Episodes Rendered, Active Engine) and a detailed episode-by-episode breakdown table detailing scene-by-scene credits used and direct links to open each episode in Agent Studio.
+  - Added `GET /credits` route in `app/ui.py` calculating exact scene credits across all state episodes via `cost_summary()`.
+  - Updated all labels and captions from "Vidu Q4 Generation" to **Video Generations** in both the sidebar panel and credit usage breakdown.
+- **Agent 0 Queue Attribution**: Updated Stage 0 labeling to **Agent 0 (Queue & Ingest)** across the stepper bar, marks (`A0`), and page title in `app/ui.py` and `app/templates/partials/stages/stage_0.html` to clearly reflect Agent 0's ownership of trend ingestion and queue population.
+- **Queue Layout Cleanup**: Completely removed the "Revision notes" aside section from Stage 0 (Queue tab) in `app/templates/partials/workspace.html`, allowing the Studio Queue to occupy a clean, full-width single-column layout.
+- **Trash Can Delete Icon & Universal Video Deletion**:
+  - Replaced the plain `×` text with an SVG trash can icon across video queue items in Studio Queue.
+  - Enabled deletion for all videos (including built-ins/catalog items) via `delete_manual_catalog_video()` so any video row can be removed with confirmation.
+- **Agent Studio Pipeline & Credits Navigation**:
+  - Explicitly labeled stages with their owning agents in Agent Studio stepper & cards: **Agent 0 (Pitch)**, **Agent 1 (Script)**, **Agent 2/3 (Video)**, **Agent 4 (Publish)**, **Agent 5 (Seeding)**.
+  - Added dedicated **Credits Used** card in the left navigation sidebar displaying cumulative Vidu generation credits consumed across all episodes in real-time.
 - **JWT Authentication**: Implemented JSON Web Token (JWT) authentication for login. Tokens are generated upon login and accepted via both `Authorization: Bearer <token>` headers (for API clients) and secure HTTP-only cookies (`crashout_jwt`) for web UI session persistence. Added `POST /api/auth/token` API endpoint for programmatic token generation.
 - **LLM Model Upgrade**: Set default OpenAI model to `gpt-6-luna` across `.env`, `.env.example`, `app/config.py`, `app/trends/concept_writer.py`, and `app/trends/friction.py`.
 - **Cleaned Mockup & Test Artifacts**: Purged all mock test directories (`ep_mock_test`, test episodes `ep_1794*`, dummy `.mp4` chunks, stale pitch caches) and reset `pipeline_index.json` and `custom_catalog.json` to clean state.

@@ -42,7 +42,21 @@ def _static_cache_bust() -> str:
         return "1"
 
 
+def _get_total_credits_used() -> float:
+    try:
+        from app.state import state_manager
+        from app.studio.generation import cost_summary
+
+        total = 0.0
+        for ep in state_manager.episodes.values():
+            total += float(cost_summary(ep).get("total_credits") or 0.0)
+        return round(total, 1)
+    except Exception:
+        return 0.0
+
+
 templates.env.globals["static_cache_bust"] = _static_cache_bust
+templates.env.globals["get_total_credits_used"] = _get_total_credits_used
 
 router = APIRouter(tags=["auth"])
 

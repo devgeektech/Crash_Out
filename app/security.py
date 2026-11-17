@@ -7,13 +7,19 @@ Password hashing + reversible encryption for API secrets.
 from __future__ import annotations
 
 import base64
+import datetime
 import hashlib
 import os
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
 from dotenv import set_key
+
+try:
+    import jwt  # type: ignore
+except ImportError:
+    jwt = None  # type: ignore
 
 from app.config import ENV_PATH
 
@@ -52,9 +58,6 @@ def session_secret() -> str:
 
 def create_access_token(user_id: int, email: str, expires_delta_hours: int = 24) -> str:
     """Generate a signed JWT access token for user authentication."""
-    import datetime
-    import jwt
-
     secret = session_secret()
     now = datetime.datetime.now(datetime.timezone.utc)
     expire = now + datetime.timedelta(hours=expires_delta_hours)
@@ -64,16 +67,62 @@ def create_access_token(user_id: int, email: str, expires_delta_hours: int = 24)
         "iat": now,
         "exp": expire,
     }
-    return jwt.encode(payload, secret, algorithm="HS256")
+    if jwt is not None:
+        return jwt.encode(payload, secret, algorithm="HS256")
+
+    # Pure standard library fallback (HMAC-SHA256) if jwt is not loaded
+    import hmac
+    import json
+
+    def _b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode("utf-8"))
+    exp_ts = int(expire.timestamp())
+    iat_ts = int(now.timestamp())
+    raw_payload = _b64url(
+        json.dumps({"sub": str(user_id), "email": email, "iat": iat_ts, "exp": exp_ts}).encode("utf-8")
+    )
+    msg = f"{header}.{raw_payload}".encode("ascii")
+    sig = _b64url(hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest())
+    return f"{header}.{raw_payload}.{sig}"
 
 
-def decode_access_token(token: str) -> Optional[dict]:
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Validate and decode a signed JWT access token."""
-    import jwt
-
     secret = session_secret()
+    if jwt is not None:
+        try:
+            return jwt.decode(token, secret, algorithms=["HS256"])
+        except Exception:
+            return None
+
+    # Pure standard library fallback (HMAC-SHA256)
+    import hmac
+    import json
+
     try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        parts = token.strip().split(".")
+        if len(parts) != 3:
+            return None
+        header_b64, payload_b64, sig_b64 = parts
+
+        def _b64dec(s: str) -> bytes:
+            padding = "=" * ((4 - len(s) % 4) % 4)
+            return base64.urlsafe_b64decode(s + padding)
+
+        msg = f"{header_b64}.{payload_b64}".encode("ascii")
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()
+        ).rstrip(b"=").decode("ascii")
+
+        if not hmac.compare_digest(sig_b64, expected_sig):
+            return None
+
+        payload = json.loads(_b64dec(payload_b64).decode("utf-8"))
+        exp = payload.get("exp")
+        if exp and datetime.datetime.now(datetime.timezone.utc).timestamp() > float(exp):
+            return None
         return payload
     except Exception:
         return None

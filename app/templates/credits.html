@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Credits Usage — Crash Out{% endblock %}
+
+{% block content %}
+<section class="page-shell">
+    <div class="page-head">
+        <div>
+            <h1>Credits Usage</h1>
+            <p class="muted">Detailed episode-by-episode breakdown of credits consumed by Video Generations.</p>
+        </div>
+        <div class="header-actions">
+            <span class="status-chip status-ok">
+                Total Used: <strong>{{ '%.1f'|format(total_credits) }} credits</strong>
+            </span>
+        </div>
+    </div>
+
+    <div class="dash-kpi-row" style="margin-bottom: 1.25rem;">
+        <article class="panel dash-kpi">
+            <span class="dash-kpi-label">Total Credits</span>
+            <strong class="dash-kpi-value" style="color: var(--brand);">{{ '%.1f'|format(total_credits) }}</strong>
+            <span class="muted">across all episodes</span>
+        </article>
+        <article class="panel dash-kpi">
+            <span class="dash-kpi-label">Episodes with Generations</span>
+            <strong class="dash-kpi-value">{{ episode_breakdown|length }}</strong>
+            <span class="muted">episodes rendered</span>
+        </article>
+        <article class="panel dash-kpi">
+            <span class="dash-kpi-label">Active Engine</span>
+            <strong class="dash-kpi-value">Vidu Q4</strong>
+            <span class="muted">Video Generations</span>
+        </article>
+    </div>
+
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Episode Title</th>
+                    <th>Status</th>
+                    <th>Scene Credits Breakdown</th>
+                    <th>Total Credits</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in episode_breakdown %}
+                <tr>
+                    <td class="col-num">{{ row.episode_number or '—' }}</td>
+                    <td class="col-title">
+                        <span class="ep-title-text">{{ row.title }}</span>
+                        <div class="muted mono">{{ row.id }}</div>
+                    </td>
+                    <td>
+                        <span class="badge">{{ row.status|title }}</span>
+                    </td>
+                    <td>
+                        {% if row.by_scene %}
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                {% for sid, c in row.by_scene.items() %}
+                                <span class="badge badge-info" style="font-size: 0.78rem;">Scene {{ sid }}: {{ '%.1f'|format(c) }} cr</span>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <span class="muted">0 scene renders</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong>{{ '%.1f'|format(row.total_credits) }}</strong> cr
+                    </td>
+                    <td class="row-actions">
+                        <a class="btn btn-sm btn-primary" href="/studio?episode={{ row.id }}&stage=3">Open in Studio</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="muted" style="text-align: center; padding: 2rem;">
+                        No video generations recorded yet. Generate scene clips in <a href="/studio?stage=0">Agent Studio</a> to see credit logs.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

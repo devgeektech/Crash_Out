@@ -205,6 +205,75 @@ a {
     overflow-y: auto;
 }
 
+/* Sidebar Credits Badge Section */
+.sidebar-credits-panel {
+    display: block;
+    margin: 0.5rem 0;
+    padding: 0.75rem 0.85rem;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 240, 248, 0.95));
+    border: 1px solid #fed7ea;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(255, 0, 127, 0.05);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.18s ease;
+    cursor: pointer;
+}
+
+.sidebar-credits-panel:hover {
+    border-color: var(--brand);
+    background: linear-gradient(135deg, #ffffff, #fff0f7);
+    box-shadow: 0 4px 14px rgba(255, 0, 127, 0.14);
+    transform: translateY(-1px);
+    text-decoration: none;
+}
+
+.sidebar-credits-panel.active {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 2px rgba(255, 0, 127, 0.25);
+    background: linear-gradient(135deg, #fff5fa, #ffe8f3);
+}
+
+.credits-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--brand);
+    margin-bottom: 0.25rem;
+}
+
+.credits-panel-icon {
+    font-size: 0.9rem;
+}
+
+.credits-panel-val {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.credits-panel-val strong {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+}
+
+.credits-unit {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.credits-panel-sub {
+    font-size: 0.72rem;
+    margin-top: 0.2rem;
+}
+
 .app-main {
     min-width: 0;
     min-height: 100vh;
@@ -452,6 +521,20 @@ a {
     font-weight: 700;
     line-height: 1;
     padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-icon {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    transition: transform 0.15s ease, stroke 0.15s ease;
+}
+
+.video-queue-delete:hover .delete-icon {
+    transform: scale(1.1);
 }
 
 .video-queue-arrow:hover {

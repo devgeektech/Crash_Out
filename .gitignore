@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 *.pem
+.pem
 *.key
 credentials.json
 secrets/
