@@ -192,6 +192,11 @@ def _resolve_scene_playable(ep: Episode, scene_id: int, sv: Optional[Dict[str, A
 
 
 def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
+    from app.studio.generation import cost_summary
+
+    c_summary = cost_summary(ep)
+    by_scene_credits = c_summary.get("by_scene") or {}
+
     scenes = (ep.script or {}).get("scenes") or []
     by_id: Dict[int, Dict[str, Any]] = {}
     for sv in ep.scene_videos or []:
@@ -209,6 +214,7 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
                 continue
             sv = by_id.get(sid) or {}
             media = _resolve_scene_playable(ep, sid, sv)
+            scene_credits = float(by_scene_credits.get(str(sid), 0.0))
             cards.append(
                 {
                     "scene_id": sid,
@@ -217,6 +223,7 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
                     "duration_sec": sc.get("duration_sec") or sv.get("duration_sec") or 15,
                     "latency_sec": sv.get("latency_sec"),
                     "vidu_mode": sv.get("vidu_mode"),
+                    "credits": scene_credits,
                     **media,
                 }
             )
@@ -225,6 +232,7 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
         for sid in sorted(by_id.keys()) or [1, 2, 3, 4]:
             sv = by_id.get(sid) or {}
             media = _resolve_scene_playable(ep, sid, sv)
+            scene_credits = float(by_scene_credits.get(str(sid), 0.0))
             cards.append(
                 {
                     "scene_id": sid,
@@ -233,6 +241,7 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
                     "duration_sec": sv.get("duration_sec") or 15,
                     "latency_sec": sv.get("latency_sec"),
                     "vidu_mode": sv.get("vidu_mode"),
+                    "credits": scene_credits,
                     **media,
                 }
             )
@@ -347,10 +356,14 @@ def _selected_concept_index(ep: Episode) -> int:
 
 
 def _resolve_viewing_stage(ep: Episode, viewing_stage: Optional[int]) -> int:
+    gw = int(ep.current_gateway or 1)
     if viewing_stage is not None:
         stage = max(0, min(5, viewing_stage))
         if stage in DISABLED_STAGES:
-            return 3
+            return min(3, gw)
+        # Prevent jumping ahead to unapproved stages (Stage 0 is always allowed)
+        if stage > gw:
+            return gw
         return stage
     # Default landing: video queue (before Pitch)
     return 0
@@ -392,6 +405,8 @@ def _script_scene_bundle(ep: Episode, script_scene: Optional[int]) -> Dict[str, 
     if ids and active not in ids:
         active = ids[0]
     active_scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == active), None)
+    if active_scene is not None and not active_scene.get("source_prompt"):
+        active_scene["source_prompt"] = active_scene.get("vidu_prompt") or ""
     scene_lines = [ln for ln in lines if int(ln.get("scene_id", 0)) == active]
     clip_ready = False
     for sv in ep.scene_videos or []:

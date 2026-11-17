@@ -276,4 +276,20 @@
         toast.className = "toast toast-error show";
         toast.textContent = "Network error. Could not reach the server.";
     });
+
+    // Global helper to trigger in-app toast alerts
+    window.showInAppToast = function(message, kind = "info", duration = 4000) {
+        const toast = document.getElementById("toast");
+        if (!toast) return;
+        window.clearTimeout(window.__toastTimer);
+        toast.hidden = false;
+        toast.className = `toast toast-${kind} show`;
+        toast.textContent = message;
+        if (duration > 0) {
+            window.__toastTimer = window.setTimeout(() => {
+                toast.classList.remove("show");
+                toast.hidden = true;
+            }, duration);
+        }
+    };
 })();

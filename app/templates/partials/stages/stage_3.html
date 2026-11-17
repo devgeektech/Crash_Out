@@ -30,7 +30,12 @@
                 <article class="scene-video-card">
                     <div class="scene-video-head">
                         <strong>Scene {{ card.scene_id }} · {{ card.title }}</strong>
-                        <span class="badge">{{ card.duration_sec }}s</span>
+                        <div style="display: flex; align-items: center; gap: 0.35rem;">
+                            <span class="badge" title="Scene credits used" style="background: rgba(255, 45, 138, 0.1); color: var(--brand); border-color: rgba(255, 45, 138, 0.25); font-weight: 600;">
+                                ⚡ {{ '%.1f'|format(card.credits|default(0.0)) }} cr
+                            </span>
+                            <span class="badge">{{ card.duration_sec }}s</span>
+                        </div>
                     </div>
                     {% if card.has_video and card.playable_url %}
                     <div class="scene-video-frame">
@@ -104,6 +109,12 @@
                     {% endif %}
                 </div>
                 <div class="stats-grid">
+                    <div class="stat-box" style="border: 1px solid rgba(255, 45, 138, 0.3); background: rgba(255, 45, 138, 0.05);">
+                        <div class="k" style="color: var(--brand); font-weight: 700;">Total Credits</div>
+                        <div class="v" style="color: var(--brand); font-size: 1.15rem; font-weight: 700;">
+                            ⚡ {{ '%.1f'|format(cost_summary.total_credits|default(0.0)) }} cr
+                        </div>
+                    </div>
                     <div class="stat-box"><div class="k">Container</div><div class="v">H.264 · MP4</div></div>
                     <div class="stat-box"><div class="k">Audio</div><div class="v">Native AAC</div></div>
                     <div class="stat-box"><div class="k">Aspect</div><div class="v">9:16 vertical</div></div>

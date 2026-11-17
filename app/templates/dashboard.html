@@ -6,7 +6,7 @@
         <img class="brand-hero-img" src="/static/assets/brand/crash_out_family.png" alt="Crash Out Pearson family">
         <div class="brand-hero-shade"></div>
         <div class="brand-hero-copy">
-            <h1>Production dashboard</h1>
+            <h1 style="color: #ffffff !important;">Production dashboard</h1>
             <p>Pipeline health, episode status, and credit usage.</p>
             <a class="btn btn-primary" href="/studio?stage=0">Agent Studio</a>
         </div>
@@ -97,16 +97,16 @@
                 <table class="data-table compact">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>Title</th>
-                            <th>Status</th>
-                            <th></th>
+                            <th style="font-weight: 600; color: var(--text);">Sr. No.</th>
+                            <th style="font-weight: 600; color: var(--text);">Title</th>
+                            <th style="font-weight: 600; color: var(--text);">Status</th>
+                            <th style="font-weight: 600; color: var(--text);"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for ep in dashboard.recent_episodes %}
                         <tr>
-                            <td>{{ ep.episode_number or '—' }}</td>
+                            <td class="col-num" style="font-weight: 600; color: var(--text);">{{ loop.index }}</td>
                             <td><span class="ep-title-text">{{ ep.title }}</span></td>
                             <td><span class="badge">Published</span></td>
                             <td>

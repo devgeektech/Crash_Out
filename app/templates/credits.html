@@ -8,14 +8,9 @@
             <h1>Credits Usage</h1>
             <p class="muted">Detailed episode-by-episode breakdown of credits consumed by Video Generations.</p>
         </div>
-        <div class="header-actions">
-            <span class="status-chip status-ok">
-                Total Used: <strong>{{ '%.1f'|format(total_credits) }} credits</strong>
-            </span>
-        </div>
     </div>
 
-    <div class="dash-kpi-row" style="margin-bottom: 1.25rem;">
+    <div class="dash-kpis" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
         <article class="panel dash-kpi">
             <span class="dash-kpi-label">Total Credits</span>
             <strong class="dash-kpi-value" style="color: var(--brand);">{{ '%.1f'|format(total_credits) }}</strong>
@@ -34,21 +29,39 @@
     </div>
 
     <div class="table-card">
-        <table class="data-table">
+        <div style="display: flex; justify-content: flex-end; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 320px; width: 100%;">
+                <input
+                    type="text"
+                    id="creditsTableSearch"
+                    class="input"
+                    placeholder="Search episode or ID..."
+                    style="font-size: 0.85rem; padding: 0.4rem 0.65rem;"
+                    onkeyup="filterCreditsTable()"
+                >
+                <button
+                    type="button"
+                    class="btn btn-sm btn-ghost"
+                    onclick="filterCreditsTable()"
+                    title="Search"
+                >Search</button>
+            </div>
+        </div>
+        <table class="data-table" id="creditsDataTable">
             <thead>
                 <tr>
-                    <th>#</th>
-                    <th>Episode Title</th>
-                    <th>Status</th>
-                    <th>Scene Credits Breakdown</th>
-                    <th>Total Credits</th>
-                    <th>Actions</th>
+                    <th style="font-weight: 600; color: var(--text);">Sr. No.</th>
+                    <th style="font-weight: 600; color: var(--text);">Episode Title</th>
+                    <th style="font-weight: 600; color: var(--text);">Status</th>
+                    <th style="font-weight: 600; color: var(--text);">Scene Credits Breakdown</th>
+                    <th style="font-weight: 600; color: var(--text);">Total Credits</th>
+                    <th style="font-weight: 600; color: var(--text);">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in episode_breakdown %}
                 <tr>
-                    <td class="col-num">{{ row.episode_number or '—' }}</td>
+                    <td class="col-num" style="font-weight: 600; color: var(--text);">{{ loop.index }}</td>
                     <td class="col-title">
                         <span class="ep-title-text">{{ row.title }}</span>
                         <div class="muted mono">{{ row.id }}</div>
@@ -75,7 +88,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr>
+                <tr id="noRowsFallback">
                     <td colspan="6" class="muted" style="text-align: center; padding: 2rem;">
                         No video generations recorded yet. Generate scene clips in <a href="/studio?stage=0">Agent Studio</a> to see credit logs.
                     </td>
@@ -85,4 +98,24 @@
         </table>
     </div>
 </section>
+
+<script>
+function filterCreditsTable() {
+    var query = (document.getElementById('creditsTableSearch').value || '').toLowerCase().trim();
+    var table = document.getElementById('creditsDataTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    var visibleCount = 0;
+    rows.forEach(function(row) {
+        if (row.id === 'noRowsFallback') return;
+        var text = (row.textContent || row.innerText || '').toLowerCase();
+        if (!query || text.indexOf(query) !== -1) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+</script>
 {% endblock %}

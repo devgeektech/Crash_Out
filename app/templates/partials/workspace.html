@@ -2,15 +2,18 @@
     <nav class="stepper-bar" aria-label="Pipeline stages">
         <div class="stepper">
             {% for num, label in stage_labels.items() %}
-            {% set is_disabled = num in disabled_stages %}
+            {# Stage 0 is always open. Stages 1..5 require the prior gateway to be reached/approved #}
+            {% set gw = ep.current_gateway|default(1) %}
+            {% set is_locked = (num > gw) or (num in disabled_stages) %}
+            {% set is_completed = (gw > num and num > 0) %}
             {% set mark = stage_marks.get(num, label[:1]) %}
             <button
-                class="step-item {% if viewing_stage == num %}active{% endif %} {% if ep.current_gateway > num and num > 0 %}completed{% endif %} {% if is_disabled %}is-disabled{% endif %}"
+                class="step-item {% if viewing_stage == num %}active{% endif %} {% if is_completed %}completed{% endif %} {% if is_locked %}is-disabled is-locked{% endif %}"
                 type="button"
-                {% if is_disabled %}
+                {% if is_locked %}
                 disabled
                 aria-disabled="true"
-                title="Coming soon"
+                title="Locked until previous stage is approved"
                 {% else %}
                 hx-get="/ui/stage/{{ num }}{% if num == 2 and script_scene %}?scene={{ script_scene }}{% endif %}"
                 hx-target="#workspace"
@@ -22,7 +25,13 @@
                 <span class="step-num">{{ mark }}</span>
                 <span class="step-info">
                     <span class="step-title">{{ label }}</span>
-                    {% if is_disabled %}<span class="step-sub">Soon</span>{% endif %}
+                    {% if is_locked and num in disabled_stages %}
+                    <span class="step-sub">Soon</span>
+                    {% elif is_locked %}
+                    <span class="step-sub" style="color: var(--muted); font-size: 0.72rem;">Pending approval</span>
+                    {% elif is_completed %}
+                    <span class="step-sub" style="color: var(--ok); font-size: 0.72rem;">Approved</span>
+                    {% endif %}
                 </span>
             </button>
             {% endfor %}

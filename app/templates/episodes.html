@@ -11,19 +11,37 @@
     </div>
 
     <div class="table-card">
-        <table class="data-table">
+        <div style="display: flex; justify-content: flex-end; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 320px; width: 100%;">
+                <input
+                    type="text"
+                    id="episodesTableSearch"
+                    class="input"
+                    placeholder="Search episode or ID..."
+                    style="font-size: 0.85rem; padding: 0.4rem 0.65rem;"
+                    onkeyup="filterEpisodesTable()"
+                >
+                <button
+                    type="button"
+                    class="btn btn-sm btn-ghost"
+                    onclick="filterEpisodesTable()"
+                    title="Search"
+                >Search</button>
+            </div>
+        </div>
+        <table class="data-table" id="episodesDataTable">
             <thead>
                 <tr>
-                    <th>#</th>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th></th>
+                    <th style="font-weight: 600; color: var(--text);">Sr. No.</th>
+                    <th style="font-weight: 600; color: var(--text);">Title</th>
+                    <th style="font-weight: 600; color: var(--text);">Status</th>
+                    <th style="font-weight: 600; color: var(--text);"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for ep in episodes %}
                 <tr class="{% if ep.id == active_id %}is-active{% endif %}">
-                    <td class="col-num">{{ ep.episode_number }}</td>
+                    <td class="col-num" style="font-weight: 600; color: var(--text);">{{ loop.index }}</td>
                     <td class="col-title">
                         <span class="ep-title-text">{{ ep.title }}</span>
                         <div class="muted mono">{{ ep.id }}</div>
@@ -34,7 +52,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr>
+                <tr id="noEpisodesFallback">
                     <td colspan="4" class="muted">
                         No finished episodes yet. Create and run shows in
                         <a href="/studio?stage=0">Agent Studio</a> — they appear here after all gateways are approved.
@@ -45,4 +63,22 @@
         </table>
     </div>
 </section>
+
+<script>
+function filterEpisodesTable() {
+    var query = (document.getElementById('episodesTableSearch').value || '').toLowerCase().trim();
+    var table = document.getElementById('episodesDataTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    rows.forEach(function(row) {
+        if (row.id === 'noEpisodesFallback') return;
+        var text = (row.textContent || row.innerText || '').toLowerCase();
+        if (!query || text.indexOf(query) !== -1) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+</script>
 {% endblock %}

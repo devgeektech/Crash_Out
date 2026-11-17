@@ -15,7 +15,7 @@
             hx-push-url="/studio?stage=2&scene={{ sid }}"
             hx-indicator="#busy"
         >
-            <span class="scene-tab-num">{{ sid }}</span>
+            <span class="scene-tab-num">Clip {{ sid }}</span>
             <span class="scene-tab-copy">
                 <strong>{{ sc.title }}</strong>
                 <span>{{ sc.duration_sec }}s · {{ sc.time_range }}</span>
@@ -26,18 +26,19 @@
 
     <div class="script-scene-panel" role="tabpanel">
         {% if active_script_scene %}
-            {% if active_script_scene.source_prompt is defined and active_script_scene.source_prompt is not none %}
             <form
                 class="script-edit-form"
                 hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
-                hx-target="#script-scene-block"
-                hx-swap="outerHTML"
-                hx-indicator="#busy"
+                hx-target="#script-save-status"
+                hx-swap="innerHTML"
             >
                 <div class="script-scene-meta script-edit-meta">
                     <div class="script-edit-heading">
-                        <div class="panel-kicker">Scene {{ active_script_scene.scene_id }}</div>
+                        <div class="panel-kicker">Clip {{ active_script_scene.scene_id }}</div>
                         <h2 class="script-scene-title">{{ active_script_scene.title }}</h2>
+                        <p class="panel-desc muted" style="margin: 0.15rem 0 0;">
+                            {{ active_script_scene.time_range }} · {{ active_script_scene.duration_sec }}s · Lead: {{ (active_script_scene.primary_character or 'gary')|capitalize }}
+                        </p>
                     </div>
                     <div class="script-save-status">
                         {% if clip_ready %}
@@ -47,23 +48,23 @@
                             class="badge badge-info"
                             id="prompt-char-badge"
                             data-prompt-chars
-                        >{{ (active_script_scene.source_prompt or '')|length }} chars</span>
-                        <span id="script-save-status" class="muted" aria-live="polite"></span>
+                        >{{ (active_script_scene.source_prompt or active_script_scene.vidu_prompt or '')|length }} chars</span>
+                        <span id="script-save-status" class="badge badge-info" style="font-weight: 500;" aria-live="polite">Autosaved</span>
                     </div>
                 </div>
                 <textarea
                     class="script-prompt-editor"
                     name="source_prompt"
-                    rows="22"
+                    rows="20"
+                    placeholder="Enter full scene script, visual action, camera cues, and character dialogue..."
                     data-live-char-count="#prompt-char-badge"
                     hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
-                    hx-trigger="keyup changed delay:700ms"
+                    hx-trigger="keyup changed delay:500ms"
                     hx-target="#script-save-status"
                     hx-swap="innerHTML"
                     hx-include="closest form"
-                >{{ active_script_scene.source_prompt }}</textarea>
+                >{{ active_script_scene.source_prompt or active_script_scene.vidu_prompt or '' }}</textarea>
                 <div class="script-edit-actions">
-                    <button class="btn btn-primary btn-sm" type="submit">Save scene</button>
                     <button
                         class="btn btn-ghost btn-sm"
                         type="button"
@@ -72,107 +73,11 @@
                         hx-swap="outerHTML"
                         hx-indicator="#busy"
                         hx-timeout="900000"
-                    hx-confirm="Generate clip for Scene {{ active_script_scene.scene_id }} only?"
-                >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
-                    <span class="muted">Autosaves while you type · single scene only</span>
+                        hx-confirm="Generate clip for Clip {{ active_script_scene.scene_id }} only?"
+                    >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
+                    <span class="muted">⚡ Changes autosave automatically as you type</span>
                 </div>
             </form>
-            {% else %}
-            <div class="script-scene-meta">
-                <div>
-                    <div class="panel-kicker">Scene {{ active_script_scene.scene_id }}</div>
-                    <h2 class="script-scene-title">{{ active_script_scene.title }}</h2>
-                    <p class="panel-desc">
-                        {{ active_script_scene.time_range }}
-                        · {{ active_script_scene.duration_sec }}s
-                        · Lead: {{ (active_script_scene.primary_character or 'gary')|capitalize }}
-                    </p>
-                </div>
-                <div class="script-save-status">
-                    {% if clip_ready %}
-                    <span class="badge badge-ok">Clip ready</span>
-                    {% endif %}
-                    <span class="badge badge-info">{{ active_script_lines|length }} line{{ '' if active_script_lines|length == 1 else 's' }}</span>
-                </div>
-            </div>
-
-            {% if active_script_scene.camera_cue %}
-            <div class="script-detail-block">
-                <div class="label">Camera</div>
-                <p>{{ active_script_scene.camera_cue }}</p>
-            </div>
-            {% endif %}
-
-            {% if active_script_scene.scene_action %}
-            <div class="script-detail-block">
-                <div class="label">Action</div>
-                <p>{{ active_script_scene.scene_action }}</p>
-            </div>
-            {% endif %}
-
-            {% if active_script_scene.sfx %}
-            <div class="script-detail-block">
-                <div class="label">SFX</div>
-                <p>{{ active_script_scene.sfx }}</p>
-            </div>
-            {% endif %}
-
-            <div class="dialogue-list">
-                {% if active_script_lines %}
-                    {% for line in active_script_lines %}
-                    {% set char = (line.character or 'gary')|lower %}
-                    {% set line_i = loop.index0 %}
-                    <article class="dialogue-line">
-                        <div class="char-avatar-badge">
-                            <img
-                                src="/characters/{{ char }}_9x16.png"
-                                alt="{{ char }}"
-                                onerror="this.src='/static/assets/characters/{{ char }}.png'"
-                            >
-                        </div>
-                        <div class="dialogue-body">
-                            <form
-                                class="dialogue-edit-form"
-                                hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/line/{{ line_i }}"
-                                hx-target="#script-scene-block"
-                                hx-swap="outerHTML"
-                                hx-indicator="#busy"
-                            >
-                                <div class="dialogue-meta">
-                                    <select class="input input-sm" name="character">
-                                        {% for cid in ['gary','linda','chris','chloe'] %}
-                                        <option value="{{ cid }}" {% if char == cid %}selected{% endif %}>{{ cid|capitalize }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    <input class="input input-sm" type="number" step="0.1" name="time_start" value="{{ line.time_start }}" title="start">
-                                    <input class="input input-sm" type="number" step="0.1" name="time_end" value="{{ line.time_end }}" title="end">
-                                    {% if line.emotion %}<span class="badge badge-warn">{{ line.emotion }}</span>{% endif %}
-                                    <button class="btn btn-sm btn-ghost" type="submit">Save line</button>
-                                </div>
-                                <textarea class="input dialogue-text-edit" name="text" rows="2">{{ line.text }}</textarea>
-                            </form>
-                        </div>
-                    </article>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-state">No dialogue lines for this scene.</div>
-                {% endif %}
-            </div>
-
-            <div class="script-edit-actions script-clip-actions">
-                <button
-                    class="btn btn-primary btn-sm"
-                    type="button"
-                    hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/generate"
-                    hx-target="#workspace"
-                    hx-swap="outerHTML"
-                    hx-indicator="#busy"
-                    hx-timeout="900000"
-                    hx-confirm="Generate clip for Scene {{ active_script_scene.scene_id }} only?"
-                >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
-                <span class="muted">Renders only the active script scene</span>
-            </div>
-            {% endif %}
         {% else %}
         <div class="empty-state">Scene not found in the script package.</div>
         {% endif %}

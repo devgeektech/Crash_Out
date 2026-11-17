@@ -10,6 +10,44 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 ### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
 
 Completed:
+- **Refined Sr. No. Typography**: Adjusted serial number values from heavy bold (700) to dark semi-bold (`font-weight: 600; color: var(--text);`) across [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css) and templates ([stage_0.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_0.html), [episodes.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/episodes.html), [credits.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/credits.html), [dashboard.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/dashboard.html)) for a cleaner, balanced look.
+- **Universal Bold Sr. No. Styling**: Updated `.data-table tbody td.col-num` in [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css#L2573-L2579) to enforce `font-weight: 700 !important; color: var(--text) !important;`, ensuring the serial numbers are prominently and consistently bolded across all tables without CSS inheritance overrides.
+- **Agent 0 Studio Queue Table Structure**:
+  - Replaced the listbox row styling with a clean, responsive data table structure matching the **Episode Management** page.
+  - Included a top search bar (`Search video or ID...`) with live JavaScript row filtering.
+  - Columns: `Sr. No.` (bold), `Title` (with subtitle and ID), `Duration`, `Status` badge, and `Actions` with primary **`Open →`** button and trash can delete action.
+  - Row click selects the video; actions allow direct opening into production pipeline or deleting with modal confirmation.
+- **Agent 1 Pitch Card Title Text Wrapping**:
+  - Replaced single-line `<input type="text">` for the Pitch Title with an auto-wrapping multi-line `<textarea>` in [stage_1.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_1.html).
+  - Updated `.concept-inline-title` in [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css) with `white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;` ensuring long pitch headlines wrap properly across cards.
+- **Agent 2 Script Stage Simplification**:
+  - Removed manual "Save script version" button from Stage 2 header ([stage_2.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_2.html)), leaving clean "Generate Video" CTA.
+  - Converted script editing into a clean, unified single editable prompt box per scene with live character counting.
+  - Integrated automatic autosave on typing (`hx-trigger="keyup changed delay:500ms"`) targeting a live `Autosaved` status badge without page interruption or manual saving required.
+  - Updated scene tabs from numeric `1`, `2`, `3`, `4` to **`Clip 1`**, **`Clip 2`**, **`Clip 3`**, **`Clip 4`** in [script_scene_block.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/script_scene_block.html) and enhanced tab styling in [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css).
+- **Mockup Ingestion Loading Feedback & In-App Alert**:
+  - Configured the "Mockup" button in Stage 0 ([stage_0.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_0.html)) to immediately gray out and disable on click (`disabled=true; opacity: 0.5; pointer-events: none;`) with text switching to `Searching...`.
+  - Added global helper `window.showInAppToast()` in [ui.js](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/js/ui.js) that triggers an in-app alert toast: **"Searching for Trending Topics..."**.
+- **Sequential Stage Progression & Locked Stepper**:
+  - Enforced HITL progression in [workspace.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/workspace.html#L3-L35): Future Agent stages remain disabled, grayed out (`opacity: 0.42; filter: grayscale(0.35); pointer-events: none;`), and show "Pending approval" until their prerequisite gateway is approved.
+  - Server-side guard in `_resolve_viewing_stage()` ([ui.py](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/ui.py#L358-L372)) prevents bypassing locked stages via manual URL parameter entry until previous gateways are cleared.
+- **Agent 3 Video Stage Credits Display**:
+  - Injected scene-specific credit usage onto each individual scene video card header in Stage 3 (`⚡ <X.X> cr`), showing exact credits consumed for each scene render.
+  - Added a dedicated **Total Credits** stat card (`⚡ <total> cr`) in the final merged episode stats grid next to Container, Audio, Aspect, and Duration.
+  - Updated `_build_scene_cards()` in `app/ui.py` to calculate and provide per-scene credits from `cost_summary(ep)["by_scene"]`.
+- **Dashboard Hero Heading Color**: Updated the "Production dashboard" header text color to pure white (`#ffffff !important`) in [dashboard.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/dashboard.html) and `.brand-hero-copy h1` in [app.css](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/css/app.css) ensuring optimal contrast against the banner background image and shadow.
+- **Table Search Bar & Universal Sr. No. Typography**:
+  - Added live filter search input with Search action button to both the **Credits Usage** table ([credits.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/credits.html)) and the **Episode Management** table ([episodes.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/episodes.html)).
+  - Made the `Sr. No.` values bold and dark (`font-weight: 700; color: var(--text)`) across all tables.
+  - Consistently styled headers (`Sr. No.`, `Title`, `Status`, etc.) across [credits.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/credits.html), [episodes.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/episodes.html), and [dashboard.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/dashboard.html) with dark text (`color: var(--text)`) and balanced semi-bold weight (`font-weight: 600`).
+- **Credits Table Header Typography**: Styled table headers (`Sr. No.`, `Episode Title`, `Status`, `Scene Credits Breakdown`, `Total Credits`, `Actions`) with dark high-contrast text (`color: var(--text)`) and balanced semi-bold weight (`font-weight: 600`).
+- **Credits Page KPI Cards & Table Formatting**:
+  - Aligned Total Credits, Episodes with Generations, and Active Engine KPI cards in a single horizontal row (`grid-template-columns: repeat(3, minmax(0, 1fr))`).
+  - Positioned the detailed episode breakdown table directly below the KPI bar.
+  - Replaced `#` with `Sr. No.` in the table header.
+  - Formatted all table header titles with bold text (`font-weight: 700`).
+  - Made the serial number row values bold (`font-weight: 700`, using `loop.index`).
+- **Cleaned Credits Page Header**: Removed the redundant "Total Used: 0.0 credits" chip from the top-right header of `credits.html`, keeping the KPI card layout clean.
 - **Agent Roster Numbering Re-alignment**:
   - Re-aligned Agent stage designations across Agent Studio pipeline:
     - **Stage 0**: Agent 0 (Queue & Ingest)

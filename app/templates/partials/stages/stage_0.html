@@ -2,14 +2,18 @@
     <div class="panel-header panel-header-compact">
         <div>
             <h1 class="panel-title">Agent 0 — Studio Queue & Ingest</h1>
+            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">Ingested video pipeline queue. Select any video row to inspect, or click Open to enter production.</p>
         </div>
         <div class="panel-actions">
             <button
+                id="mockup-btn"
                 class="btn btn-primary btn-sm"
                 hx-post="/ui/queue/mockup"
                 hx-target="#workspace"
                 hx-swap="outerHTML"
                 hx-indicator="#busy"
+                hx-disabled-elt="this"
+                onclick="this.disabled=true; this.style.opacity='0.5'; this.style.pointerEvents='none'; this.innerText='Searching...'; if(window.showInAppToast){window.showInAppToast('Searching for Trending Topics...', 'info', 6000);}"
                 title="Mockup 06:00 UTC scheduler: Ingest trends, generate 5 pitches & add video"
             >
                 Mockup
@@ -17,70 +21,131 @@
         </div>
     </div>
 
-    <div class="video-queue-list" role="listbox" aria-label="Video queue">
-        {% if catalog_cards %}
-            {% for card in catalog_cards %}
-            {% set card_ep = card.episode %}
-            {% set is_selected = (card_ep and ep.id == card_ep.id) or (ep.catalog_id and ep.catalog_id == card.id) %}
-            {% if card_ep %}
-                {% set select_url = '/ui/episodes/' ~ card_ep.id ~ '/select' %}
-                {% set open_url = '/ui/episodes/' ~ card_ep.id ~ '/studio' %}
-            {% else %}
-                {% set select_url = '/ui/queue/' ~ card.id ~ '/select' %}
-                {% set open_url = '/ui/catalog/' ~ card.id ~ '/gate1' %}
-            {% endif %}
-            <div class="video-queue-row {% if is_selected %}is-active{% endif %}" role="option" aria-selected="{{ 'true' if is_selected else 'false' }}">
-                <button
-                    class="video-queue-select"
-                    type="button"
-                    hx-post="{{ select_url }}"
-                    hx-target="#workspace"
-                    hx-swap="outerHTML"
-                    hx-indicator="#busy"
+    <div class="table-card" style="margin-top: 0.75rem;">
+        <div style="display: flex; justify-content: flex-end; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 320px; width: 100%;">
+                <input
+                    type="text"
+                    id="queueTableSearch"
+                    class="input"
+                    placeholder="Search video or ID..."
+                    style="font-size: 0.85rem; padding: 0.4rem 0.65rem;"
+                    onkeyup="filterQueueTable()"
                 >
-                    <span class="video-queue-num" aria-label="Video {{ card.list_number }}">{{ card.list_number }}</span>
-                    <div class="video-queue-copy">
-                        <h3>{% if card_ep %}{{ card_ep.title }}{% else %}{{ card.title }}{% endif %}</h3>
-                        {% if card.subtitle and not card_ep %}<p>{{ card.subtitle }}</p>{% endif %}
-                        <div class="video-queue-meta">
-                            <span class="badge">{{ card.duration_label }}</span>
-                            <span class="badge">{{ card.episode_status }}</span>
-                        </div>
-                    </div>
-                </button>
                 <button
-                    class="video-queue-delete"
                     type="button"
-                    title="Delete video"
-                    aria-label="Delete {{ card.title }}"
-                    data-confirm-delete
-                    data-delete-url="/ui/queue/{{ card.id }}/delete"
-                    data-delete-title="{{ card.title }}"
-                >
-                    <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M3 6h18"></path>
-                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                </button>
-                <button
-                    class="video-queue-arrow"
-                    type="button"
-                    title="Open episode"
-                    aria-label="Open {{ card.title }}"
-                    hx-post="{{ open_url }}"
-                    hx-target="#workspace"
-                    hx-swap="outerHTML"
-                    hx-indicator="#busy"
-                >
-                    <span aria-hidden="true">→</span>
-                </button>
+                    class="btn btn-sm btn-ghost"
+                    onclick="filterQueueTable()"
+                    title="Search"
+                >Search</button>
             </div>
-            {% endfor %}
-        {% else %}
-            <div class="empty-state">No videos in the queue yet.</div>
-        {% endif %}
+        </div>
+        <table class="data-table" id="queueDataTable">
+            <thead>
+                <tr>
+                    <th style="font-weight: 600; color: var(--text);">Sr. No.</th>
+                    <th style="font-weight: 600; color: var(--text);">Title</th>
+                    <th style="font-weight: 600; color: var(--text);">Duration</th>
+                    <th style="font-weight: 600; color: var(--text);">Status</th>
+                    <th style="font-weight: 600; color: var(--text); text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if catalog_cards %}
+                    {% for card in catalog_cards %}
+                    {% set card_ep = card.episode %}
+                    {% set is_selected = (card_ep and ep.id == card_ep.id) or (ep.catalog_id and ep.catalog_id == card.id) %}
+                    {% if card_ep %}
+                        {% set select_url = '/ui/episodes/' ~ card_ep.id ~ '/select' %}
+                        {% set open_url = '/ui/episodes/' ~ card_ep.id ~ '/studio' %}
+                        {% set display_title = card_ep.title %}
+                        {% set display_id = card_ep.id %}
+                    {% else %}
+                        {% set select_url = '/ui/queue/' ~ card.id ~ '/select' %}
+                        {% set open_url = '/ui/catalog/' ~ card.id ~ '/gate1' %}
+                        {% set display_title = card.title %}
+                        {% set display_id = card.id %}
+                    {% endif %}
+                    <tr
+                        class="{% if is_selected %}is-active{% endif %}"
+                        style="cursor: pointer;"
+                        hx-post="{{ select_url }}"
+                        hx-target="#workspace"
+                        hx-swap="outerHTML"
+                        hx-indicator="#busy"
+                    >
+                        <td class="col-num" style="font-weight: 600; color: var(--text);">{{ loop.index }}</td>
+                        <td class="col-title">
+                            <span class="ep-title-text" style="font-weight: 600;">{{ display_title }}</span>
+                            <div class="muted mono">{{ display_id }}</div>
+                        </td>
+                        <td>
+                            <span class="badge">{{ card.duration_label|default('55s') }}</span>
+                        </td>
+                        <td>
+                            <span class="badge {% if card.episode_status == 'Published' %}badge-ok{% endif %}">{{ card.episode_status }}</span>
+                        </td>
+                        <td class="row-actions" style="text-align: right;" onclick="event.stopPropagation();">
+                            <div style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                <button
+                                    class="btn btn-sm btn-primary"
+                                    type="button"
+                                    hx-post="{{ open_url }}"
+                                    hx-target="#workspace"
+                                    hx-swap="outerHTML"
+                                    hx-indicator="#busy"
+                                    title="Open episode in production pipeline"
+                                >
+                                    Open →
+                                </button>
+                                <button
+                                    class="video-queue-delete"
+                                    type="button"
+                                    title="Delete video"
+                                    aria-label="Delete {{ display_title }}"
+                                    data-confirm-delete
+                                    data-delete-url="/ui/queue/{{ card.id }}/delete"
+                                    data-delete-title="{{ display_title }}"
+                                    style="padding: 0.35rem 0.5rem; background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); cursor: pointer;"
+                                >
+                                    <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M3 6h18"></path>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="noQueueFallback">
+                        <td colspan="5" class="muted" style="text-align: center; padding: 2rem;">
+                            No videos in the queue yet. Click <strong>Mockup</strong> to generate trending pitches and start an episode.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 </section>
+
+<script>
+function filterQueueTable() {
+    var query = (document.getElementById('queueTableSearch').value || '').toLowerCase().trim();
+    var table = document.getElementById('queueDataTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    rows.forEach(function(row) {
+        if (row.id === 'noQueueFallback') return;
+        var text = (row.textContent || row.innerText || '').toLowerCase();
+        if (!query || text.indexOf(query) !== -1) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+</script>

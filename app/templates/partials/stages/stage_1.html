@@ -76,15 +76,15 @@
 
                     <div class="concept-inline-block">
                         <span class="concept-inline-label">Title</span>
-                        <input
+                        <textarea
                             class="concept-inline concept-inline-title"
-                            type="text"
                             name="headline"
-                            value="{{ headline }}"
+                            rows="2"
                             placeholder="Headline"
                             required
                             aria-label="Title"
-                        >
+                            style="word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap; resize: vertical;"
+                        >{{ headline }}</textarea>
                     </div>
 
                     <div class="concept-inline-block">

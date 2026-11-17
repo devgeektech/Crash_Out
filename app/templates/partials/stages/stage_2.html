@@ -6,15 +6,6 @@
         </div>
         <div class="panel-actions">
             <button
-                class="btn btn-ghost"
-                type="button"
-                hx-post="/ui/script/version"
-                hx-target="#workspace"
-                hx-swap="outerHTML"
-                hx-indicator="#busy"
-                {% if not ep.script %}disabled{% endif %}
-            >Save script version</button>
-            <button
                 class="btn btn-primary"
                 type="button"
                 hx-post="/ui/gateway/2/approve"
