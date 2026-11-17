@@ -1139,19 +1139,25 @@ def ui_add_catalog_video(
 @router.post("/ui/queue/{catalog_id}/delete", response_class=HTMLResponse)
 @router.post("/ui/catalog/{catalog_id}/delete", response_class=HTMLResponse)
 def ui_delete_catalog_video(request: Request, catalog_id: str):
-    """Delete a queue video."""
+    """Delete a queue video or active episode."""
     item = get_catalog_item(catalog_id)
-    if not item:
-        return render(
-            request,
-            "partials/htmx_workspace.html",
-            viewing_stage=0,
-            error="Video not found.",
-        )
+    ep_by_id = state_manager.episodes.get(catalog_id)
+    title = (item.get("title") if item else (ep_by_id.title if ep_by_id else catalog_id))
+
+    if not item and not ep_by_id:
+        # Check if catalog_id matches any episode catalog_id
+        matching_ep = next((e for e in state_manager.episodes.values() if e.catalog_id == catalog_id), None)
+        if not matching_ep:
+            return render(
+                request,
+                "partials/htmx_workspace.html",
+                viewing_stage=0,
+                error="Video not found.",
+            )
 
     delete_manual_catalog_video(catalog_id)
     for ep_id, ep in list(state_manager.episodes.items()):
-        if ep.catalog_id == catalog_id:
+        if ep.catalog_id == catalog_id or ep.id == catalog_id:
             del state_manager.episodes[ep_id]
             if state_manager.active_episode_id == ep_id:
                 state_manager.active_episode_id = None
@@ -1165,7 +1171,7 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
         request,
         "partials/htmx_workspace.html",
         viewing_stage=0,
-        toast=f"Deleted · {item.get('title') or catalog_id}",
+        toast=f"Deleted · {title}",
         toast_kind="ok",
     )
 

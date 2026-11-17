@@ -103,12 +103,14 @@
                                     type="button"
                                     title="Delete video"
                                     aria-label="Delete {{ display_title }}"
-                                    data-confirm-delete
-                                    data-delete-url="/ui/queue/{{ card.id }}/delete"
-                                    data-delete-title="{{ display_title }}"
-                                    style="padding: 0.35rem 0.5rem; background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); cursor: pointer;"
+                                    hx-post="/ui/queue/{{ card.id }}/delete"
+                                    hx-confirm="Delete “{{ display_title }}” from the queue? This cannot be undone."
+                                    hx-target="#workspace"
+                                    hx-swap="outerHTML"
+                                    hx-indicator="#busy"
+                                    style="padding: 0.35rem 0.5rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-sm); color: #dc2626; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;"
                                 >
-                                    <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <svg class="delete-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                         <path d="M3 6h18"></path>
                                         <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
                                         <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>

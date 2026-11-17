@@ -10,6 +10,11 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 ### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
 
 Completed:
+- **Agent 0 Delete Button Red Styling & Reliable Deletion Fix**:
+  - Restyled delete button in Agent 0 Studio Queue table ([stage_0.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_0.html)) with explicit red color palette: red stroke icon (`#dc2626`), red text, soft red border (`#fecaca`), and light red background (`#fef2f2`).
+  - Replaced problematic modal wiring with direct, foolproof `hx-confirm="Delete “{{ display_title }}” from the queue? This cannot be undone."` and `hx-post="/ui/queue/{{ card.id }}/delete"` targeting `#workspace`.
+  - Updated `ui_delete_catalog_video` in [ui.py](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/ui.py) to reliably handle deletion by catalog ID, custom catalog ID, or direct episode ID, cleaning up state and active episode pointers smoothly.
+- **Login Password Visibility Toggle**: Added an eye icon toggle button to the password input in [auth_login.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/auth_login.html), allowing users to show and hide their password in plain text with SVG open/closed eye state icons. Pushed and deployed live to EC2.
 - **Production Server Deployment & Live Launch**:
   - Merged `users/dev/vikas/update` into `master` and pushed to GitHub remote `origin/master`.
   - Pulled latest `master` codebase onto the AWS EC2 instance (`13.51.79.99` at `/var/www/Crash_Out`).
