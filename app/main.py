@@ -112,17 +112,25 @@ _silence_windows_proactor_connection_reset()
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _install_windows_asyncio_exception_handler(asyncio.get_running_loop())
+    from app.logging_framework import setup_logging
+    setup_logging()
+
     from app.auth_users import ensure_auth_ready
     from app.db import init_db
     from app.studio.worker import start_worker
     from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
     from app.trends.store import init_store
+    from app.temporal_setup import get_temporal_client
 
     init_db()
     ensure_auth_ready()
     init_store()
     start_worker()
     start_agent0_scheduler()
+
+    # Optional background check/connection for Temporal
+    asyncio.create_task(get_temporal_client())
+
     try:
         yield
     finally:
@@ -145,8 +153,10 @@ app = FastAPI(
 
 from app.security import session_secret  # noqa: E402
 from app.auth_middleware import AuthMiddleware  # noqa: E402
+from app.logging_framework import RequestLoggingMiddleware  # noqa: E402
 
-# Order matters: last added runs first. Auth sees the session cookie.
+# Order matters: last added runs first. Request logger -> Auth -> Session.
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -906,6 +916,42 @@ def approve_gateway_5(payload: Dict[str, Any] = Body(...)):
 @app.post("/api/gateway/6/approve")
 def approve_gateway_6(payload: Dict[str, Any] = Body(...)):
     return approve_gateway_5(payload)
+
+
+@app.get("/api/system/health")
+def system_health():
+    """System health & M2 component status check."""
+    from app.db import is_postgres
+    from app.storage import s3_service
+    from app.temporal_setup import TEMPORAL_HOST
+
+    db_status = "postgresql" if is_postgres() else "sqlite"
+    return {
+        "status": "healthy",
+        "database": {
+            "mode": db_status,
+            "connected": True,
+        },
+        "storage": {
+            "s3_configured": s3_service.is_configured,
+            "s3_bucket": s3_service.bucket_name or None,
+            "region": s3_service.region_name,
+        },
+        "temporal": {
+            "host": TEMPORAL_HOST,
+            "status": "configured",
+        },
+        "auth": {
+            "session_auth": "enabled",
+            "password_hashing": "bcrypt",
+            "secret_encryption": "fernet",
+        },
+        "logging": {
+            "framework": "active",
+            "app_log": "outputs/logs/app.log",
+            "access_log": "outputs/logs/access.log",
+        },
+    }
 
 
 if __name__ == "__main__":

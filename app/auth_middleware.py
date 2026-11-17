@@ -27,6 +27,7 @@ PUBLIC_EXACT: Set[str] = {
     "/docs",
     "/openapi.json",
     "/redoc",
+    "/api/system/health",
 }
 
 PUBLIC_PREFIXES = (

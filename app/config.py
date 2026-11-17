@@ -55,6 +55,18 @@ class PlatformCredentials(BaseModel):
     telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
     agent0_schedule_enabled: str = os.getenv("AGENT0_SCHEDULE_ENABLED", "false")
 
+    # AWS S3 Storage
+    aws_s3_bucket: str = os.getenv("AWS_S3_BUCKET", "")
+    aws_region: str = os.getenv("AWS_REGION", "us-east-1")
+    aws_access_key_id: str = os.getenv("AWS_ACCESS_KEY_ID", "")
+    aws_secret_access_key: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    aws_endpoint_url: str = os.getenv("AWS_ENDPOINT_URL", "")
+
+    # Temporal Workflow Orchestration
+    temporal_host: str = os.getenv("TEMPORAL_HOST", "localhost:7233")
+    temporal_namespace: str = os.getenv("TEMPORAL_NAMESPACE", "default")
+    temporal_task_queue: str = os.getenv("TEMPORAL_TASK_QUEUE", "crash-out-production-queue")
+
     # mock = never call Vidu (default while credits empty); vidu = live API
     video_engine: str = os.getenv("VIDEO_ENGINE", "mock").strip().lower() or "mock"
 

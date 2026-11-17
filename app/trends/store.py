@@ -50,8 +50,17 @@ def init_store() -> None:
     if not conn:
         return
     try:
+        has_vector = False
         with conn, conn.cursor() as cur:
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            try:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                has_vector = True
+            except Exception:
+                # Extension not installed on system; fall back gracefully to text/JSON storage
+                conn.rollback()
+                logger.info("pgvector extension not installed in Postgres; using text/JSON embedding fallback")
+
+        with conn, conn.cursor() as cur:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS agent0_pitch_runs (
@@ -74,19 +83,20 @@ def init_store() -> None:
                 )
                 """
             )
+            embedding_type = "vector(1536)" if has_vector else "TEXT"
             cur.execute(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS agent0_episode_topics (
                     episode_id TEXT PRIMARY KEY,
                     title TEXT,
                     label TEXT,
-                    embedding vector(1536),
+                    embedding {embedding_type},
                     label_text TEXT,
                     approved_at TIMESTAMPTZ DEFAULT NOW()
                 )
                 """
             )
-        logger.info("Agent 0 Postgres store ready")
+        logger.info("Agent 0 Postgres store ready (vector_support=%s)", has_vector)
     except Exception as exc:
         logger.warning("Agent 0 Postgres init failed: %s", exc)
     finally:
