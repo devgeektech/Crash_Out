@@ -7,6 +7,192 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-18 — Tightened Padding & Spacing on Credits Usage Page
+
+Completed:
+- **Tightened Header & Section Spacing (`app/templates/credits.html`)**:
+  - Reduced container top padding (`padding-top: 0.5rem;`) to eliminate the excess empty space above "Credits Usage".
+  - Eliminated browser default margins on `h1` (`margin: 0 0 0.2rem;`) and `p.muted` (`margin: 0;`).
+  - Reduced `.page-head` bottom margin to `0.75rem` and `.dash-kpis` bottom margin to `1rem` to eliminate the vertical void between the description line and the KPI metric cards.
+- **Verification**:
+  - Verified authenticated `GET /credits` returns HTTP 200 with the compact spacing.
+
+---
+
+### 2026-11-18 — Removed Generation Queue Card from Animation & Rendering Page
+
+Completed:
+- **Removed Generation Queue (`app/templates/partials/workspace.html`)**:
+  - Removed `{% include "partials/generation_queue.html" %}` from viewing stage 3 (`Animation & Rendering`).
+  - The page now focuses exclusively on the video clips grid, clip preview player, individual clip regeneration, and the master episode assembly review.
+- **Verification**:
+  - Verified with `TestClient` that `/studio?stage=3` renders cleanly without the Generation Queue card or clip history side-panel (HTTP 200).
+
+---
+
+### 2026-11-18 — Restored Natural Hero Banner & Polished Unified Pipeline Cards
+
+Completed:
+- **Restored Standard Brand Hero (`app/templates/dashboard.html`)**:
+  - Removed restrictive inline `height: 135px;` and forced crop overrides that had vertically squashed the hero banner down to an 85px slit with clipped character faces.
+  - Restored standard stylesheet-driven `.brand-hero` and `.brand-hero-img` (220px height, `object-position: center 28%`) matching Image 2, ensuring Chris, Chloe, Gary, and Linda's faces and the copy/CTA are fully visible with natural padding.
+- **Unified 4 Pipeline Metric Cards (`app/templates/dashboard.html`)**:
+  - Standardized all 4 KPI numbers to brand hot-pink (`var(--brand-hot)`) with `.dash-kpi-value`, consistent with the reference design.
+  - Aligned subtitles to match the exact counts (`{{ dashboard.studio_count }} in queue`, `{{ dashboard.scripting_count }} in draft & review`, `{{ dashboard.generating_count }} in video generation`, `{{ dashboard.published_count }} episodes published`) removing conflicting secondary counts.
+- **Verification**:
+  - Verified endpoint response with `TestClient` (HTTP 200).
+
+---
+
+### 2026-11-18 — Removed Meta-Strip (Viewing/Ep/HITL/Prod) from All Stages & Compacted Spacing
+
+Completed:
+- **Removed Meta-Strip HTML (`app/templates/partials/workspace.html`)**:
+  - Removed the `meta-strip` containing `Viewing: <Stage> · Ep #<num>: <title> · HITL: <status> · Prod: <status>` across all agent steps.
+- **Removed Empty Space (`app/static/css/app.css`)**:
+  - Reduced `.stepper-bar` margin-bottom from `1.25rem` to `0.65rem` so there is no empty gap between the top navigation stepper bar and the stage content.
+  - Set `.meta-strip { display: none !important; }` in CSS to prevent any cached rendering.
+- **Verification**:
+  - Ran `TestClient` verification across all studio stages (`/studio?stage=0..3`), confirming 200 OK and absence of meta-strip strings and empty voids.
+
+---
+
+### 2026-11-18 — Dashboard UI Redesign: Compact Hero Banner & Unified Agent Task Monitoring
+
+Completed:
+- **Compact Hero Banner (`app/templates/dashboard.html`)**:
+  - Replaced oversized hero banner with a compact horizontal banner referenced directly from the production layout (~135px height, dark background `#111`, hot-pink 2px border with yellow glow, right-aligned Pearson family artwork at `object-position: right 25%`, and concise copy: "Production dashboard — Pipeline health, episode status, and credit usage." with an "Agent Studio" CTA button).
+- **Consolidated 4 Pipeline KPI Cards with Agent Workflow Section (`app/templates/dashboard.html`)**:
+  - Eliminated the redundant second KPI metrics row and merged the 4 core pipeline stages (`In Studio · A0`, `Scripting · A1`, `Generating · A3`, `Published · A4/A5`) directly inside the **Agent Workflow & Task Monitoring** panel.
+  - Upgraded card design with top gradient accent strips (pink, orange, violet, emerald), agent ID pill badges (`A0`, `A1`, `A3`, `A4/A5`), status pills (`⚡ waiting approval`, `⚡ Vidu Q4 rendering active`, etc.), micro-descriptions, and clean typography conforming to the UI style rules (normal weight data, bold headers).
+  - Preserved the dual-column "Channel Performance & Episode Analytics" and "Merchandising & Store Integration" sections with prominent "Coming Soon" indicators.
+- **Verification**:
+  - Verified authenticated endpoint rendering via `TestClient(app)` returning HTTP 200 with all cards, sections, and links validated.
+
+---
+
+### 2026-11-18 — Tightened Spacing in Stage 1 Pitch Review Header
+
+Completed:
+- **Reduced Top Margin on Back Button (`app/templates/partials/stages/stage_1.html`)**:
+  - Removed excess `margin-top: 1.5rem` and `padding-top: 1.25rem`, reducing container margin to `margin-top: 0.25rem; margin-bottom: 0.75rem;`.
+  - Scaled button padding to `padding: 0.45rem 1.1rem` with `font-size: 0.88rem`.
+- **Reduced Header Padding (`app/templates/partials/stages/stage_1.html`)**:
+  - Decreased `.panel-header` padding from `1.1rem 1.35rem` to `0.25rem 0.5rem 0.65rem` with `margin-bottom: 0.65rem`.
+  - Compacted the "Approve pitch" button padding to `padding: 0.42rem 1.1rem`.
+
+---
+
+### 2026-11-18 — Fixed Agent 0 Row Selection Stuck on First Row
+
+Completed:
+- **Event Propagation Unblock (`app/templates/partials/stages/stage_0.html`)**:
+  - Removed `onclick="event.stopPropagation();"` from `<td class="col-title">`, which was completely swallowing clicks on the episode title and preventing row selection.
+  - Restricted `stopPropagation()` solely to active text input during title editing and the pencil rename icon.
+  - Added instant row click visual feedback (`handleQueueRowClick`) and `data-select-url`.
+- **Selection State Persistence & Hard Refresh Fix (`app/ui.py`)**:
+  - Fixed `ui_studio()` which previously forced `_select_top_queue_item()` on every visit or refresh to `/studio?stage=0`. It now preserves the existing active episode in `state_manager`.
+  - Updated `_studio_push_url` and selection responses to include `&episode={ep.id}` in `HX-Push-Url`, ensuring full browser URL synchronicity and refresh retention.
+  - Verified with `TestClient` that selecting Gateway 1, 2, or 3 rows dynamically updates the top stepper menu bar and persists through browser page reloads.
+
+---
+
+### 2026-11-18 — Updated Agent 0 Daily Schedule from 6 AM UTC to 6 AM EST
+
+Completed:
+- **Temporal Schedule Update (`app/temporal_setup.py`)**:
+  - Renamed schedule ID to `agent0-daily-6am-est`.
+  - Updated cron specification `spec=ScheduleSpec(cron_expressions=["0 6 * * *"], time_zone_name="America/New_York")`.
+- **APScheduler & Ingest Cadence (`app/trends/scheduler.py` & `.env.example`)**:
+  - Changed default scheduler timezone from `UTC` to `America/New_York` (6:00 AM EST).
+  - Updated environment variable defaults and docstrings.
+- **UI & Mock Scheduler References (`app/ui.py`, `app/main.py`, `stage_0.html`)**:
+  - Aligned the manual trigger and Stage 0 tooltip labels to 6:00 AM EST.
+
+---
+
+### 2026-11-18 — Agent 0 Row Selection with Dynamic Top Stepper Menu & Search Fix
+
+Completed:
+- **Agent 0 Row Selection & Top Stepper Gateway Adaptation (`app/templates/partials/stages/stage_0.html` & `app/static/css/app.css`)**:
+  - Restored row selection visual feedback (`is-active selected`) with brand highlight background (`var(--brand-soft)`), pink inset indicator bar (`box-shadow: inset 3px 0 0 var(--brand)`), and hover states across the table.
+  - Linked each row's selection to `data-status-gw` reflecting the episode's gateway state (`ep.current_gateway`). When a user selects a row, the active episode updates dynamically via HTMX partial swap (`#workspace`), immediately enabling/unlocking the top stepper bar menu stages (e.g. Scriptwriter for GW2+, Animation & Rendering for GW3+) corresponding to that episode's status.
+- **Search Functionality Fix & Validation (`app/templates/partials/stages/stage_0.html`)**:
+  - Validated and unified the search behavior with Episode Management:
+    - Updated `filterQueueTable()` to perform real-time substring filtering across row text and editable input titles.
+    - Synchronized pagination recalculation upon searching with dynamic match counts and clean "No episodes match" fallback.
+    - Added both `onkeyup` and `oninput` handlers on `#queueTableSearch` and Search button click.
+
+---
+
+### 2026-11-18 — Enhanced Dashboard Aesthetic & Visual Polish
+
+Completed:
+- **Refined Dashboard Visual Presentation (`app/templates/dashboard.html`)**:
+  - Elevated the dashboard design from basic layouts to a sleek studio aesthetic:
+    - **Hero Banner**: Polished glass badge (`Autonomous Studio Hub · Live Multi-Agent System`), pulsing status beacon, deep gradient shade with character brand backdrop, and elevated buttons with glowing drop shadows.
+    - **Agent Monitoring Bar**: Added top colored gradient indicator bars per agent (Pink for A0, Orange for A1, Purple for A3, Rose for A4, Emerald for A5), numeric agent index badges, live pulsing green radar indicator, and clear micro-status indicators for human interventions.
+    - **KPI Counter Cards**: Introduced dedicated colored icon capsules (🎬, ✍️, ⚡, 🚀) with soft tinted borders, high-contrast typography, and subtle bottom dividing rules.
+    - **Social Syndication Cards**: Added brand icon badges for YouTube Shorts (▶ red), TikTok (🎵 cyan), and Instagram Reels (📸 magenta) with 2-column engagement statistics and rounded badge tags.
+    - **Merchandising Hub**: Enhanced store connection, apparel drop counter, and gross revenue tiles with consistent spacing, soft glass borders, and distinct status badges.
+
+---
+
+### 2026-11-18 — Studio Stepper Bar Rounded Corners & Content Alignment Fix
+
+Completed:
+- **Rounded Stepper Card & Contained Width (`app/static/css/app.css`)**:
+  - Transformed `.stepper-bar` from a full-width flat strip with square corners into a rounded card matching the bottom content panel:
+    - `border: 1px solid var(--border)`
+    - `border-radius: var(--radius)` (10px rounded corners matching the panels)
+    - `box-shadow: var(--shadow)`
+    - `margin: 0 auto 1.25rem`
+    - `overflow: hidden`
+  - Removed excess outer horizontal padding from `.main-wrapper` (`padding: 0 0 2rem`) so the top stepper bar and the stage panels below align with the exact same left and right edges.
+  - Adjusted `stage_0.html` top margin to sit cleanly below the rounded stepper bar without gaps.
+
+---
+
+### 2026-11-18 — Cleaned Dashboard to Only Display New Client-Requested Modules
+
+Completed:
+- **Cleaned Dashboard (`app/templates/dashboard.html`)**:
+  - Removed old legacy sections:
+    - Removed `Active episode`
+    - Removed `Production mix`
+    - Removed `Recent episodes` table
+    - Removed `Studio queue` list
+    - Removed `Revision notes` list
+  - Kept only the new client-requested dashboard modules:
+    - Top Hero Banner & Quick Entry to AI Production Studio
+    - **Agent Workflow & Task Monitoring Bar**: Live tracking of autonomous agents (A0 Idea Gen & Waiting Approval, A1 Scriptwriting, A3 Video/Audio rendering, A4 Publishing, A5 Community & Seeding)
+    - **KPI Metrics Cards**: Studio pipeline counters (In Studio, Scripting, Generating, Published)
+    - **Channel Performance & Episode Analytics**: YouTube Shorts, TikTok, and Instagram Reels views & engagement tracking (with "Coming Soon" badges)
+    - **Merchandising & Store Integration**: Store connection, merch catalog items, and total sales tracking per episode punchline (with "Coming Soon" badges)
+
+---
+
+### 2026-11-18 — Comprehensive Dashboard Overhaul per Client Specifications
+
+Completed:
+- **Agent Workflow & Task Monitoring Bar (`app/templates/dashboard.html` & `app/studio/generation.py`)**:
+  - Implemented a prominent top monitoring bar showing each agent's current role and task status:
+    - **A0 (Trend Research)**: Total ideas generated, and ideas awaiting human intervention/Gateway 1 approval.
+    - **A1 (Scriptwriter)**: Total scripts ready and scripts actively in review (Gateway 2).
+    - **A3 (Video & Audio / Animation & Rendering)**: Scene clips generated, Vidu Q4 API render status.
+    - **A4 (Publishing)**: Multi-channel distribution status (Shorts, TikTok, Reels).
+    - **A5 (Community & Seeding)**: Guerrilla seeding drafts (Reddit, TikTok comments).
+- **Channel Performance & Episode Analytics (`app/templates/dashboard.html`)**:
+  - Added dedicated card for Channel-by-Channel Successes (YouTube Shorts, TikTok, Instagram Reels) tracking views, likes, shares, and engagement rates.
+  - Formatted with a visible **Coming Soon** badge until live platform metrics are connected.
+- **Merchandising & Store Integration (`app/templates/dashboard.html`)**:
+  - Added dedicated card for Merchandising tracking: Print-on-Demand store connection, catalog items, and sales conversion per episode punchline.
+  - Marked with a **Coming Soon** badge until storefront webhook/API data is live.
+- **Aggregated Backend Metrics (`app/studio/generation.py`)**:
+  - Enhanced `studio_dashboard_snapshot()` to automatically compute agent-specific breakdown metrics (`agent_stats`).
+
+---
+
 ### 2026-11-18 — Removed Sidebar Footer Text and Removed Credits KPI from Dashboard Top Cards
 
 Completed:

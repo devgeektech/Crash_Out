@@ -1,4 +1,4 @@
-<section class="panel stage-card stage-queue" style="margin-top: 1.5rem; padding-top: 1.25rem;">
+<section class="panel stage-card stage-queue" style="margin-top: 0; padding-top: 1.25rem;">
     <div class="panel-header panel-header-compact" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding-bottom: 1rem;">
         <div>
             <h1 class="panel-title">Trend Research & Approve Pitch</h1>
@@ -30,7 +30,7 @@
                 hx-indicator="#busy"
                 hx-disabled-elt="this"
                 onclick="this.disabled=true; this.style.opacity='0.5'; this.style.pointerEvents='none'; this.innerText='Searching...'; if(window.showInAppToast){window.showInAppToast('Searching for Trending Topics...', 'info', 6000);}"
-                title="Mockup 06:00 UTC scheduler: Ingest trends, generate 5 pitches & add video"
+                title="Mockup 06:00 EST scheduler: Ingest trends, generate 5 pitches & add video"
             >
                 Mockup
             </button>
@@ -70,16 +70,22 @@
                     {% endif %}
                     {% set card_concepts = card.concepts or (card_ep.available_concepts if card_ep else []) %}
                     {% set card_sel = (card_ep.selected_concept if card_ep else None) or (card_concepts[0] if card_concepts else {}) %}
+                    {% set row_gw = card_ep.current_gateway|default(1) if card_ep else (1 if card_concepts else 0) %}
                     <tr
-                        class=""
-                        style="cursor: pointer; background: transparent;"
+                        class="queue-row {% if is_selected %}is-active selected{% endif %}"
+                        style="cursor: pointer;"
+                        data-status-gw="{{ row_gw }}"
+                        data-ep-id="{{ card_ep.id if card_ep else '' }}"
+                        data-catalog-id="{{ card.id }}"
+                        data-select-url="{{ select_url }}"
+                        onclick="handleQueueRowClick(this, event)"
                         hx-post="{{ select_url }}"
                         hx-target="#workspace"
                         hx-swap="outerHTML"
                         hx-indicator="#busy"
                     >
                         <td class="col-num" style="font-weight: 600; color: var(--text); padding: 0.85rem 1rem; vertical-align: middle;">{{ card.list_number or (catalog_cards|length - loop.index0) }}</td>
-                        <td class="col-title" onclick="event.stopPropagation();" style="padding: 0.85rem 1rem; vertical-align: middle; word-break: break-word; overflow-wrap: break-word;">
+                        <td class="col-title" style="padding: 0.85rem 1rem; vertical-align: middle; word-break: break-word; overflow-wrap: break-word;">
                             <form
                                 class="ep-title-row meta-title-edit"
                                 hx-post="{{ rename_url }}"
@@ -92,8 +98,8 @@
                                 <span
                                     class="ep-title-text"
                                     style="font-weight: 600; font-size: 0.92rem; color: var(--text); flex: 1; word-break: break-word; overflow-wrap: break-word; line-height: 1.45; cursor: pointer;"
-                                    title="Double click or click ✎ to edit title"
-                                    ondblclick="startTitleEdit(this)"
+                                    title="Click to select episode. Double click or click ✎ to edit title"
+                                    ondblclick="event.stopPropagation(); startTitleEdit(this)"
                                 >{{ display_title }}</span>
                                 <input
                                     class="ep-title-input"
@@ -104,6 +110,7 @@
                                     aria-label="Video title"
                                     data-original="{{ display_title }}"
                                     style="display: none; font-weight: 600; font-size: 0.92rem; width: 100%;"
+                                    onclick="event.stopPropagation();"
                                     onblur="cancelTitleEdit(this)"
                                 >
                                 <button
@@ -293,6 +300,17 @@ function executeQueueDelete() {
         fetch(url, { method: 'POST' }).then(function() { window.location.reload(); });
     }
 }
+function handleQueueRowClick(tr, e) {
+    if (!tr) return;
+    if (e && e.target && (e.target.closest('button') || e.target.closest('a') || e.target.closest('input:not([type="hidden"])'))) {
+        return;
+    }
+    document.querySelectorAll('#queueDataTable tbody tr').forEach(function(r) {
+        r.classList.remove('is-active', 'selected');
+    });
+    tr.classList.add('is-active', 'selected');
+}
+
 var queueCurrentPage = 1;
 var queuePageSize = 10;
 
@@ -367,7 +385,8 @@ function filterQueueTable() {
     var table = document.getElementById('queueDataTable');
     if (!table) return;
     var rows = table.querySelectorAll('tbody tr');
-    var words = query ? query.split(/\s+/) : [];
+    var fallback = document.getElementById('noQueueFallback');
+    var visibleMatches = 0;
 
     rows.forEach(function(row) {
         if (row.id === 'noQueueFallback') return;
@@ -377,23 +396,34 @@ function filterQueueTable() {
             text += ' ' + (inp.value || '').toLowerCase();
         });
 
-        // Match all words (same as episode management search)
-        var matches = true;
-        for (var i = 0; i < words.length; i++) {
-            if (text.indexOf(words[i]) === -1) {
-                matches = false;
-                break;
-            }
-        }
-
-        if (matches) {
+        // Exact substring check matching Episode Management filter logic
+        if (!query || text.indexOf(query) !== -1) {
             row.removeAttribute('data-filtered-out');
+            row.style.display = '';
+            visibleMatches++;
         } else {
             row.setAttribute('data-filtered-out', 'true');
+            row.style.display = 'none';
         }
     });
-    queueCurrentPage = 1;
+
+    // Update pagination controls and info
+    var total = visibleMatches;
+    var totalPages = Math.ceil(total / queuePageSize) || 1;
+    if (query) {
+        // When searching, show all matched results or paginate matches cleanly
+        queueCurrentPage = 1;
+    }
     updateQueuePagination();
+
+    // Show/hide no match fallback if everything is filtered out
+    if (fallback) {
+        fallback.style.display = (total === 0 && query) ? '' : 'none';
+        if (total === 0 && query) {
+            var cell = fallback.querySelector('td');
+            if (cell) cell.innerText = 'No episodes match "' + query + '".';
+        }
+    }
 }
 
 function startTitleEdit(target) {

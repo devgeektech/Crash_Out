@@ -41,50 +41,6 @@
         </div>
     </nav>
 
-    {% if viewing_stage not in [0, 1] %}
-    <div class="meta-strip">
-        <div class="meta-left">
-            <span>Viewing: <strong>{{ stage_labels[viewing_stage] }}</strong></span>
-            <span class="meta-sep">·</span>
-            <span class="meta-ep-label">Ep #{{ ep.episode_number or '—' }}:</span>
-            <form
-                class="ep-title-row meta-title-edit"
-                method="post"
-                action="/ui/episodes/{{ ep.id }}/rename"
-                data-ep-rename-form
-            >
-                <input
-                    class="ep-title-input"
-                    type="text"
-                    name="title"
-                    value="{{ ep.title }}"
-                    readonly
-                    required
-                    aria-label="Episode title"
-                    data-original="{{ ep.title }}"
-                    style="cursor: pointer;"
-                    title="Click ✎ or double click to edit title"
-                    ondblclick="if(typeof startTitleEdit==='function') startTitleEdit(this);"
-                >
-                <button
-                    class="icon-btn icon-btn-pencil"
-                    type="button"
-                    title="Rename episode"
-                    aria-label="Rename {{ ep.title }}"
-                    data-ep-rename
-                    onclick="event.preventDefault(); event.stopPropagation(); const inp = this.closest('[data-ep-rename-form]').querySelector('.ep-title-input'); if(inp){ inp.readOnly=false; inp.classList.add('is-editing'); inp.focus(); inp.select(); }"
-                >
-                    <span aria-hidden="true">✎</span>
-                </button>
-            </form>
-            <span class="meta-sep">·</span>
-            <span>HITL: <span class="badge">{{ ep.status|replace('_', ' ')|title }}</span></span>
-            <span class="meta-sep">·</span>
-            <span>Prod: <span class="badge">{{ ep.production_status|default('draft')|title }}</span></span>
-        </div>
-    </div>
-    {% endif %}
-
     <main class="main-wrapper main-wrapper-single">
         <div class="center-content">
             {% if viewing_stage == 0 %}
@@ -95,7 +51,6 @@
                 {% include "partials/stages/stage_2.html" %}
             {% elif viewing_stage == 3 %}
                 {% include "partials/stages/stage_3.html" %}
-                {% include "partials/generation_queue.html" %}
             {% elif viewing_stage == 4 %}
                 {% include "partials/stages/stage_locked.html" %}
             {% elif viewing_stage == 5 %}

@@ -2,7 +2,7 @@
 {% set sel_flag = (sel.sensitivity_flag or '')|upper %}
 {% set is_approved = (ep.current_gateway and ep.current_gateway|int >= 2) or (ep.status and ep.status != 'DRAFT' and ep.status != 'WAITING_GATEWAY_1') %}
 
-<div style="margin-top: 1.5rem; padding-top: 1.25rem; margin-bottom: 1.1rem; display: flex; align-items: center;">
+<div style="margin-top: 0.25rem; margin-bottom: 0.75rem; display: flex; align-items: center;">
     <button
         type="button"
         class="btn btn-primary"
@@ -12,9 +12,9 @@
         hx-push-url="/studio?stage=0"
         hx-indicator="#busy"
         title="Back to episode list"
-        style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 1.25rem; font-weight: 600;"
+        style="display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1.1rem; font-size: 0.88rem; font-weight: 600;"
     >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
         </svg>
@@ -22,10 +22,10 @@
     </button>
 </div>
 
-<section class="panel stage-card">
-    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.1rem 1.35rem;">
+<section class="panel stage-card" style="padding-top: 0.75rem;">
+    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.25rem 0.5rem 0.65rem; margin-bottom: 0.65rem;">
         <div style="flex: 1; min-width: 0;">
-            <h1 class="panel-title" style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text); word-break: break-word; overflow-wrap: break-word; line-height: 1.4;">
+            <h1 class="panel-title" style="margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--text); word-break: break-word; overflow-wrap: break-word; line-height: 1.35;">
                 {{ ep.title }}
             </h1>
         </div>
@@ -35,7 +35,7 @@
                 class="btn btn-primary"
                 type="button"
                 disabled
-                style="padding: 0.55rem 1.25rem; font-weight: 600; opacity: 0.5; cursor: not-allowed; filter: grayscale(1); background: #9ca3af; border-color: #9ca3af; color: #ffffff;"
+                style="padding: 0.42rem 1.1rem; font-size: 0.88rem; font-weight: 600; opacity: 0.5; cursor: not-allowed; filter: grayscale(1); background: #9ca3af; border-color: #9ca3af; color: #ffffff;"
                 title="Pitch is already approved"
             >
                 ✓ Pitch Approved
@@ -51,7 +51,7 @@
                 {% if sel_flag == 'SENSITIVE_REVIEW' %}
                 hx-confirm="This pitch is flagged SENSITIVE_REVIEW. Approve for scripting anyway?"
                 {% endif %}
-                style="padding: 0.55rem 1.25rem; font-weight: 600;"
+                style="padding: 0.42rem 1.1rem; font-size: 0.88rem; font-weight: 600;"
             >Approve pitch</button>
             {% endif %}
         </div>

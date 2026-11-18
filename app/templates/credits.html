@@ -2,15 +2,15 @@
 {% block title %}Credits Usage — Crash Out{% endblock %}
 
 {% block content %}
-<section class="page-shell">
-    <div class="page-head">
+<section class="page-shell" style="padding-top: 0.5rem;">
+    <div class="page-head" style="margin-bottom: 0.75rem; align-items: flex-start;">
         <div>
-            <h1>Credits Usage</h1>
-            <p class="muted">Detailed episode-by-episode breakdown of credits consumed by Video Generations.</p>
+            <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 0.2rem; line-height: 1.2;">Credits Usage</h1>
+            <p class="muted" style="font-size: 0.88rem; margin: 0; line-height: 1.35;">Detailed episode-by-episode breakdown of credits consumed by Video Generations.</p>
         </div>
     </div>
 
-    <div class="dash-kpis" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+    <div class="dash-kpis" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; margin-bottom: 1rem;">
         <article class="panel dash-kpi">
             <span class="dash-kpi-label">Total Credits</span>
             <strong class="dash-kpi-value" style="color: var(--brand);">{{ '%.1f'|format(total_credits) }}</strong>

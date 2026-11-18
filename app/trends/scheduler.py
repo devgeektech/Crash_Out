@@ -1,5 +1,5 @@
 """
-Daily Agent 0 cadence — 06:00 UTC via APScheduler.
+Daily Agent 0 cadence — 06:00 EST (America/New_York) via APScheduler.
 
 Enable with AGENT0_SCHEDULE_ENABLED=true (default false in local POC).
 """
@@ -57,13 +57,13 @@ def start_agent0_scheduler() -> Optional[Any]:
 
     hour = 6
     minute = 0
-    timezone = "UTC"
+    timezone = "America/New_York"
     try:
         import os
 
         hour = int(os.getenv("AGENT0_SCHEDULE_HOUR", "6"))
         minute = int(os.getenv("AGENT0_SCHEDULE_MINUTE", "0"))
-        timezone = (os.getenv("AGENT0_SCHEDULE_TIMEZONE", "UTC") or "UTC").strip()
+        timezone = (os.getenv("AGENT0_SCHEDULE_TIMEZONE", "America/New_York") or "America/New_York").strip()
     except ValueError:
         pass
 

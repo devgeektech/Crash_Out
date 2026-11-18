@@ -242,7 +242,7 @@ except Exception as _temporal_import_err:
 
 async def schedule_daily_agent0_cron():
     """
-    Register a recurring Temporal Schedule for 06:00 UTC daily Agent 0 run.
+    Register a recurring Temporal Schedule for 06:00 EST (America/New_York) daily Agent 0 run.
     Uses Temporal server's native Schedule client when available.
     """
     client = await get_temporal_client()
@@ -252,7 +252,7 @@ async def schedule_daily_agent0_cron():
     try:
         from temporalio.client import Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
 
-        schedule_id = "agent0-daily-6am-utc"
+        schedule_id = "agent0-daily-6am-est"
         try:
             handle = client.get_schedule_handle(schedule_id)
             desc = await handle.describe()
@@ -262,7 +262,7 @@ async def schedule_daily_agent0_cron():
             # Not found; create it
             pass
 
-        # Cron: 06:00 UTC every day -> minute 0, hour 6
+        # Cron: 06:00 EST (America/New_York) every day -> minute 0, hour 6
         schedule = Schedule(
             action=ScheduleActionStartWorkflow(
                 DailyAgent0Workflow.run,
@@ -271,11 +271,11 @@ async def schedule_daily_agent0_cron():
             ),
             spec=ScheduleSpec(
                 cron_expressions=["0 6 * * *"],
-                time_zone_name="UTC",
+                time_zone_name="America/New_York",
             ),
         )
         handle = await client.create_schedule(schedule_id, schedule)
-        logger.info("Created Temporal native Schedule '%s' at 06:00 UTC daily", schedule_id)
+        logger.info("Created Temporal native Schedule '%s' at 06:00 EST daily", schedule_id)
         return handle
     except Exception as exc:
         logger.warning("Temporal native schedule registration note: %s", exc)

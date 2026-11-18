@@ -805,7 +805,9 @@ def render(
         scene = kwargs.get("script_scene")
         if scene is None and int(viewing_stage) == 2:
             scene = ctx.get("script_scene")
-        response.headers["HX-Push-Url"] = _studio_push_url(int(viewing_stage), scene)
+        ep_obj = ctx.get("ep")
+        ep_id = getattr(ep_obj, "id", None) if ep_obj else None
+        response.headers["HX-Push-Url"] = _studio_push_url(int(viewing_stage), scene, ep_id=ep_id)
     return response
 
 
@@ -891,10 +893,12 @@ def _remember_studio_ui(
         state_manager.save()
 
 
-def _studio_push_url(stage: int, scene: Optional[int] = None) -> str:
+def _studio_push_url(stage: int, scene: Optional[int] = None, ep_id: Optional[str] = None) -> str:
     url = f"/studio?stage={int(stage)}"
     if int(stage) == 2 and scene is not None:
         url += f"&scene={int(scene)}"
+    if ep_id and int(stage) == 0:
+        url += f"&episode={ep_id}"
     return url
 
 
@@ -961,14 +965,18 @@ def ui_studio(
         _select_queue_item(catalog)
         queue_select = True
 
-    # Coming from another page / bare Studio link → Queue + top row selected.
+    # Coming from another page / bare Studio link → Queue + top row selected if none active.
     if stage is None:
         stage = 0
         if not queue_select:
-            _select_top_queue_item()
+            ep_active = state_manager.get_active_episode()
+            if not ep_active:
+                _select_top_queue_item()
             queue_select = True
     elif stage == 0 and not queue_select:
-        _select_top_queue_item()
+        ep_active = state_manager.get_active_episode()
+        if not ep_active:
+            _select_top_queue_item()
         queue_select = True
 
     ep = state_manager.get_active_episode()
@@ -1094,7 +1102,7 @@ def _stage_for_selected_episode(ep: Episode) -> int:
 @router.post("/ui/queue/mockup", response_class=HTMLResponse)
 def ui_mockup_queue_scheduler(request: Request):
     """
-    Mockup the complete 06:00 UTC scheduler run:
+    Mockup the complete 06:00 EST scheduler run:
     1. Triggers Agent 0 to fetch live trends from all layers.
     2. Clusters, friction-scores, and generates/deduplicates the Top 5 Pitch Cards.
     3. Adds a new video in the queue with the 5 pitch cards attached and activates it in Gate 1.
@@ -1518,7 +1526,7 @@ def ui_reset_episode(request: Request):
 @router.post("/ui/concepts/refresh", response_class=HTMLResponse)
 @router.post("/ui/scheduler/mock-run", response_class=HTMLResponse)
 def ui_mock_scheduler_run(request: Request):
-    """Manually triggers the Agent 0 daily scheduler (which normally runs daily at 6:00 AM UTC)."""
+    """Manually triggers the Agent 0 daily scheduler (which normally runs daily at 6:00 AM EST)."""
     from app.trends.scheduler import run_daily_agent0_job
     from app.db import save_pitches_to_db
 
@@ -1543,14 +1551,14 @@ def ui_mock_scheduler_run(request: Request):
     detail = ", ".join(t for t in titles if t) or "5 pitches"
     orchestrator.log(
         ep.id,
-        f"Mock Scheduler manually executed (06:00 UTC job) → Top pitches: {detail}",
+        f"Mock Scheduler manually executed (06:00 EST job) → Top pitches: {detail}",
     )
     state_manager.save()
     return render(
         request,
         "partials/htmx_workspace.html",
         viewing_stage=1,
-        toast="Mock Scheduler executed (6:00 AM UTC job ran)",
+        toast="Mock Scheduler executed (6:00 AM EST job ran)",
         toast_kind="ok",
     )
 

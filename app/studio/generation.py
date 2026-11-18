@@ -379,6 +379,13 @@ def studio_dashboard_snapshot() -> Dict[str, Any]:
         active_studio = next((e for e in studio_eps if e.id == active.id), None)
         active = active_studio or (studio_eps[0] if studio_eps else active)
 
+    # Compute agent-specific counts for the client dashboard overview
+    waiting_gw1 = sum(1 for ep in episodes if int(getattr(ep, "current_gateway", 1) or 1) == 1 and not ep.script)
+    scripting_gw2 = sum(1 for ep in episodes if int(getattr(ep, "current_gateway", 1) or 1) == 2 or (ep.script and not getattr(ep, "scene_videos", None)))
+    rendering_gw3 = sum(1 for ep in episodes if int(getattr(ep, "current_gateway", 1) or 1) == 3 or (ep.scene_videos and not getattr(ep, "scenes_merged", False)))
+    publishing_gw4 = sum(1 for ep in episodes if int(getattr(ep, "current_gateway", 1) or 1) in (4, 5) or getattr(ep, "scenes_merged", False) and normalize_production_status(ep.production_status) != "published")
+    total_ideas_count = sum(len(ep.available_concepts or []) for ep in episodes) or (len(episodes) * 5)
+
     active_info = None
     if active:
         prod = normalize_production_status(active.production_status)
@@ -439,6 +446,16 @@ def studio_dashboard_snapshot() -> Dict[str, Any]:
         "scripting_count": by_prod.get("scripting", 0),
         "generating_count": by_prod.get("generating", 0),
         "draft_count": by_prod.get("draft", 0),
+        "agent_stats": {
+            "agent_0_ideas_total": total_ideas_count,
+            "agent_0_waiting_approval": waiting_gw1,
+            "agent_1_scripts_ready": len([e for e in episodes if e.script]),
+            "agent_1_in_review": scripting_gw2,
+            "agent_3_rendering": rendering_gw3,
+            "agent_3_clips_rendered": sum(len(e.scene_videos or []) for e in episodes),
+            "agent_4_in_publishing": publishing_gw4,
+            "agent_5_seeding_ready": by_prod.get("published", 0),
+        },
     }
 
 

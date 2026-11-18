@@ -128,7 +128,7 @@ async def _lifespan(_app: FastAPI):
     start_worker()
     start_agent0_scheduler()
 
-    # Optional background check/connection for Temporal & 6am UTC schedule registration
+    # Optional background check/connection for Temporal & 6am EST schedule registration
     async def _init_temporal_background():
         client = await get_temporal_client()
         if client:
