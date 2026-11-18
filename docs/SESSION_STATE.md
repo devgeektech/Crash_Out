@@ -7,6 +7,16 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-18 — Renamed Dashboard Hero CTA Button to AI Production Studio
+
+Completed:
+- **Button Label Update (`app/templates/dashboard.html`)**:
+  - Renamed the hero banner primary CTA button from `Agent Studio` to `AI Production Studio` (`href="/studio?stage=0"`), keeping consistent terminology across the sidebar and dashboard.
+- **Verification**:
+  - Verified `GET /` with `TestClient` confirms the updated CTA label.
+
+---
+
 ### 2026-11-18 — Tightened Heading Spacing across Characters, Episodes & Settings Pages
 
 Completed:
