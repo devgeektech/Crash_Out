@@ -22,24 +22,42 @@
     <div class="empty-state">No script yet. Approve Gateway 2 first.</div>
     {% else %}
     <div class="merch-box">
-        <div>
+        <div style="flex: 1; min-width: 0;">
             <span class="badge badge-warn">Merch punchline</span>
-            <div class="merch-quote">"{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}"</div>
-            <p class="panel-desc">Used for apparel mockups in Gateway 5.</p>
-        </div>
-        <details class="inline-edit">
-            <summary class="btn btn-ghost btn-sm">Edit</summary>
             <form
-                class="inline-edit-form"
+                class="ep-title-row"
+                style="margin-top: 0.35rem;"
+                method="post"
+                action="/ui/merch/update"
                 hx-post="/ui/merch/update"
                 hx-target="#workspace"
                 hx-swap="outerHTML"
                 hx-indicator="#busy"
+                data-ep-rename-form
             >
-                <input type="text" name="punchline" value="{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}" required>
-                <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                <input
+                    class="ep-title-input merch-punchline-input"
+                    type="text"
+                    name="punchline"
+                    value="{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}"
+                    readonly
+                    required
+                    aria-label="Merch punchline"
+                    data-original="{{ ep.merch_punchline or 'Capitalism Broke My Dad' }}"
+                    style="font-size: 1.15rem; font-weight: 650; width: auto; max-width: 100%;"
+                >
+                <button
+                    class="icon-btn icon-btn-pencil"
+                    type="button"
+                    title="Edit punchline"
+                    aria-label="Edit merch punchline"
+                    data-ep-rename
+                >
+                    <span aria-hidden="true">✎</span>
+                </button>
             </form>
-        </details>
+            <p class="panel-desc">Used for apparel mockups in Gateway 5.</p>
+        </div>
     </div>
 
     {% include "partials/script_scene_block.html" %}

@@ -86,7 +86,11 @@
             return;
         }
         if (submit && next !== original && form) {
-            form.submit();
+            if (form.hasAttribute("hx-post") && typeof htmx !== "undefined") {
+                htmx.trigger(form, "submit");
+            } else {
+                form.submit();
+            }
             return;
         }
         if (next !== original) {

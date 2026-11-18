@@ -7,6 +7,48 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-18 — New EC2 Instance Migration & Production Setup (`54.166.201.137`)
+
+Completed:
+- **New AWS EC2 Instance Provisioning**:
+  - Successfully connected to the new EC2 instance (`i-01f129cddb4bbb15e`) in `us-east-1` with public IP `54.166.201.137` using the updated key `crashout.pem` (Ubuntu 26.04 LTS, default user `ubuntu`).
+  - Configured AWS Security Group (`launch-wizard-1` / `sg-03d3d71d2b06a81b5`) to authorize inbound HTTP (port 80) and HTTPS (port 443) traffic.
+- **Base Server Infrastructure**:
+  - Installed system dependencies: `python3-pip`, `python3-venv`, `docker.io`, `nginx`, `git`, and `ffmpeg` (v8.0.1).
+  - Cloned repository to `/var/www/Crash_Out` and deployed secure production `.env`.
+  - Configured Python virtual environment at `/var/www/Crash_Out/venv` with `requirements.txt` and `openai`.
+- **Database & pgvector Setup**:
+  - Deployed Docker container `crashout-postgres` (`pgvector/pgvector:pg16`) with restart policy and persistent volume.
+  - Initialized `crash_out` PostgreSQL database with `vector` extension.
+- **Temporal Server & Web UI Live**:
+  - Bound Temporal UI container to external port `8088` (`crashout-temporal-ui`).
+  - Added ingress security rule in AWS Security Group `sg-03d3d71d2b06a81b5` opening TCP port 8088.
+  - Verified public reachability at `http://54.166.201.137:8088/namespaces`.
+- **Clean Web Server Setup**:
+  - Completely purged all experimental SSL certs (`sslip.io` Certbot certificates and self-signed certificate files).
+  - Configured Nginx to exclusively serve standard HTTP on port 80 proxying cleanly to the Uvicorn FastAPI backend.
+  - Verified clean HTTP response on `http://54.166.201.137/login`.
+- **Systemd & Nginx Configuration**:
+  - Configured and enabled `crashout.service` systemd service running Uvicorn on port 8000.
+  - All 4 initial PostgreSQL database migrations applied cleanly during application startup.
+  - Set up Nginx reverse proxy on port 80 (`/etc/nginx/conf.d/crashout.conf`) pointing to `http://127.0.0.1:8000` with 500MB upload support.
+  - Verified public HTTP access at `http://54.166.201.137/login` returning HTTP 200 with full Crash Out Studio UI.
+
+---
+
+### 2026-11-18 — Agent 2 Inline Title Pencil Edit & Clip Timeline Header Polish
+
+Completed:
+- **Deployment & Git Push Policy**: Added strict restriction in [AGENTS.md](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/AGENTS.md) that prohibits running `git push` or deploying/pulling changes to remote production servers without explicit user confirmation.
+- **Agent 2 Inline Title Edit via Pencil Icon**:
+  - Replaced the collapsible `<details>` and generic "Edit" button in [stage_2.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/stages/stage_2.html) with an inline editable form accompanied by a pencil button (`✎`), mirroring the episode title edit pattern in the workspace header.
+  - Clicking the pencil icon activates inline editing on the title/punchline with keyboard shortcuts (`Enter` to save, `Escape` to cancel) and blur autosave support via [ui.js](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/js/ui.js).
+- **Clip Timeline & Duration in Scene Tabs**:
+  - Enhanced [script_scene_block.html](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/templates/partials/script_scene_block.html) scene navigation tabs to display both the clip label (`Clip 1`, `Clip 2`, `Clip 3`, `Clip 4`) and its explicit timeline range and duration (`00:00 - 00:08 · 8s`, `00:09 - 00:22 · 14s`, etc.).
+  - Preserved full responsiveness and tab active state styling across desktop and mobile viewports.
+
+---
+
 ### 2026-11-17 — Pgvector Deduplication, Temporal S3 Automation & UI Polish
 
 Completed:

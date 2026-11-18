@@ -71,8 +71,12 @@ Every external service (OpenAI, Vidu, AWS S3, Temporal, Postgres) **must have an
 
 ---
 
-## 3. SESSION LOGGING WORKFLOW
+## 3. SESSION LOGGING & DEPLOYMENT WORKFLOW
 
+### A. Deployment & Push Rule
+- **CRITICAL RESTRICTION**: Never run `git push` to remote git repository or deploy/pull changes to the remote production server (e.g. AWS EC2) unless the user EXPLICITLY requests or instructs to do so. All development and testing must stay local until explicit user sign-off.
+
+### B. Session Logging
 Whenever code, architecture, or schemas are modified:
 1. Update `docs/SESSION_STATE.md` with a timestamped entry detailing:
    - What was added / updated / removed.
