@@ -2474,7 +2474,7 @@ a {
 .page-shell {
     max-width: var(--max);
     margin: 0 auto;
-    padding: 1.25rem 1.5rem 2.5rem;
+    padding: 0.5rem 1.5rem 2rem;
 }
 
 .page-head {
@@ -2482,7 +2482,19 @@ a {
     justify-content: space-between;
     align-items: flex-end;
     gap: 1rem;
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.page-head h1 {
+    margin: 0 0 0.2rem;
+    font-size: 1.55rem;
+    line-height: 1.2;
+}
+
+.page-head p {
+    margin: 0;
+    line-height: 1.35;
+    font-size: 0.88rem;
 }
 
 .inline-form {

@@ -7,6 +7,18 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-18 — Tightened Heading Spacing across Characters, Episodes & Settings Pages
+
+Completed:
+- **Global Page Header Spacing Compacted (`app/static/css/app.css`)**:
+  - Decreased `.page-shell` top padding from `1.25rem` to `0.5rem` to remove excess empty space above headings on Characters Library, Episode Management, Settings, and Credits pages.
+  - Decreased `.page-head` bottom margin from `1.25rem` to `0.75rem`.
+  - Added dedicated `.page-head h1` (`margin: 0 0 0.2rem; line-height: 1.2;`) and `.page-head p` (`margin: 0; line-height: 1.35;`) styling to eliminate browser margin voids between headings and taglines.
+- **Verification**:
+  - Verified `GET /characters`, `GET /episodes`, `GET /settings`, and `GET /credits` return HTTP 200 with compact styling.
+
+---
+
 ### 2026-11-18 — Tightened Padding & Spacing on Credits Usage Page
 
 Completed:
