@@ -1,12 +1,46 @@
 {% set sel = ep.selected_concept or {} %}
 {% set sel_flag = (sel.sensitivity_flag or '')|upper %}
+{% set is_approved = (ep.current_gateway and ep.current_gateway|int >= 2) or (ep.status and ep.status != 'DRAFT' and ep.status != 'WAITING_GATEWAY_1') %}
+
+<div style="margin-top: 1.5rem; padding-top: 1.25rem; margin-bottom: 1.1rem; display: flex; align-items: center;">
+    <button
+        type="button"
+        class="btn btn-primary"
+        hx-get="/ui/stage/0"
+        hx-target="#workspace"
+        hx-swap="outerHTML"
+        hx-push-url="/studio?stage=0"
+        hx-indicator="#busy"
+        title="Back to episode list"
+        style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 1.25rem; font-weight: 600;"
+    >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Back to Episode List</span>
+    </button>
+</div>
+
 <section class="panel stage-card">
-    <div class="panel-header">
-        <div>
-            <h1 class="panel-title">Agent 1 — Top friction pitches</h1>
-            <p class="panel-desc muted">Agent 1 (Pitches) · Click text to edit · Select to choose · then approve</p>
+    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.1rem 1.35rem;">
+        <div style="flex: 1; min-width: 0;">
+            <h1 class="panel-title" style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text); word-break: break-word; overflow-wrap: break-word; line-height: 1.4;">
+                {{ ep.title }}
+            </h1>
         </div>
-        <div class="panel-actions">
+        <div class="panel-actions" style="flex-shrink: 0; margin: 0;">
+            {% if is_approved %}
+            <button
+                class="btn btn-primary"
+                type="button"
+                disabled
+                style="padding: 0.55rem 1.25rem; font-weight: 600; opacity: 0.5; cursor: not-allowed; filter: grayscale(1); background: #9ca3af; border-color: #9ca3af; color: #ffffff;"
+                title="Pitch is already approved"
+            >
+                ✓ Pitch Approved
+            </button>
+            {% else %}
             <button
                 class="btn btn-primary"
                 type="button"
@@ -17,7 +51,9 @@
                 {% if sel_flag == 'SENSITIVE_REVIEW' %}
                 hx-confirm="This pitch is flagged SENSITIVE_REVIEW. Approve for scripting anyway?"
                 {% endif %}
+                style="padding: 0.55rem 1.25rem; font-weight: 600;"
             >Approve pitch</button>
+            {% endif %}
         </div>
     </div>
 
@@ -40,9 +76,11 @@
             {% elif concept.source_trends %}
                 {% set mainstream = concept.source_trends|join(', ') %}
             {% endif %}
+            {% set is_selected_card = (idx == selected_concept_index) %}
             <article
-                class="concept-card concept-card-live {% if idx == selected_concept_index %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_blank %}concept-card-empty{% endif %}"
+                class="concept-card concept-card-live {% if is_selected_card %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_blank %}concept-card-empty{% endif %}"
                 data-concept-card
+                style="{% if is_approved and not is_selected_card %}opacity: 0.42; filter: grayscale(1); pointer-events: none; background: #f3f4f6; cursor: not-allowed;{% elif is_approved and is_selected_card %}border-color: var(--brand); box-shadow: 0 0 0 2px rgba(255, 45, 138, 0.25); background: var(--surface);{% endif %}"
             >
                 <div class="concept-top">
                     <div class="concept-top-left">
@@ -51,10 +89,17 @@
                         <span class="badge badge-ok">{{ '%.1f'|format(score|float) }}/10</span>
                         {% endif %}
                         <span class="badge {% if flag == 'SENSITIVE_REVIEW' %}badge-warn{% endif %}">{{ flag }}</span>
-                        {% if idx == selected_concept_index %}<span class="badge badge-ok">Selected</span>{% endif %}
+                        {% if is_selected_card %}
+                            {% if is_approved %}
+                            <span class="badge badge-ok" style="font-weight: 700;">✓ Approved</span>
+                            {% else %}
+                            <span class="badge badge-ok">Selected</span>
+                            {% endif %}
+                        {% endif %}
                     </div>
+                    {% if not is_approved %}
                     <button
-                        class="btn btn-sm {% if idx == selected_concept_index %}btn-primary{% else %}btn-ghost{% endif %}"
+                        class="btn btn-sm {% if is_selected_card %}btn-primary{% else %}btn-ghost{% endif %}"
                         type="button"
                         hx-post="/ui/concepts/select"
                         hx-target="#workspace"
@@ -62,14 +107,23 @@
                         hx-vals='{"index": {{ idx }}}'
                         hx-indicator="#busy"
                         {% if is_blank and not headline %}disabled{% endif %}
-                    >{% if idx == selected_concept_index %}Selected{% else %}Select{% endif %}</button>
+                    >{% if is_selected_card %}Selected{% else %}Select{% endif %}</button>
+                    {% else %}
+                        {% if is_selected_card %}
+                        <button class="btn btn-sm btn-primary" type="button" disabled style="padding: 0.35rem 0.75rem; font-weight: 600; opacity: 0.9; cursor: default;">✓ Approved</button>
+                        {% else %}
+                        <button class="btn btn-sm btn-ghost" type="button" disabled style="opacity: 0.45; filter: grayscale(1); cursor: not-allowed; border: 1px solid #d1d5db; color: #9ca3af; background: #e5e7eb;">Select</button>
+                        {% endif %}
+                    {% endif %}
                 </div>
 
                 <form
                     class="concept-inline-form"
+                    {% if not is_approved %}
                     hx-post="/ui/concepts/{{ idx }}/update"
                     hx-swap="none"
                     hx-trigger="change delay:400ms, keyup changed delay:800ms"
+                    {% endif %}
                     data-concept-inline-form
                 >
                     <input type="hidden" name="action" value="save">
@@ -83,7 +137,8 @@
                             placeholder="Headline"
                             required
                             aria-label="Title"
-                            style="word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap; resize: vertical;"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap; resize: vertical; {% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >{{ headline }}</textarea>
                     </div>
 
@@ -95,6 +150,8 @@
                             rows="2"
                             placeholder="—"
                             aria-label="Youth Sentiment"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >{{ youth }}</textarea>
                     </div>
 
@@ -106,6 +163,8 @@
                             rows="7"
                             placeholder="—"
                             aria-label="Crash-Out angle"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >{{ angle }}</textarea>
                     </div>
 
@@ -128,6 +187,8 @@
                             value="{{ merch }}"
                             placeholder="—"
                             aria-label="Merch Hook"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >
                     </div>
                 </form>

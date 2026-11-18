@@ -7,6 +7,548 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-18 — Removed Sidebar Footer Text and Removed Credits KPI from Dashboard Top Cards
+
+Completed:
+- **Left Sidebar (`app/templates/base.html`)**:
+  - Removed the `Crash Out` / `Pipeline workspace` footer labels from the bottom of the sidebar.
+  - Pinned the **Credits Used** card cleanly at the very bottom of the sidebar.
+- **Dashboard Top KPI Cards (`app/templates/dashboard.html` & `app/static/css/app.css`)**:
+  - Removed the **Credits** card from the top KPI card row on the dashboard.
+  - Adjusted the KPI grid layout from 5 columns to 4 columns (`In Studio`, `Scripting`, `Generating`, `Published`).
+
+---
+
+### 2026-11-18 — Relocated Credits Panel to Sidebar Bottom and Cleaned Up User Footer
+
+Completed:
+- **Sidebar Cleanup (`app/templates/base.html`)**:
+  - Removed user name, email, and sign-out link from the left sidebar (now cleanly hosted on the top-right bar).
+  - Shifted the **Credits Used** badge panel to the bottom of the sidebar pinned with `margin-top: auto`.
+  - Pinned the minimal `Crash Out / Pipeline workspace` label cleanly below the credits panel.
+
+---
+
+### 2026-11-18 — Added Top Navigation Bar with User Profile and Sign Out
+
+Completed:
+- **Top Bar Component (`app/templates/base.html`)**:
+  - Added a header bar (`.app-topbar`) spanning the top of the right main screen content area (`.app-main`).
+  - Styled to match the light app theme with white background (`var(--surface)`), border-bottom (`var(--border)`), and soft drop shadow.
+  - Aligned user information to the right side:
+    - User avatar initial badge with brand pink accent.
+    - User Name and Email (`Test`, `test@gmail.com`).
+    - Vertical divider.
+    - Styled `[⎋ Sign out]` button linking to `/logout`.
+- **Content Padding (`app/templates/base.html`)**:
+  - Wrapped page content in `.app-content-body` with comfortable padding (`1.5rem 1.75rem 2.5rem`) so all stage screens sit cleanly below the top bar.
+
+---
+
+### 2026-11-18 — Re-styled Delete Confirmation Modal to Match Light App Theme
+
+Completed:
+- **Theming Alignment (`app/templates/partials/stages/stage_0.html` & `app/templates/base.html`)**:
+  - Replaced the dark background with the app's clean light surface theme:
+    - Card Background: `var(--surface, #ffffff)`
+    - Border: `1.5px solid var(--border, #e8d5e0)` with soft pink-tinted drop shadow `0 16px 40px rgba(40, 8, 28, 0.18), 0 2px 8px rgba(255, 45, 138, 0.08)`.
+    - Backdrop: `rgba(26, 18, 32, 0.45)` with `backdrop-filter: blur(4px)`.
+    - Headings & Text: `var(--text, #1a1220)` for title, `var(--muted, #6b5a66)` for description.
+    - Danger Badge: Soft rose background (`#fff1f2` with `#fecdd3` border) and crimson icon (`#be123c`).
+    - Cancel Button: `var(--surface)` with `var(--border)` outline and `var(--text)` label.
+    - OK Button: Solid crimson `#be123c` with shadow `0 2px 6px rgba(190, 18, 60, 0.25)`.
+
+---
+
+### 2026-11-18 — Dedicated Inline Delete Confirmation Modal in Episode Queue
+
+Completed:
+- **Added Self-Contained Delete Modal (`app/templates/partials/stages/stage_0.html`)**:
+  - Embedded `#queue-delete-modal` directly within the `stage_0.html` partial to guarantee that deleting an episode always displays the custom-styled dark theme modal with backdrop blur.
+  - Modal features:
+    - Trash/delete icon in red circle badge.
+    - Title: **Delete Episode?**
+    - Dynamic message with target episode title: `Delete “{display_title}” from the queue? This cannot be undone.`
+    - **Cancel** button (closes modal) and **OK** button (submits deletion request via HTMX to `/ui/queue/{id}/delete` with outerHTML workspace swap).
+    - Backdrop click-to-close handler.
+  - Linked the trash icon action directly via `onclick="openDeleteConfirmModal('/ui/queue/{{ card.id }}/delete', '...')"` so it opens reliably on every click.
+
+---
+
+### 2026-11-18 — Replaced Native Browser Confirm with Styled Delete Modal Dialog
+
+Completed:
+- **Redesigned Confirmation Modal (`app/templates/base.html`)**:
+  - Replaced the browser native `hx-confirm` prompt with a dark-themed, styled modal confirmation dialog (`#app-confirm-dialog`).
+  - Added warning icon, clear title ("Delete Episode?"), subtitle, a **Cancel** button, and an **OK** button styled with red destructive highlight (`.btn-danger`).
+- **Updated Episode Delete Action (`app/templates/partials/stages/stage_0.html`)**:
+  - Replaced `hx-confirm` with `data-confirm-delete="true"`, `data-delete-url`, and `data-delete-title`.
+- **Integrated Modal Handler (`app/static/js/ui.js`)**:
+  - Tied delete trigger to `openDeleteConfirm(url, title)`.
+  - On confirming via **OK**, HTMX posts to `/ui/queue/{id}/delete` and updates the workspace seamlessly.
+  - Exposed `window.closeDeleteConfirm()` for the **Cancel** button and click-outside dismissal.
+
+---
+
+### 2026-11-18 — Remove "Agent <N>" Prefixes from Stage Labels and Panel Headers
+
+Completed:
+- **Cleaned Stepper Labels (`app/ui.py`)**:
+  - Removed "Agent 0:", "Agent 1:", "Agent 3 –", "Agent 4 –", and "Agent 5 –" from `STAGE_LABELS`.
+  - Stages are now cleanly named:
+    - `Trend Research & Approve Pitch`
+    - `Scriptwriter`
+    - `Animation & Rendering`
+    - `Publishing & Merchandising`
+    - `Community & Promotion`
+- **Cleaned Stage Panel Headers & Descriptions (`app/templates/partials/stages/`)**:
+  - Updated `stage_0.html`, `stage_1.html`, `stage_2.html`, `stage_3.html`, `stage_4.html`, and `stage_5.html` to remove the "Agent <N>" prefix from all `panel-title` headers and `panel-desc` intros.
+
+---
+
+### 2026-11-18 — Scriptwriter Scene Regenerate Visibility & Agent 3 Clip Regeneration
+
+Completed:
+- **Scriptwriter Regenerate Button Visibility (`app/templates/partials/script_scene_block.html`)**:
+  - Hid the "Regenerate this clip" button and "Clip ready" badge on the Scriptwriter page (Stage 2) prior to Agent 3 running.
+  - The button and badge only appear after Agent 3 has rendered the scene clip (`ep.current_gateway >= 3` and `clip_ready`).
+- **Prevent Premature Sibling Video Render Hydration (`app/ui.py`)**:
+  - Updated `_hydrate_renders_from_siblings(ep)` to only copy rendered scene/master videos when `ep.current_gateway >= 3`, preventing newly created or Gateway 1/2 episodes from prematurely inheriting sibling clips and badges.
+- **Agent 3 Clip Regeneration Prompt Verification (`app/templates/partials/stages/stage_3.html`, `app/main.py`)**:
+  - Verified each clip card in Agent 3 (`Agent 3 – Animation & Rendering`) has its own `Regenerate` button calling `/ui/video/generate-scene/{scene_id}`.
+  - Verified `generate_single_scene` retrieves the exact prompt for that clip (`source_prompt` / `vidu_prompt`) from `ep.script["scenes"]` to regenerate that specific clip.
+
+---
+
+### 2026-11-18 — Re-label Agents 3, 4, and 5 in Studio Stepper and Panels
+
+Completed:
+- **Updated Stepper Labels & Marks (`app/ui.py`)**:
+  - Re-labeled Stage 3: `Agent 3 – Animation & Rendering` (stepper mark updated from `A2/3` to `A3`).
+  - Re-labeled Stage 4: `Agent 4 – Publishing & Merchandising` (stepper mark `A4`).
+  - Re-labeled Stage 5: `Agent 5 – Community & Promotion` (stepper mark `A5`).
+- **Updated Stage Panels (`app/templates/partials/stages/stage_3.html`, `stage_4.html`, `stage_5.html`)**:
+  - Panel header titles and descriptions updated to match the new naming across the production studio.
+
+
+---
+
+### 2026-11-18 — Agent 0 Search Placeholder & Horizontal Baseline Row Alignment
+
+Completed:
+- **Search Placeholder (`app/templates/partials/stages/stage_0.html`)**:
+  - Updated the search input placeholder to **`"Search by Episode..."`**.
+  - Validated client-side and dynamic multi-word search matching across titles, IDs, inputs, and statuses.
+- **Horizontal Baseline Alignment & Action Button Wrap Fix (`app/templates/partials/stages/stage_0.html`)**:
+  - Removed the `.row-actions` class from the table cell and replaced it with a dedicated container having `white-space: nowrap; width: 100%; display: flex; align-items: center; justify-content: flex-end;` so action items never wrap or break upwards.
+  - Increased the Actions column header and cell width to `180px`.
+  - Harmonized `vertical-align: middle;` across all table columns (`Sr. No.`, `Title`, `Pitch`, `Status`, `Actions`) with `align-items: center;` on the title row form. All columns now stay centered on the same horizontal baseline across the entire row.
+
+
+---
+
+### 2026-11-18 — Rename Navigation Button to Back to Episode List
+
+Completed:
+- **Button Label Updated (`app/templates/partials/stages/stage_1.html`)**:
+  - Changed the top navigation button label and title attribute from `"Back to Video List"` to **`"Back to Episode List"`**.
+
+
+---
+
+### 2026-11-18 — Fix Table Row Vertical Alignment on Multi-Line Titles
+
+Completed:
+- **Consistent Top Vertical Alignment (`app/templates/partials/stages/stage_0.html`)**:
+  - Added `vertical-align: top;` to all `<td>` table cells (`col-num`, `col-title`, `Pitch`, `Status`, `Actions`).
+  - Previously, `vertical-align: middle;` caused adjacent columns (`Sr. No.`, `Pitch`, `Status`, `Actions`) to drift downward toward the middle when an episode title wrapped across two or more lines, distorting the horizontal baseline.
+  - Now, all columns remain cleanly anchored to the top of their respective row regardless of how many lines the title spans.
+
+
+---
+
+### 2026-11-18 — Grey Out Select Buttons & Approve Button Once Pitch is Approved
+
+Completed:
+- **Greyed-Out Approve Pitch Button (`app/templates/partials/stages/stage_1.html`)**:
+  - When viewing an already approved episode (`current_gateway >= 2`), the top-right `Approve pitch` button transitions into a disabled, greyed-out button (`opacity: 0.5; cursor: not-allowed; filter: grayscale(1); background: #9ca3af; border-color: #9ca3af; color: #ffffff;`) with text `✓ Pitch Approved`.
+- **Greyed-Out Select Buttons for Other Pitch Cards (`app/templates/partials/stages/stage_1.html`)**:
+  - On the chosen approved pitch card, the button displays `✓ Approved`.
+  - On all other pitch cards, the `Select` button is disabled and greyed out (`opacity: 0.45; filter: grayscale(1); cursor: not-allowed; border: 1px solid #d1d5db; color: #9ca3af; background: #e5e7eb;`), making it unmistakably clear that other pitches cannot be selected.
+
+
+---
+
+### 2026-11-18 — Polish Agent 0 Table Alignment, Multi-Word Search, Status No-Wrap & Pitch Approval Grey-Out
+
+Completed:
+- **Right-Aligned Actions Column (`app/templates/partials/stages/stage_0.html`)**:
+  - Shifted the table action buttons (`Open →` and trash delete) flush to the right edge with `margin-left: auto; justify-content: flex-end;`.
+- **Status Column Single-Line (`app/templates/partials/stages/stage_0.html`)**:
+  - Allocated a dedicated `220px` width with `white-space: nowrap;` on the status cell and badge so statuses like `"Waiting Pitch Approving"` and `"Waiting for Scriptwriting"` never break into multiple lines.
+- **Table Pagination**:
+  - Enforced `queuePageSize = 10` rows per page with page numbers and next/prev controls.
+- **Multi-Word Search (`app/templates/partials/stages/stage_0.html`)**:
+  - Upgraded `filterQueueTable()` to tokenize queries by word (matching the episode management search algorithm). Users can type multiple words in any order to find matching titles, IDs, and statuses instantly.
+- **Pitch Approval Grey-Out Only When Actually Approved (`app/templates/partials/stages/stage_1.html`, `app/ui.py`)**:
+  - Refined `is_approved` definition to strictly check gateway advancement (`current_gateway >= 2` or active non-draft/waiting status) so unapproved episodes never show cards greyed out upon first opening.
+  - Cards now display full interactivity when opened in Gateway 1 and only grey out the unselected cards after clicking the **Approve pitch** button on the right.
+
+
+---
+
+### 2026-11-18 — Step-by-Step Production Statuses in Video Queue Table
+
+Completed:
+- **Human-Friendly Step Status Mapping (`app/ui.py`)**:
+  - Implemented `_format_queue_status(ep)` to format episode statuses based on current production milestones instead of raw internal database codes (`WAITING_GATEWAY_1`, etc.):
+    - **Step 1 (Pitches not approved yet)**: `"Waiting Pitch Approving"`
+    - **Step 2 (Pitch approved, in scripting)**: `"Waiting for Scriptwriting"`
+    - **Step 3 (Script approved, video generating)**: `"Waiting for Video Generation"`
+    - **Step 4 (Merch package review)**: `"Waiting for Merch Sign-Off"`
+    - **Step 5 (Publishing sign-off)**: `"Waiting for Publishing Sign-Off"`
+    - **Completed**: `"Published"`
+  - Updated both `_catalog_cards()` and `_studio_queue_cards()` to use `_format_queue_status` so the Agent 0 video list table always displays clear, friendly step labels.
+
+
+---
+
+### 2026-11-18 — Pitch Approval Lock: Grey Out Unselected Pitches & Prevent Modifications
+
+Completed:
+- **Locked Pitch State UI (`app/templates/partials/stages/stage_1.html`)**:
+  - Once a pitch is approved (i.e. `ep.current_gateway >= 2` or `ep.script` is populated):
+    - Replaced the `Approve pitch` button with a clean `✓ Pitch Approved` badge.
+    - Marked the chosen card with an `✓ Approved` badge and glowing border.
+    - All other non-selected pitch cards are greyed out (`opacity: 0.42; filter: grayscale(1); background: #f3f4f6; pointer-events: none; cursor: not-allowed;`).
+    - The `Select` buttons on unapproved cards are replaced with disabled `Locked` states.
+    - All text areas and inputs on pitch cards become `readonly disabled` to prevent post-approval edits.
+- **Backend Guardrails (`app/ui.py`)**:
+  - In `ui_select_concept` and `ui_update_concept`, added validation to check if `ep.current_gateway >= 2` or `bool(ep.script)`. Any attempt to select another pitch or edit fields on an approved episode is rejected with `"Pitch already approved and locked."`.
+
+
+---
+
+### 2026-11-18 — Polish Agent 0 Table: Title Text Wrapping, Live Search, Descending Sr. No. & Uncolored First Row
+
+Completed:
+- **Episode Title Text Wrapping (`app/templates/partials/stages/stage_0.html`)**:
+  - Replaced the single-line input field in the table display with a text span (`.ep-title-text`) with `word-break: break-word; overflow-wrap: break-word; line-height: 1.45;` so long episode titles wrap naturally across multiple lines instead of being cut off or clipped.
+  - Retained inline editing: clicking the pencil icon ✎ or double-clicking the title text swaps into an editable `<input>` and focuses it immediately.
+- **Search Table Fix (`app/templates/partials/stages/stage_0.html`)**:
+  - Updated `filterQueueTable()` to search both text content and any inner input values (`text += ' ' + inp.value`) as well as episode IDs.
+  - Tied filter execution to pagination recalibration so search filtering instantly updates the table view, page counts, and matches.
+- **Descending Sr. No. (`app/templates/partials/stages/stage_0.html`)**:
+  - Displayed `card.list_number or (catalog_cards|length - loop.index0)` so rows count downwards (e.g. 6, 5, 4, 3, 2, 1) matching the newest-first order of episodes.
+- **Removed First Row Highlight Color (`app/templates/partials/stages/stage_0.html`)**:
+  - Removed `is-active` background color from the active/top row in the table (`background: transparent;`). All rows now share uniform, clean table styling without an aggressive background tint.
+
+
+---
+
+### 2026-11-18 — Mockup Queue Workflow: Return to Table & Require Manual Pitch Selection
+
+Completed:
+- **Mockup Return Destination (`app/ui.py`)**:
+  - In `ui_mockup_queue_scheduler`, updated the HTMX response to render `viewing_stage=0` instead of `viewing_stage=1`.
+  - When the user clicks **Mockup**, the newly generated episode (`EP-<serialnumber>-<YYYYMMDD>`) is added directly to the Agent 0 queue table and remains on the video list view so the user sees the newly added episode at the top of the table.
+- **No Default Selected Pitch Card (`app/ui.py`)**:
+  - Removed auto-selection of the first pitch card (`ep.selected_concept = None`).
+  - Updated `_selected_concept_index(ep)` to return `None` (rather than defaulting to 0) when no concept has been chosen yet.
+  - Updated `ui_approve_gateway_1` to require an explicit human selection before approving (`"Please select one of the pitches first before approving"`).
+  - Users can now review all 5 pitch cards, click **Select** on their chosen angle, and then approve it for scripting.
+
+
+---
+
+### 2026-11-18 — Polish Back Button Spacing, Newest-First Queue Sorting & EP-Number-Date Episode Naming
+
+Completed:
+- **Consistent Top Padding on Pitch Approval Page (`app/templates/partials/stages/stage_1.html`)**:
+  - Added matching top padding and margin (`margin-top: 1.5rem; padding-top: 1.25rem;`) to the `Back to Video List` container so it aligns with other pages and doesn't sit pressed against the stepper bar.
+- **Queue Table Sorting Newest First (`app/ui.py`)**:
+  - Updated `_studio_queue_cards()` to sort all entries in reverse chronological order (`list_number` / episode number descending, with creation timestamp fallback), guaranteeing that newest video items always show on top.
+- **Episode Naming Scheme `EP-serialnumber-date` (`app/studio/naming.py`, `app/state.py`, `app/ui.py`)**:
+  - Replaced the datetime stamp naming (`Episode_YYYYMMDD_HHMMSS`) with the concise format: `EP-<serialnumber>-<YYYYMMDD>` (e.g. `EP-4-20261118`).
+  - Updated `studio_base_name` and regex `_STAMP_RE` to match both new `EP-\d+-\d{8}` format and legacy titles seamlessly.
+  - Linked episode creation across `state_manager.create_episode`, catalog selection, and mock runs to pass the resolved episode serial number into `make_studio_episode_name`.
+
+
+---
+
+### 2026-11-18 — Polish Pitch Approval Header & Add Agent 0 Table Pagination & Top Padding
+
+Completed:
+- **Pitch Approval Header Polish (`app/templates/partials/stages/stage_1.html`)**:
+  - Styled **`← Back to Video List`** with the solid primary button style (`class="btn btn-primary"`, padding `0.55rem 1.25rem`), making it match the visual weight and styling of the `Approve pitch` button.
+  - Added full text wrapping (`word-break: break-word; overflow-wrap: break-word; line-height: 1.4;`) to the episode title heading so long titles wrap cleanly without clipping or pushing the `Approve pitch` button out of horizontal alignment.
+- **Agent 0 Table Spacing (`app/templates/partials/stages/stage_0.html`)**:
+  - Added dedicated top margin and padding (`margin-top: 1.5rem; padding-top: 1.25rem;`) to the Agent 0 stage queue container so it is no longer pressed flush against the top stepper.
+- **Client-Side & HTMX Table Pagination**:
+  - Implemented responsive pagination controls below the queue table:
+    - Showing entries counter (e.g. `Showing 1 to 10 of 12 entries`).
+    - `Previous` and `Next` buttons with disabled boundaries.
+    - Page number buttons with active primary state.
+    - Integrated with live table search so filtering automatically recalculates total pages and active page indices.
+    - Re-attaches seamlessly upon HTMX swapping.
+
+---
+
+### 2026-11-18 — Refactor Pitch Approval Header & Move Back Button Outside Card
+
+Completed:
+- **Moved Back Button Outside Card**: Moved the **`← Back to Video List`** button above and outside the pitches card in `app/templates/partials/stages/stage_1.html`.
+- **Card Header Clean Alignment**:
+  - Removed `"Agent 0: Trend Research and Approve Pitch"` and the instruction subtext from the card header.
+  - Positioned the **Episode Title** (`{{ ep.title }}`) on the left as the sole prominent heading (`font-size: 1.25rem; font-weight: 700;`).
+  - Positioned the **`Approve pitch`** button on the right, horizontally aligned and equal in line with the title.
+
+---
+
+### 2026-11-18 — Remove Meta-Strip from Agent 0 & Add Back Navigation in Pitch Workspace
+
+Completed:
+- **Cleaned Top Header (Removed Meta-Strip)**:
+  - Removed the `Viewing: Agent 0... · Ep #... · HITL... · Prod...` meta-strip from Agent 0 (stages 0 & 1) in `app/templates/partials/workspace.html`. The workspace remains clean and uncluttered.
+- **Added Back to Video List Button**:
+  - In `app/templates/partials/stages/stage_1.html`, placed a prominent **`← Back to Video List`** button in the header right next to the title **`Agent 0: Trend Research and Approve Pitch`**.
+  - Clicking `Back to Video List` seamlessly transitions back to the Agent 0 video table (`/studio?stage=0`) via HTMX with outerHTML swap.
+
+---
+
+### 2026-11-18 — Direct Studio Pitch Review Page Navigation from Table
+
+Completed:
+- **Direct Full Page Pitch Navigation**:
+  - Replaced the modal popup on the table's `💡 Pitch` button with direct HTMX navigation (`/ui/episodes/{id}/pitches` and `/ui/catalog/{id}/pitches`).
+  - Clicking `💡 Pitch` now directly transitions into the full **Agent 0: Trend Research and Approve Pitch** workspace (Stage 1 concept review view with selectable and editable pitch cards, consensus ratings, and Gateway 1 pitch approval), exactly like entering a newly generated episode from the queue.
+  - Cleaned up the leftover modal DOM elements from `stage_0.html`.
+
+---
+
+### 2026-11-18 — Polish Agent 0 Table Alignment & Rename Stage to Agent 1: Scriptwriter
+
+Completed:
+- **Agent 1 Renaming**:
+  - Renamed the script stage to **`Agent 1: Scriptwriter`** across `app/ui.py` (`STAGE_LABELS[2]`), top pipeline stepper, and `app/templates/partials/stages/stage_2.html`.
+- **Agent 0 Table Alignment & Symmetric Styling**:
+  - Re-aligned the Agent 0 queue table to match the clean design system of Episode Management:
+    - Added the brand-themed header styling (`var(--brand-soft)` background, `2px solid rgba(255, 45, 138, 0.25)` border, bold uppercase `var(--brand-ink)` text).
+    - Fixed explicit column widths: `width: 80px` (Sr. No.), flexible `col-title` (Title), `width: 140px` (Pitch), `width: 150px` (Status), and `width: 180px; text-align: right;` (Actions).
+    - Added symmetric padding (`0.85rem 1rem`) across all `<th>` and `<td>` cells.
+    - Set the row actions container to `display: inline-flex; justify-content: flex-end; gap: 0.4rem; white-space: nowrap;` for flush right alignment.
+
+---
+
+### 2026-11-18 — Remove Duration Column & Enhance Inline Title Editing Responsiveness
+
+Completed:
+- **Backend Task Stopped**: Stopped the background server task spawned previously, keeping only the user's terminal backend process active.
+- **Removed Duration Column**: Removed the `"Duration"` column header and cell from the Agent 0 queue table in `app/templates/partials/stages/stage_0.html`, streamlining the table view to `Sr. No.`, `Title`, `Pitch`, `Status`, and `Actions`.
+- **Title Editing Robustness**:
+  - Replaced the text character pencil with a high-definition SVG vector pencil icon with direct click handler `startTitleEdit(...)`.
+  - Added double-click (`ondblclick="startTitleEdit(this)"`) directly on the title input for instant editing without requiring precise icon clicks.
+  - Ensured `readonly` state toggles off, cursor changes, and input focuses and selects title text immediately.
+
+---
+
+### 2026-11-18 — AI Production Studio Sidebar Renaming, Agent 0 Table Pitch Column & Inline Title Editing
+
+Completed:
+- **Sidebar Nav Renaming**:
+  - Renamed `"Agent Studio"` to **`AI Production Studio`** in `app/templates/base.html`, `dashboard.html`, `episodes.html`, and `credits.html`.
+- **Search Option Moved Above Table**:
+  - Moved the search bar out of the table body/card and into the top header actions of the **Agent 0: Trend Research and Approve Pitch** card, matching the symmetric layout used across Episode Management.
+- **Agent 0 Table Pitch Column**:
+  - Added a dedicated **`Pitch`** column to the queue table in `app/templates/partials/stages/stage_0.html`.
+  - Added an accessible **`💡 Pitch (N)`** button in every row, opening a full-fidelity modal that presents all 5 generated friction intersection pitch cards (Headline, Consensus score, Sensitivity flag, Youth & Cultural Hook, Crash-Out angle, and Merch punchline) with a direct action button to open in studio.
+- **Inline Title Editing from Table**:
+  - Added an inline pencil icon edit action in the **Title** column of the Agent 0 table.
+  - Clicking the pencil enables inline editing with Enter/blur submit via HTMX (`/ui/episodes/{id}/rename` or `/ui/queue/{id}/rename`), updating both the episode record and custom catalog item titles without page reloads.
+
+---
+
+### 2026-11-18 — Consolidate Agent 0 Pipeline & Relabel to Trend Research and Approve Pitch
+
+Completed:
+- **Agent Studio Pipeline Alignment**:
+  - Relabeled Stage 0 to: **`Agent 0: Trend Research and Approve Pitch`** in `app/ui.py` (`STAGE_LABELS` and `STAGE_MARKS`), `stage_0.html`, and `stage_1.html`.
+  - Removed separate `"Agent 1 (Pitches)"` tab from the top pipeline stepper in `app/templates/partials/workspace.html`, unifying the discovery and pitch approval process cleanly under **`Agent 0: Trend Research and Approve Pitch`**.
+  - Updated subsequent pipeline marks and labels to match the specification (`A0`, `A1 (Script)`, `A2/3 (Video)`, `A4 (Publish)`, `A5 (Seeding)`).
+- **Files Modified**:
+  - `app/ui.py`: Updated `STAGE_LABELS` and `STAGE_MARKS`.
+  - `app/templates/partials/workspace.html`: Skipped redundant `num == 1` in stepper and highlighted Agent 0 when viewing pitch cards.
+  - `app/templates/partials/stages/stage_0.html`: Updated panel header to `Agent 0: Trend Research and Approve Pitch`.
+  - `app/templates/partials/stages/stage_1.html`: Updated panel header and description to `Agent 0: Trend Research and Approve Pitch`.
+
+---
+
+### 2026-11-18 — Revert Sidebar Menu Font Size to 0.98rem
+
+Completed:
+- **Font Size Reversion**: Reverted `.nav-link` font size to **`0.98rem`** (`padding: 0.7rem 0.85rem`) in `app/static/css/app.css` as requested.
+
+---
+
+### 2026-11-18 — Adjust Sidebar Menu Font Size to 0.95rem
+
+Completed:
+- **Font Size Fine-Tuning**: Adjusted `.nav-link` font size to exactly **`0.95rem`** (`padding: 0.68rem 0.82rem`) in `app/static/css/app.css` for optimal visual balance with the vector SVG icons.
+
+---
+
+### 2026-11-18 — Polish Sidebar Menu Font Size & Vector SVG Icons
+
+Completed:
+- **Typography & Font Size**:
+  - Increased `.nav-link` font size from `0.9rem` to `0.98rem` with `font-weight: 600` and enhanced spacing (`padding: 0.7rem 0.85rem; gap: 0.75rem`).
+- **High-Definition Vector SVG Icons**:
+  - Replaced generic Unicode characters (`◆`, `▶`, `☰`, `◎`, `⚙`) with clean, responsive vector SVG icons in `app/templates/base.html`:
+    - **Dashboard**: Layout grid icon (`<rect>` layout).
+    - **Agent Studio**: Play / studio production icon (`<polygon points="6 3 20 12 6 21 6 3">`).
+    - **Episode Management**: Video episode / clapperboard tv icon (`<rect>` with screen antenna).
+    - **Characters Library**: Multi-character user group avatar icon.
+    - **Settings**: Refined mechanical gear icon.
+  - Sized icons to `1.3rem` with `stroke-width="2"` and crisp SVG rendering.
+
+---
+
+### 2026-11-18 — Switch Episodes Table Review Action to Approved Pitch
+
+Completed:
+- **Button Change (`app/templates/episodes.html`)**: Replaced the `📜 Script` button in the Episode Management table with **`💡 Pitch`** (`onclick="openPitchModal('pitch-modal-{{ ep.id }}')"`).
+- **Approved Pitch Review Modal**:
+  - Clicking `💡 Pitch` opens a modal displaying the exact pitch concept approved by the client that originated the episode:
+    - Headline and consensus score (`/10`) with `Approved Pitch` badge.
+    - **Youth & Cultural Hook** breakdown.
+    - **Story Premise & Crash-Out Angle**.
+    - **Proposed Merch Trigger** and Trend Sources.
+    - Direct action button to jump into the episode record (`View Generated Episode →`).
+
+---
+
+### 2026-11-18 — Standardize Characters Library Page Header
+
+Completed:
+- **Header Symmetry (`app/templates/characters.html`)**:
+  - Replaced the nested sidebar `<h2>` inside `.char-nav` with the standard top-level `.page-head` container matching Episode Management, Settings, and Credits.
+  - Added symmetric `<h1>Characters Library</h1>` with subtitle and browser title `<title>Characters Library — Crash Out</title>`.
+  - Replaced inner nav title with clean `<h3>Cast Roster</h3>` to maintain clean visual hierarchy.
+
+---
+
+### 2026-11-18 — Restore Episode Management Page Titles & Breadcrumbs
+
+Completed:
+- **Page Head & HTML Title (`app/templates/episodes.html`)**: Restored the page heading `<h1>Episode Management</h1>` and page title `<title>Episode Management — Crash Out</title>`.
+- **Breadcrumb Link (`app/templates/episode_record.html`)**: Restored the back link to `<a href="/episodes">← Episode Management</a>` to maintain full naming parity with the sidebar.
+
+---
+
+### 2026-11-18 — Restore Sidebar Nav Label to Episode Management
+
+Completed:
+- **Sidebar Nav Label**: Restored the navigation menu item label in `app/templates/base.html` back to **`Episode Management`** (`<span class="nav-label">Episode Management</span>`), matching the original menu structure.
+
+---
+
+### 2026-11-18 — Refactor Sidebar Brand to Fitted Logo Only
+
+Completed:
+- **Removed Brand Text**: Removed the text container (`<div class="brand-title"><span class="brand-title-crash">CRASH</span> <span class="brand-title-out">OUT</span></div>` and subtitle) from the application sidebar in `app/templates/base.html`.
+- **Fitted Logo to Sidebar Width**:
+  - Centered and scaled the brand badge logo (`.brand-logo-full`, `max-width: 140px`) to fit the sidebar width.
+  - Kept the gold and neon pink circular badge styling with subtle glow shadows to make the logo prominent at the top of the sidebar.
+
+---
+
+### 2026-11-18 — Reposition Search Control to Page Header
+
+Completed:
+- **Relocated Search Bar**: Moved the search bar completely out of the `.table-card` wrapping and placed it in `.page-head-actions` on the right side of the page header across from the **Episodes** title.
+- **Table Card Integrity**: The `.table-card` now solely contains the clean, themed `<table class="data-table">` without any wrapper containers or extra borders above the column headers.
+- **Search Filtering**: Restored real-time search filtering (`filterEpisodesTable`) on keyup/button click.
+
+---
+
+### 2026-11-18 — Remove Episodes Table Search & Apply Brand Theme to Table Headers
+
+Completed:
+- **Removed Search Bar**: Removed the top search bar (`#episodesTableSearch`) and its unused search filtering function from `app/templates/episodes.html`.
+- **Applied Brand Theme to Column Titles**: Styled the `<thead>` of `episodesDataTable` to match the brand color scheme:
+  - Header background: `var(--brand-soft)` (subtle pink tint matching active navigation/theme accents).
+  - Header text color: `var(--brand-ink)` (deep brand magenta) with `font-weight: 700`, `letter-spacing: 0.05em`, and uppercase styling.
+  - Border separator: `2px solid rgba(255, 45, 138, 0.25)`.
+
+---
+
+### 2026-11-18 — Fix Episodes Table Alignment & Column Widths
+
+Completed:
+- **Table Column Alignment**:
+  - Moved the hidden quick-script modals outside of the `<table>` element to prevent DOM insertion from distorting column geometry and flex layout calculations.
+  - Set explicit column widths (`width: 80px` for Sr. No., `width: 140px` for Status, `width: 220px; text-align: right;` for Actions, and flexible width for Title).
+  - Aligned the Actions cell contents to `justify-content: flex-end; white-space: nowrap;`, ensuring the **`📜 Script`** and **`Open Record →`** buttons align flush with the table header and stay cleanly within the table boundaries.
+
+---
+
+### 2026-11-18 — Polish Script Review & Clip Titles in Episodes View
+
+Completed:
+- **Clean Section Title & Subtitle**:
+  - Replaced `"Agent 2 — Review script & prompts"` and its description with clean client-facing copy:
+    - **Title**: `Script Review`
+    - **Subtitle**: `Review the 4-clip episodic script and character prompts before inspecting the rendered video clips.`
+  - Synchronized across both the **Episode Record** page (`app/templates/episode_record.html`) and the **Episodes Modal** (`app/templates/episodes.html`).
+- **Video Clips Header & Simplified Clip Names**:
+  - Changed section header from `Scene clips` to **`Video Clips`** across `episode_record.html` and `stage_3.html`.
+  - Simplified the clip titles on video cards from `Clip 1 · Hook & Setup` to clean **`Clip 1`**, **`Clip 2`**, **`Clip 3`**, and **`Clip 4`**.
+
+---
+
+### 2026-11-18 — Agent 2 Parity for Script Review & UI Cleanups in Episodes
+
+Completed:
+- **Agent 2 Parity for Script Review**:
+  - Updated the script review in both the **Episode Record** page (`app/templates/episode_record.html`) and the **Episodes Modal** (`app/templates/episodes.html`) to match Agent 2's layout:
+    - 4 horizontal clip tabs (**Clip 1**, **Clip 2**, **Clip 3**, **Clip 4**) with timeline durations (`00:00 - 00:08 · 8s`, etc.).
+    - Interactive tab selection switching between panels.
+    - Script prompt editor card with character count badge, clip ready badge, and full generation prompt text.
+- **Removed "EPISODE MANAGEMENT" & "#1 ·"**:
+  - Renamed nav and page title from "Episode Management" to "**Episodes**" in `base.html`, `episodes.html`, and breadcrumbs in `episode_record.html`.
+  - Removed `#1 ·` prefix from the title in `episode_record.html`.
+- **Clip Naming Parity on Video Cards**:
+  - Changed video card labels from `Scene 1`, `Scene 2` to `Clip 1`, `Clip 2`, `Clip 3`, `Clip 4` across `stage_3.html` and `episode_record.html`.
+
+---
+
+### 2026-11-18 — Episode Management Script-First Client Review Flow
+
+Completed:
+- **Episode Record Script-First Structure (`app/templates/episode_record.html`)**:
+  - Reordered the record page hierarchy so clients review the full **Episode Script & Character Dialogue** *first* at the top of the page before scrolling to the rendered scene clips and the full merged master video.
+  - Formatted scene cards showing Scene Number, Title, Timeline range, Duration, Primary Character, Visual Action/Camera Cue callout, and dialogue quotes.
+- **Episodes Management Table Quick Script Modal (`app/templates/episodes.html`)**:
+  - Added a `📜 Script` button alongside `Open Record →` in the **Episode Management** library table.
+  - Clicking `📜 Script` opens an accessible quick-review modal displaying all 4 scenes, camera cues, and character dialogue lines with a one-click transition to view the rendered clips.
+
+---
+
+### 2026-11-18 — Sample Episode Generation & Mock Run with Rendered Videos
+
+Completed:
+- **Sample Video Integration**:
+  - Connected the 4 uploaded 9:16 vertical video renders (`media_1794985409925_750c3899.mp4`, `media_1794985409894_a50cd342.mp4`, `media_1794985409792_9516e926.mp4`, `media_1794985409813_6e670a44.mp4`) as sequential scene clips (Scene 1 to Scene 4) for full end-to-end testing.
+  - Used FFmpeg via `app.media.merger.merge_scene_videos` to stitch the 4 scenes into a complete, seamless master 9:16 vertical video (`merged_60s.mp4`).
+- **Studio Section & Episodes Section Availability**:
+  - **Studio Queue (`/studio`)**: Configured active in-progress production episode `ep_1794920700` (`Episode_20261117_185656 - TikTok Trends: November 2026 | Updated Weekly`) with 5 trend pitches, full 4-scene script, 4 rendered scene clips, and master video ready for review at Gateway 3 (Stage 3 Video).
+  - **Episodes Library (`/episodes`)**: Configured completed published episode `ep_1794988800` (`Episode 1 - TikTok Trends: November 2026 | The Crash Out`) displaying in the library table with full record view at `/episodes/ep_1794988800` featuring playable 9:16 master cut, scene breakdown cards, publisher copy, and seeding drafts.
+- **Database Synchronization (PostgreSQL)**:
+  - Synchronized records to `episodes`, `pitches`, and `scripts` tables using `app.db.save_episode_to_db`, `save_pitches_to_db`, and `save_scripts_to_db`.
+  - Verified persistence and counts across Postgres and state manager JSON store.
+
+---
+
 ### 2026-11-18 — New EC2 Instance Migration & Production Setup (`54.166.201.137`)
 
 Completed:

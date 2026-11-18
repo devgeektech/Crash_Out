@@ -1,21 +1,30 @@
 {% extends "base.html" %}
+{% block title %}Characters Library — Crash Out{% endblock %}
 
 {% block content %}
-<section class="page-shell characters-layout">
-    <aside class="char-nav panel">
-        <h2>Characters Library</h2>
-        <p class="muted">Central refs for Gary, Linda, Chris, Chloe.</p>
-        <div class="char-list">
-            {% for c in characters %}
-            <a class="char-list-item {% if c.id == active.id %}active{% endif %}" href="/characters?char_id={{ c.id }}">
-                <img src="{{ c.image_url }}" alt="{{ c.name }}">
-                <span>{{ c.name }}</span>
-            </a>
-            {% endfor %}
+<section class="page-shell">
+    <div class="page-head">
+        <div>
+            <h1>Characters Library</h1>
+            <p class="muted">Central reference images, voice hints, and personas for Gary, Linda, Chris, and Chloe.</p>
         </div>
-    </aside>
+    </div>
 
-    <div class="panel char-editor">
+    <div class="characters-layout">
+        <aside class="char-nav panel">
+            <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem;">Cast Roster</h3>
+            <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">Select character to edit</p>
+            <div class="char-list">
+                {% for c in characters %}
+                <a class="char-list-item {% if c.id == active.id %}active{% endif %}" href="/characters?char_id={{ c.id }}">
+                    <img src="{{ c.image_url }}" alt="{{ c.name }}">
+                    <span>{{ c.name }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <div class="panel char-editor">
         <div class="char-editor-head">
             <div class="char-preview-frame">
                 <img class="char-preview" src="{{ active.image_url }}" alt="{{ active.name }}">
@@ -82,6 +91,7 @@
                 <button class="btn btn-primary" type="submit">Save character</button>
             </div>
         </form>
+    </div>
     </div>
 </section>
 {% endblock %}

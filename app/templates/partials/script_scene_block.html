@@ -42,7 +42,7 @@
                         </p>
                     </div>
                     <div class="script-save-status">
-                        {% if clip_ready %}
+                        {% if clip_ready and ep.current_gateway and ep.current_gateway|int >= 3 %}
                         <span class="badge badge-ok">Clip ready</span>
                         {% endif %}
                         <span
@@ -66,6 +66,7 @@
                     hx-include="closest form"
                 >{{ active_script_scene.source_prompt or active_script_scene.vidu_prompt or '' }}</textarea>
                 <div class="script-edit-actions">
+                    {% if clip_ready and ep.current_gateway and ep.current_gateway|int >= 3 %}
                     <button
                         class="btn btn-ghost btn-sm"
                         type="button"
@@ -74,8 +75,9 @@
                         hx-swap="outerHTML"
                         hx-indicator="#busy"
                         hx-timeout="900000"
-                        hx-confirm="Generate clip for Clip {{ active_script_scene.scene_id }} only?"
-                    >{% if clip_ready %}Regenerate this clip{% else %}Generate this clip{% endif %}</button>
+                        hx-confirm="Regenerate clip for Clip {{ active_script_scene.scene_id }} with the updated prompt?"
+                    >Regenerate this clip</button>
+                    {% endif %}
                     <span class="muted">⚡ Changes autosave automatically as you type</span>
                 </div>
             </form>

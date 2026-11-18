@@ -8,17 +8,14 @@
             <h1>Episode Management</h1>
             <p class="muted">Finished shows that cleared every Studio gateway.</p>
         </div>
-    </div>
-
-    <div class="table-card">
-        <div style="display: flex; justify-content: flex-end; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2);">
-            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 320px; width: 100%;">
+        <div class="page-head-actions">
+            <div style="display: flex; align-items: center; gap: 0.5rem; width: 300px; max-width: 100%;">
                 <input
                     type="text"
                     id="episodesTableSearch"
                     class="input"
                     placeholder="Search episode or ID..."
-                    style="font-size: 0.85rem; padding: 0.4rem 0.65rem;"
+                    style="font-size: 0.85rem; padding: 0.45rem 0.75rem; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); width: 100%;"
                     onkeyup="filterEpisodesTable()"
                 >
                 <button
@@ -29,13 +26,16 @@
                 >Search</button>
             </div>
         </div>
-        <table class="data-table" id="episodesDataTable">
+    </div>
+
+    <div class="table-card">
+        <table class="data-table" id="episodesDataTable" style="width: 100%; table-layout: auto;">
             <thead>
-                <tr>
-                    <th style="font-weight: 600; color: var(--text);">Sr. No.</th>
-                    <th style="font-weight: 600; color: var(--text);">Title</th>
-                    <th style="font-weight: 600; color: var(--text);">Status</th>
-                    <th style="font-weight: 600; color: var(--text);"></th>
+                <tr style="background: var(--brand-soft); border-bottom: 2px solid rgba(255, 45, 138, 0.25);">
+                    <th style="font-weight: 700; color: var(--brand-ink); width: 80px; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.8rem; background: transparent; padding: 0.85rem 1rem;">Sr. No.</th>
+                    <th style="font-weight: 700; color: var(--brand-ink); letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.8rem; background: transparent; padding: 0.85rem 1rem;">Title</th>
+                    <th style="font-weight: 700; color: var(--brand-ink); width: 140px; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.8rem; background: transparent; padding: 0.85rem 1rem;">Status</th>
+                    <th style="font-weight: 700; color: var(--brand-ink); width: 220px; text-align: right; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.8rem; background: transparent; padding: 0.85rem 1rem;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -47,24 +47,136 @@
                         <div class="muted mono">{{ ep.id }}</div>
                     </td>
                     <td><span class="badge">{{ ep.production_status|default('published')|title }}</span></td>
-                    <td class="row-actions">
-                        <a class="btn btn-sm btn-primary" href="/episodes/{{ ep.id }}">Open</a>
+                    <td style="text-align: right; white-space: nowrap;">
+                        <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.4rem;">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-ghost"
+                                onclick="openPitchModal('pitch-modal-{{ ep.id }}')"
+                                title="Review approved concept pitch"
+                            >
+                                💡 Pitch
+                            </button>
+                            <a class="btn btn-sm btn-primary" href="/episodes/{{ ep.id }}">Open Record →</a>
+                        </div>
                     </td>
                 </tr>
                 {% else %}
                 <tr id="noEpisodesFallback">
                     <td colspan="4" class="muted">
                         No finished episodes yet. Create and run shows in
-                        <a href="/studio?stage=0">Agent Studio</a> — they appear here after all gateways are approved.
+                        <a href="/studio?stage=0">AI Production Studio</a> — they appear here after all gateways are approved.
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <!-- Modals rendered outside the table to prevent table layout/alignment distortion -->
+    {% for ep in episodes %}
+    {% set p = ep.selected_concept or {} %}
+    <div
+        id="pitch-modal-{{ ep.id }}"
+        class="pitch-quick-modal"
+        style="display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 1.5rem; text-align: left;"
+        onclick="if (event.target === this) closePitchModal('pitch-modal-{{ ep.id }}');"
+    >
+        <div style="background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); max-width: 820px; width: 100%; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.1rem 1.35rem; border-bottom: 1px solid var(--border); background: var(--surface-2);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <span class="badge badge-ok" style="font-weight: 700; background: var(--brand-soft); color: var(--brand-ink); border-color: rgba(255, 45, 138, 0.35);">✓ Approved Pitch</span>
+                        {% if p.consensus_score %}
+                        <span class="badge badge-ok">{{ '%.1f'|format(p.consensus_score|float) }}/10</span>
+                        {% endif %}
+                        <span class="badge">{{ (p.sensitivity_flag or 'SAFE')|upper }}</span>
+                    </div>
+                    <h3 style="margin: 0.4rem 0 0.15rem; font-size: 1.25rem; font-weight: 700; color: var(--text);">
+                        {{ p.headline or p.title or ep.title }}
+                    </h3>
+                </div>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-ghost"
+                    onclick="closePitchModal('pitch-modal-{{ ep.id }}')"
+                    style="font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.6rem;"
+                >✕</button>
+            </div>
+            
+            <div style="padding: 1.35rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem;">
+                {% if p.cultural_hook or p.youth_sentiment_summary %}
+                <div style="padding: 0.85rem 1rem; background: var(--surface-2); border-left: 3px solid var(--brand); border-radius: 4px;">
+                    <strong style="color: var(--brand); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem;">Youth & Cultural Hook</strong>
+                    <p style="margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--text);">
+                        {{ p.cultural_hook or p.youth_sentiment_summary }}
+                    </p>
+                </div>
+                {% endif %}
+
+                <div style="padding: 0.85rem 1rem; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                    <strong style="color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.35rem;">Story Premise & Crash-Out Angle</strong>
+                    <p style="margin: 0; font-size: 0.94rem; line-height: 1.6; color: var(--text); white-space: pre-line;">
+                        {{ p.crash_out_angle or p.synopsis or p.premise or 'No premise text available.' }}
+                    </p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem;">
+                    <div style="padding: 0.75rem 0.9rem; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                        <strong style="color: var(--muted); font-size: 0.76rem; text-transform: uppercase; display: block; margin-bottom: 0.2rem;">Proposed Merch Trigger</strong>
+                        <span style="font-weight: 600; color: var(--brand);">👕 {{ p.proposed_merch_hook or p.suggested_merch or ep.merch_punchline or 'Capitalism Broke My Dad' }}</span>
+                    </div>
+                    {% if p.sources %}
+                    <div style="padding: 0.75rem 0.9rem; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                        <strong style="color: var(--muted); font-size: 0.76rem; text-transform: uppercase; display: block; margin-bottom: 0.2rem;">Trend Sources</strong>
+                        <span class="muted" style="font-size: 0.88rem;">{{ (p.sources.mainstream or p.source_trends or [])|join(', ') or 'Mainstream News & Youth Socials' }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding: 0.85rem 1.35rem; border-top: 1px solid var(--border); background: var(--surface-2);">
+                <span class="muted" style="font-size: 0.82rem;">This pitch was approved by client and generated into the 4-scene episode.</span>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-ghost"
+                        onclick="closePitchModal('pitch-modal-{{ ep.id }}')"
+                    >Close</button>
+                    <a class="btn btn-sm btn-primary" href="/episodes/{{ ep.id }}">View Generated Episode →</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 </section>
 
 <script>
+function openPitchModal(modalId) {
+    var modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closePitchModal(modalId) {
+    var modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.pitch-quick-modal').forEach(function(modal) {
+            modal.style.display = 'none';
+        });
+        document.body.style.overflow = '';
+    }
+});
+
 function filterEpisodesTable() {
     var query = (document.getElementById('episodesTableSearch').value || '').toLowerCase().trim();
     var table = document.getElementById('episodesDataTable');

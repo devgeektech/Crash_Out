@@ -1,8 +1,8 @@
 <section class="panel stage-card">
     <div class="panel-header">
         <div>
-            <h1 class="panel-title">Agent 3 — Episode video</h1>
-            <p class="panel-desc">Agent 3 (Video) · Scene clips and the full episode assemble here after Generate Video.</p>
+            <h1 class="panel-title">Animation & Rendering</h1>
+            <p class="panel-desc">Animation & Rendering · Scene clips and the full episode assemble here after Generate Video.</p>
         </div>
         <div class="panel-actions">
             <button
@@ -19,7 +19,7 @@
     <div class="section-block">
         <div class="section-head">
             <div>
-                <h3>Scene clips</h3>
+                <h3>Video Clips</h3>
                 <p>Each clip is a standalone vertical render.</p>
             </div>
         </div>
@@ -29,7 +29,7 @@
                 {% for card in scene_cards|default([]) %}
                 <article class="scene-video-card">
                     <div class="scene-video-head">
-                        <strong>Scene {{ card.scene_id }} · {{ card.title }}</strong>
+                        <strong>Clip {{ card.scene_id }}</strong>
                         <div style="display: flex; align-items: center; gap: 0.35rem;">
                             <span class="badge" title="Scene credits used" style="background: rgba(255, 45, 138, 0.1); color: var(--brand); border-color: rgba(255, 45, 138, 0.25); font-weight: 600;">
                                 ⚡ {{ '%.1f'|format(card.credits|default(0.0)) }} cr

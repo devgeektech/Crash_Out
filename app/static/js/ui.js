@@ -50,6 +50,10 @@
 
     let pendingDeleteUrl = null;
 
+    window.closeDeleteConfirm = function() {
+        closeDeleteConfirm();
+    };
+
     function openDeleteConfirm(url, title) {
         const dialog = document.getElementById("app-confirm-dialog");
         const message = document.getElementById("app-confirm-message");

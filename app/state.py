@@ -408,8 +408,9 @@ class StateManager:
         from app.studio.generation import next_episode_number
         from app.studio.naming import make_studio_episode_name
 
-        # Studio queue convention: Episode_YYYYMMDD_HHMMSS until pitch confirm.
-        resolved_title = (title or "").strip() or make_studio_episode_name()
+        # Studio queue convention: EP-<serialnumber>-<YYYYMMDD> until pitch confirm.
+        target_ep_num = int(episode_number or next_episode_number())
+        resolved_title = (title or "").strip() or make_studio_episode_name(serial_number=target_ep_num)
 
         # Include counter so create+duplicate in the same second never collide.
         base = int(time.time())
@@ -428,7 +429,7 @@ class StateManager:
         episode = Episode(
             id=ep_id,
             title=resolved_title,
-            episode_number=int(episode_number or next_episode_number()),
+            episode_number=target_ep_num,
             output_folder=folder,
             selected_engine=engine or mode,
             final_platform_decision=mode,

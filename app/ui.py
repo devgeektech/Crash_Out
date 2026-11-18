@@ -218,12 +218,13 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
             cards.append(
                 {
                     "scene_id": sid,
-                    "title": sc.get("title") or f"Scene {sid}",
+                    "title": sc.get("title") or f"Clip {sid}",
                     "time_range": sc.get("time_range") or "",
                     "duration_sec": sc.get("duration_sec") or sv.get("duration_sec") or 15,
                     "latency_sec": sv.get("latency_sec"),
                     "vidu_mode": sv.get("vidu_mode"),
                     "credits": scene_credits,
+                    "prompt": sc.get("source_prompt") or sc.get("vidu_prompt") or sc.get("visual_prompt") or "",
                     **media,
                 }
             )
@@ -236,12 +237,13 @@ def _build_scene_cards(ep: Episode) -> list[Dict[str, Any]]:
             cards.append(
                 {
                     "scene_id": sid,
-                    "title": sv.get("title") or f"Scene {sid}",
+                    "title": sv.get("title") or f"Clip {sid}",
                     "time_range": sv.get("time_range") or "",
                     "duration_sec": sv.get("duration_sec") or 15,
                     "latency_sec": sv.get("latency_sec"),
                     "vidu_mode": sv.get("vidu_mode"),
                     "credits": scene_credits,
+                    "prompt": sv.get("prompt") or sv.get("source_prompt") or sv.get("visual_prompt") or "",
                     **media,
                 }
             )
@@ -275,19 +277,19 @@ def _resolve_master_video(ep: Episode) -> Dict[str, Any]:
     return {"has_video": False, "playable_url": None, "merged": bool(ep.scenes_merged)}
 
 STAGE_LABELS = {
-    0: "Agent 0 (Queue & Ingest)",
-    1: "Agent 1 (Pitches)",
-    2: "Agent 2 (Script)",
-    3: "Agent 3 (Video)",
-    4: "Agent 4 (Publish)",
-    5: "Agent 5 (Seeding)",
+    0: "Trend Research & Approve Pitch",
+    1: "Trend Research & Approve Pitch",
+    2: "Scriptwriter",
+    3: "Animation & Rendering",
+    4: "Publishing & Merchandising",
+    5: "Community & Promotion",
 }
 
-# Letter marks shown in the stepper (A0 / A1 / A2 / A3 / A4 / A5)
+# Letter marks shown in the stepper (A0 / A1 / A3 / A4 / A5)
 STAGE_MARKS = {
     0: "A0",
-    1: "A1",
-    2: "A2",
+    1: "A0",
+    2: "A1",
     3: "A3",
     4: "A4",
     5: "A5",
@@ -342,17 +344,17 @@ def _platform_status() -> Dict[str, Any]:
     }
 
 
-def _selected_concept_index(ep: Episode) -> int:
+def _selected_concept_index(ep: Episode) -> Optional[int]:
     concepts = ep.available_concepts or []
     if not concepts:
-        return 0
-    if ep.selected_concept:
+        return None
+    if ep.selected_concept and not is_empty_concept(ep.selected_concept):
         for i, c in enumerate(concepts):
             if c.get("id") == ep.selected_concept.get("id") or c.get("title") == ep.selected_concept.get(
                 "title"
             ):
                 return i
-    return 0
+    return None
 
 
 def _resolve_viewing_stage(ep: Episode, viewing_stage: Optional[int]) -> int:
@@ -557,6 +559,8 @@ def _attach_local_renders(ep: Episode) -> bool:
 
 def _hydrate_renders_from_siblings(ep: Episode) -> bool:
     """Copy playable scene/master refs from a sibling episode that already rendered."""
+    if int(getattr(ep, "current_gateway", 1) or 1) < 3:
+        return False
     _attach_local_renders(ep)
     if _episode_has_local_renders(ep) and (ep.scene_videos or ep.merged_video_url):
         return False
@@ -582,10 +586,34 @@ def _hydrate_renders_from_siblings(ep: Episode) -> bool:
     ep.merged_video_url = donor.merged_video_url
     ep.video_url = donor.video_url or donor.merged_video_url
     ep.scenes_merged = bool(donor.scenes_merged or donor.merged_video_url)
-    if donor.script and not ep.script:
+    # Only copy script if the episode is already at Gateway 2 or beyond
+    if donor.script and not ep.script and int(getattr(ep, "current_gateway", 1) or 1) >= 2:
         ep.script = donor.script
         ep.merch_punchline = donor.merch_punchline or ep.merch_punchline
     return True
+
+
+def _format_queue_status(ep: Optional[Episode]) -> str:
+    """Format step-by-step user-friendly queue status."""
+    if not ep:
+        return "Not started"
+    prod = getattr(ep, "production_status", None) or ""
+    gw = int(getattr(ep, "current_gateway", 1) or 1)
+    status_raw = str(getattr(ep, "status", "") or "").upper()
+
+    if prod == "published" or status_raw == "COMPLETED" or gw >= 6:
+        return "Published"
+    if gw == 1 or status_raw == "WAITING_GATEWAY_1" or (not ep.script and gw < 2):
+        return "Waiting Pitch Approving"
+    if gw == 2 or status_raw == "WAITING_GATEWAY_2" or prod == "scripting":
+        return "Waiting for Scriptwriting"
+    if gw == 3 or status_raw in {"WAITING_GATEWAY_3", "SCRIPT_APPROVED"} or prod == "generating":
+        return "Waiting for Video Generation"
+    if gw == 4 or status_raw == "WAITING_GATEWAY_4":
+        return "Waiting for Merch Sign-Off"
+    if gw == 5 or status_raw == "WAITING_GATEWAY_5":
+        return "Waiting for Publishing Sign-Off"
+    return status_raw.replace("_", " ").title() if status_raw else "Draft"
 
 
 def _catalog_cards() -> list:
@@ -606,7 +634,8 @@ def _catalog_cards() -> list:
                 "title": display_title,
                 "list_number": index,
                 "episode": latest,
-                "episode_status": (latest.status.replace("_", " ").title() if latest else "Not started"),
+                "concepts": (latest.available_concepts if latest and latest.available_concepts else None) or concepts_for_catalog(item.get("id")),
+                "episode_status": _format_queue_status(latest),
                 "gateway": latest.current_gateway if latest else None,
             }
         )
@@ -650,13 +679,35 @@ def _studio_queue_cards() -> list:
                 "duration_label": "—",
                 "list_number": int(ep.episode_number or 0),
                 "episode": ep,
-                "episode_status": (prod or "draft").replace("_", " ").title(),
+                "concepts": ep.available_concepts or (concepts_for_catalog(ep.catalog_id) if ep.catalog_id else []),
+                "episode_status": _format_queue_status(ep),
                 "gateway": ep.current_gateway,
                 "custom": bool(ep.catalog_id and str(ep.catalog_id).startswith("custom_")),
             }
         )
-    extras.sort(key=lambda c: int(c.get("list_number") or 0), reverse=True)
-    return cards + extras
+
+    all_cards = cards + extras
+
+    # Sort newest first: highest episode number / creation time on top
+    def _card_sort_key(c: dict) -> tuple:
+        ep = c.get("episode")
+        created_val = 0.0
+        if ep and getattr(ep, "created_at", None):
+            try:
+                created_val = float(ep.created_at)
+            except (ValueError, TypeError):
+                created_val = 0.0
+        elif c.get("created_at"):
+            try:
+                created_val = float(c["created_at"])
+            except (ValueError, TypeError):
+                created_val = 0.0
+        list_num = int(c.get("list_number") or (ep.episode_number if ep else 0) or 0)
+        return (list_num, created_val)
+
+    all_cards.sort(key=_card_sort_key, reverse=True)
+    return all_cards
+
 
 
 def build_context(
@@ -680,8 +731,6 @@ def build_context(
         fresh = concepts_for_catalog(str(ep.catalog_id))
         if fresh:
             ep.available_concepts = fresh
-            if not ep.selected_concept or is_empty_concept(ep.selected_concept):
-                ep.selected_concept = next((c for c in fresh if not is_empty_concept(c)), ep.selected_concept)
             state_manager.save()
     completed = (ep.current_gateway or 1) >= 6 or (ep.status or "").upper() == "COMPLETED"
     show_completed = completed and viewing_stage is None
@@ -942,10 +991,6 @@ def ui_queue_redirect(request: Request):
 def _apply_catalog_concepts(ep: Episode, catalog_id: str) -> None:
     concepts = concepts_for_catalog(catalog_id)
     ep.available_concepts = concepts
-    real = next((c for c in concepts if not is_empty_concept(c)), None)
-    ep.selected_concept = real
-    if real and real.get("script_key"):
-        ep.script_key = str(real["script_key"])
 
 
 def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
@@ -960,7 +1005,7 @@ def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
         ep.script_key = str(item.get("script_key") or catalog_id)
         # Keep Episode_Date_Time naming; do not overwrite with catalog marketing titles.
         if not (ep.title or "").strip():
-            ep.title = make_studio_episode_name()
+            ep.title = make_studio_episode_name(serial_number=ep.episode_number)
         # Refresh concept cards, but do not rewind an already-approved episode.
         already_past_gate1 = bool(ep.script) or int(ep.current_gateway or 1) >= 2
         if not already_past_gate1:
@@ -975,11 +1020,14 @@ def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
         orchestrator.log(ep.id, f"Selected queue video '{ep.title}'.")
         return ep
 
+    from app.studio.generation import next_episode_number
+    target_num = next_episode_number()
     ep = state_manager.create_episode(
-        title=make_studio_episode_name(),
+        title=make_studio_episode_name(serial_number=target_num),
         engine="vidu",
         catalog_id=catalog_id,
         script_key=str(item.get("script_key") or catalog_id),
+        episode_number=target_num,
     )
     _apply_catalog_concepts(ep, catalog_id)
     state_manager.save()
@@ -1014,13 +1062,16 @@ def _select_queue_item(item_id: str) -> Episode:
                 state_manager.save()
             return ep
         # First select of a catalog row: create a draft shell so selection sticks.
+        from app.studio.generation import next_episode_number
         from app.studio.naming import make_studio_episode_name
 
+        target_num = next_episode_number()
         ep = state_manager.create_episode(
-            title=make_studio_episode_name(),
+            title=make_studio_episode_name(serial_number=target_num),
             engine="vidu",
             catalog_id=str(item["id"]),
             script_key=str(item.get("script_key") or item["id"]),
+            episode_number=target_num,
         )
         _apply_catalog_concepts(ep, str(item["id"]))
         state_manager.save()
@@ -1070,17 +1121,17 @@ def ui_mockup_queue_scheduler(request: Request):
 
         # Activate the episode and populate with the 5 generated pitch cards
         catalog_id = str(item["id"])
+        from app.studio.generation import next_episode_number
+        target_num = next_episode_number()
         ep = state_manager.create_episode(
-            title=make_studio_episode_name(),
+            title=make_studio_episode_name(serial_number=target_num),
             engine="vidu",
             catalog_id=catalog_id,
             script_key=str(item.get("script_key") or catalog_id),
+            episode_number=target_num,
         )
         ep.available_concepts = concepts
-        if concepts:
-            ep.selected_concept = concepts[0]
-            if concepts[0].get("script_key"):
-                ep.script_key = str(concepts[0]["script_key"])
+        ep.selected_concept = None
 
         state_manager.save()
         orchestrator.log(ep.id, f"Mockup scheduler executed: Generated {len(concepts)} pitch cards.")
@@ -1088,8 +1139,8 @@ def ui_mockup_queue_scheduler(request: Request):
         return render(
             request,
             "partials/htmx_workspace.html",
-            viewing_stage=1,  # Open directly to Gate 1 (Pitch Cards)
-            toast=f"Mockup complete · {len(concepts)} Pitches generated!",
+            viewing_stage=0,  # Open Agent 0 table list with the new episode added
+            toast=f"Mockup complete · Added {ep.title} with {len(concepts)} pitches!",
             toast_kind="ok",
         )
     except Exception as exc:
@@ -1171,7 +1222,51 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
         request,
         "partials/htmx_workspace.html",
         viewing_stage=0,
-        toast=f"Deleted · {title}",
+        toast=f"Deleted '{title}'",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/queue/{item_id}/rename", response_class=HTMLResponse)
+@router.post("/ui/catalog/{item_id}/rename", response_class=HTMLResponse)
+def ui_rename_queue_video(request: Request, item_id: str, title: str = Form(...)):
+    """Rename a queue item / episode from the Agent 0 table."""
+    new_title = (title or "").strip()
+    if not new_title:
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=0,
+            error="Title cannot be empty.",
+        )
+
+    # 1. Check if item_id is a direct episode
+    ep = state_manager.episodes.get(item_id)
+    if not ep:
+        # Check if item_id matches an episode's catalog_id
+        ep = next((e for e in state_manager.episodes.values() if e.catalog_id == item_id), None)
+
+    if ep:
+        state_manager.rename_episode(ep.id, new_title)
+
+    # 2. Also update in catalog if custom catalog item exists
+    from app.catalog import _load_custom_catalog, _save_custom_catalog
+    items = _load_custom_catalog()
+    changed = False
+    for it in items:
+        if it.get("id") == item_id or (ep and it.get("id") == ep.catalog_id):
+            it["title"] = new_title
+            changed = True
+            break
+    if changed:
+        _save_custom_catalog(items)
+
+    state_manager.save()
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=0,
+        toast=f"Renamed to '{new_title}'",
         toast_kind="ok",
     )
 
@@ -1234,6 +1329,36 @@ def ui_open_catalog_video(request: Request, catalog_id: str):
         "partials/htmx_workspace.html",
         viewing_stage=stage,
         toast=f"{gate_label} · {ep.title}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/episodes/{episode_id}/pitches", response_class=HTMLResponse)
+def ui_open_episode_pitches(request: Request, episode_id: str):
+    """Open pitch page directly for an episode (Stage 1 concept cards)."""
+    ep = state_manager.set_active(episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    _remember_studio_ui(ep, 1)
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=1,
+        toast=f"Pitches · {ep.title}",
+        toast_kind="ok",
+    )
+
+
+@router.post("/ui/catalog/{catalog_id}/pitches", response_class=HTMLResponse)
+def ui_open_catalog_pitches(request: Request, catalog_id: str):
+    """Open pitch page directly for a catalog video (Stage 1 concept cards)."""
+    ep = _activate_catalog_video(catalog_id)
+    _remember_studio_ui(ep, 1)
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=1,
+        toast=f"Pitches · {ep.title}",
         toast_kind="ok",
     )
 
@@ -1498,6 +1623,14 @@ def ui_update_concept(
     action: str = Form("save"),
 ):
     ep = _ensure_episode()
+    # If Gateway 1 is already approved, lock pitches from edits
+    if int(ep.current_gateway or 1) >= 2 or bool(ep.script):
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=1,
+            error="Pitch already approved and locked.",
+        )
     concepts = list(ep.available_concepts or [])
     if index < 0 or index >= len(concepts):
         return render(
@@ -1565,6 +1698,14 @@ def ui_update_concept(
 @router.post("/ui/concepts/select", response_class=HTMLResponse)
 def ui_select_concept(request: Request, index: int = Form(...)):
     ep = _ensure_episode()
+    # If Gateway 1 is already approved, prevent selecting another pitch
+    if int(ep.current_gateway or 1) >= 2 or bool(ep.script):
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=1,
+            error="Pitch already approved and locked.",
+        )
     concepts = ep.available_concepts or []
     if index < 0 or index >= len(concepts):
         return render(
@@ -1594,16 +1735,13 @@ def ui_approve_gateway_1(request: Request):
     from app.trends.store import remember_episode_topic
 
     ep = _ensure_episode()
-    concepts = ep.available_concepts or []
     selected = ep.selected_concept
-    if is_empty_concept(selected):
-        selected = next((c for c in concepts if not is_empty_concept(c)), None)
-    if not selected:
+    if not selected or is_empty_concept(selected):
         return render(
             request,
             "partials/htmx_workspace.html",
             viewing_stage=1,
-            error="Select a pitch first",
+            error="Please select one of the pitches first before approving",
         )
     ep.selected_concept = selected
 

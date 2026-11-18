@@ -2,13 +2,15 @@
     <nav class="stepper-bar" aria-label="Pipeline stages">
         <div class="stepper">
             {% for num, label in stage_labels.items() %}
-            {# Stage 0 is always open. Stages 1..5 require the prior gateway to be reached/approved #}
+            {# If stage 1 is merged with stage 0, skip separate stage 1 in top stepper #}
+            {% if num != 1 %}
+            {# Stage 0 is always open. Stages 2..5 require the prior gateway to be reached/approved #}
             {% set gw = ep.current_gateway|default(1) %}
             {% set is_locked = (num > gw) or (num in disabled_stages) %}
             {% set is_completed = (gw > num and num > 0) %}
             {% set mark = stage_marks.get(num, label[:1]) %}
             <button
-                class="step-item {% if viewing_stage == num %}active{% endif %} {% if is_completed %}completed{% endif %} {% if is_locked %}is-disabled is-locked{% endif %}"
+                class="step-item {% if viewing_stage == num or (num == 0 and viewing_stage == 1) %}active{% endif %} {% if is_completed %}completed{% endif %} {% if is_locked %}is-disabled is-locked{% endif %}"
                 type="button"
                 {% if is_locked %}
                 disabled
@@ -34,10 +36,12 @@
                     {% endif %}
                 </span>
             </button>
+            {% endif %}
             {% endfor %}
         </div>
     </nav>
 
+    {% if viewing_stage not in [0, 1] %}
     <div class="meta-strip">
         <div class="meta-left">
             <span>Viewing: <strong>{{ stage_labels[viewing_stage] }}</strong></span>
@@ -58,6 +62,9 @@
                     required
                     aria-label="Episode title"
                     data-original="{{ ep.title }}"
+                    style="cursor: pointer;"
+                    title="Click ✎ or double click to edit title"
+                    ondblclick="if(typeof startTitleEdit==='function') startTitleEdit(this);"
                 >
                 <button
                     class="icon-btn icon-btn-pencil"
@@ -65,6 +72,7 @@
                     title="Rename episode"
                     aria-label="Rename {{ ep.title }}"
                     data-ep-rename
+                    onclick="event.preventDefault(); event.stopPropagation(); const inp = this.closest('[data-ep-rename-form]').querySelector('.ep-title-input'); if(inp){ inp.readOnly=false; inp.classList.add('is-editing'); inp.focus(); inp.select(); }"
                 >
                     <span aria-hidden="true">✎</span>
                 </button>
@@ -75,6 +83,7 @@
             <span>Prod: <span class="badge">{{ ep.production_status|default('draft')|title }}</span></span>
         </div>
     </div>
+    {% endif %}
 
     <main class="main-wrapper main-wrapper-single">
         <div class="center-content">

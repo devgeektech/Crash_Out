@@ -5,7 +5,7 @@
     <div class="page-head">
         <div>
             <p class="muted"><a href="/episodes">← Episode Management</a></p>
-            <h1>#{{ ep.episode_number }} · {{ ep.title }}</h1>
+            <h1>{{ ep.title }}</h1>
             <p class="muted">Published record</p>
         </div>
         <div class="page-head-actions">
@@ -15,11 +15,106 @@
         </div>
     </div>
 
+    <section class="panel stage-card" style="margin-bottom: 1.5rem;">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title" style="font-size: 1.25rem; font-weight: 700; color: var(--text);">Script Review</h2>
+                <p class="panel-desc muted" style="margin: 0.15rem 0 0;">Review the 4-clip episodic script and character prompts before inspecting the rendered video clips.</p>
+            </div>
+            <div class="panel-actions">
+                {% if ep.merch_punchline %}
+                <span class="badge badge-warn" title="Merch punchline trigger">👕 {{ ep.merch_punchline }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if ep.script and ep.script.scenes %}
+        <div id="record-script-tabs-wrapper" style="margin-top: 1rem;">
+            <!-- Clip Navigation Tabs -->
+            <div class="scene-tabs" role="tablist" aria-label="Script scenes">
+                {% for sc in ep.script.scenes %}
+                {% set sid = sc.scene_id|default(loop.index)|int %}
+                <button
+                    class="scene-tab {% if loop.first %}active{% endif %}"
+                    type="button"
+                    role="tab"
+                    id="record-tab-btn-{{ sid }}"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}"
+                    onclick="selectRecordClipTab({{ sid }})"
+                    style="justify-content: center; text-align: center; flex-direction: column; gap: 0.2rem; padding: 0.5rem 0.6rem;"
+                >
+                    <span class="scene-tab-num" style="font-size: 0.92rem; font-weight: 700; height: auto; padding: 0.2rem 0.75rem;">
+                        Clip {{ sid }}
+                    </span>
+                    <span style="font-size: 0.75rem; color: var(--muted); white-space: nowrap; font-weight: 500;">
+                        {{ sc.time_range }} · {{ sc.duration_sec }}s
+                    </span>
+                </button>
+                {% endfor %}
+            </div>
+
+            <!-- Clip Panels -->
+            {% for sc in ep.script.scenes %}
+            {% set sid = sc.scene_id|default(loop.index)|int %}
+            <div
+                id="record-clip-panel-{{ sid }}"
+                class="script-scene-panel record-clip-panel"
+                role="tabpanel"
+                style="{% if not loop.first %}display: none;{% endif %}"
+            >
+                <div class="script-scene-meta script-edit-meta" style="margin-bottom: 0.85rem;">
+                    <div class="script-edit-heading">
+                        <h2 class="script-scene-title" style="font-size: 1.15rem; font-weight: 700;">Clip {{ sid }}</h2>
+                        <p class="panel-desc muted" style="margin: 0.15rem 0 0;">
+                            {{ sc.time_range }} · {{ sc.duration_sec }}s · Lead: {{ (sc.primary_character or 'gary')|capitalize }}
+                        </p>
+                    </div>
+                    <div class="script-save-status">
+                        <span class="badge badge-ok">Clip ready</span>
+                        <span class="badge badge-info">{{ (sc.source_prompt or sc.vidu_prompt or sc.visual_prompt or '')|length }} chars</span>
+                    </div>
+                </div>
+
+                <textarea
+                    class="script-prompt-editor"
+                    rows="16"
+                    readonly
+                    style="background: var(--surface-2); font-family: var(--font-mono, monospace); font-size: 0.88rem; line-height: 1.55; cursor: text;"
+                >{{ sc.source_prompt or sc.vidu_prompt or sc.visual_prompt or '' }}</textarea>
+            </div>
+            {% endfor %}
+        </div>
+
+        <script>
+        function selectRecordClipTab(selectedSid) {
+            document.querySelectorAll('#record-script-tabs-wrapper .scene-tab').forEach(function(btn) {
+                btn.classList.remove('active');
+                btn.setAttribute('aria-selected', 'false');
+            });
+            document.querySelectorAll('#record-script-tabs-wrapper .record-clip-panel').forEach(function(panel) {
+                panel.style.display = 'none';
+            });
+            var activeBtn = document.getElementById('record-tab-btn-' + selectedSid);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.setAttribute('aria-selected', 'true');
+            }
+            var activePanel = document.getElementById('record-clip-panel-' + selectedSid);
+            if (activePanel) {
+                activePanel.style.display = 'block';
+            }
+        }
+        </script>
+        {% else %}
+        <div class="empty-state" style="margin-top: 1rem;">No script lines available for this episode record.</div>
+        {% endif %}
+    </section>
+
     <section class="panel stage-card">
         <div class="section-block">
             <div class="section-head">
                 <div>
-                    <h3>Scene clips</h3>
+                    <h3>Video Clips</h3>
                     <p>Read-only archive of each vertical render.</p>
                 </div>
             </div>
@@ -29,7 +124,7 @@
                     {% for card in scene_cards %}
                     <article class="scene-video-card">
                         <div class="scene-video-head">
-                            <strong>Scene {{ card.scene_id }} · {{ card.title }}</strong>
+                            <strong>Clip {{ card.scene_id }}</strong>
                             <span class="badge">{{ card.duration_sec }}s</span>
                         </div>
                         {% if card.has_video and card.playable_url %}

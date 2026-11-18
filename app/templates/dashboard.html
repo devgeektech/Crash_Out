@@ -8,7 +8,7 @@
         <div class="brand-hero-copy">
             <h1 style="color: #ffffff !important;">Production dashboard</h1>
             <p>Pipeline health, episode status, and credit usage.</p>
-            <a class="btn btn-primary" href="/studio?stage=0">Agent Studio</a>
+            <a class="btn btn-primary" href="/studio?stage=0">AI Production Studio</a>
         </div>
     </div>
 
@@ -27,11 +27,6 @@
             <span class="dash-kpi-label">Generating</span>
             <strong class="dash-kpi-value">{{ dashboard.generating_count }}</strong>
             <span class="muted">{{ dashboard.jobs_waiting }} waiting</span>
-        </article>
-        <article class="dash-kpi">
-            <span class="dash-kpi-label">Credits</span>
-            <strong class="dash-kpi-value">{{ '%.0f'|format(dashboard.credits_total|default(0)) }}</strong>
-            <span class="muted">used across episodes</span>
         </article>
         <article class="dash-kpi">
             <span class="dash-kpi-label">Published</span>
@@ -69,7 +64,7 @@
             {% else %}
             <p class="muted">No active episode in Studio.</p>
             <div class="inline-form">
-                <a class="btn btn-sm btn-primary" href="/studio?stage=0">Agent Studio</a>
+                <a class="btn btn-sm btn-primary" href="/studio?stage=0">AI Production Studio</a>
             </div>
             {% endif %}
         </section>
