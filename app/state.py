@@ -89,6 +89,7 @@ def _should_keep_episode(ep: "Episode", active_id: Optional[str]) -> bool:
 
 class Episode(BaseModel):
     id: str
+    user_id: Optional[int] = None
     title: str = "Untitled Episode"
     episode_number: int = 0
     output_folder: Optional[str] = None
@@ -387,7 +388,24 @@ class StateManager:
         except Exception as exc:
             print(f"Error saving episode {episode_id}: {exc}")
 
-    def get_active_episode(self) -> Optional[Episode]:
+    def get_active_episode(self, user_id: Optional[int] = None) -> Optional[Episode]:
+        if user_id is not None:
+            # First check if active_episode_id belongs to this user
+            if self.active_episode_id and self.active_episode_id in self.episodes:
+                ep = self.episodes[self.active_episode_id]
+                if ep.user_id == int(user_id):
+                    return ep
+            # Otherwise return this user's preferred episode
+            for ep in self.episodes.values():
+                if ep.user_id == int(user_id):
+                    folder = _episode_folder_path(ep)
+                    if os.path.isfile(os.path.join(folder, "merged_60s.mp4")):
+                        return ep
+            for ep in self.episodes.values():
+                if ep.user_id == int(user_id):
+                    return ep
+            return None
+
         if self.active_episode_id and self.active_episode_id in self.episodes:
             return self.episodes[self.active_episode_id]
         if self.episodes:
@@ -403,6 +421,7 @@ class StateManager:
         catalog_id: Optional[str] = None,
         script_key: str = "hoa_violation",
         episode_number: Optional[int] = None,
+        user_id: Optional[int] = None,
     ) -> Episode:
         from app.engines.factory import engine_display_name, video_engine_mode
         from app.studio.generation import next_episode_number
@@ -428,6 +447,7 @@ class StateManager:
         mode = video_engine_mode()
         episode = Episode(
             id=ep_id,
+            user_id=user_id,
             title=resolved_title,
             episode_number=target_ep_num,
             output_folder=folder,
@@ -446,7 +466,7 @@ class StateManager:
         self.save_episode(ep_id)
         return episode
 
-    def duplicate_episode(self, episode_id: str) -> Optional[Episode]:
+    def duplicate_episode(self, episode_id: str, user_id: Optional[int] = None) -> Optional[Episode]:
         """Clone episode metadata/script; optionally copy scene media."""
         src = self.episodes.get(episode_id)
         if not src:
@@ -457,6 +477,7 @@ class StateManager:
             engine=src.selected_engine or "mock",
             catalog_id=src.catalog_id,
             script_key=src.script_key or "hoa_violation",
+            user_id=user_id if user_id is not None else src.user_id,
         )
         clone.available_concepts = list(src.available_concepts or [])
         clone.selected_concept = dict(src.selected_concept) if src.selected_concept else None
@@ -498,12 +519,15 @@ class StateManager:
         self.save_episode(episode_id)
         return ep
 
-    def list_episodes_sorted(self) -> List[Episode]:
+    def list_episodes_sorted(self, user_id: Optional[int] = None) -> List[Episode]:
         from app.studio.generation import ensure_episode_numbers
 
         ensure_episode_numbers()
+        episodes_list = list(self.episodes.values())
+        if user_id is not None:
+            episodes_list = [e for e in episodes_list if e.user_id == int(user_id)]
         return sorted(
-            self.episodes.values(),
+            episodes_list,
             key=lambda e: (
                 -(int(getattr(e, "episode_number", 0) or 0)),
                 -(float(getattr(e, "updated_at", 0) or 0)),

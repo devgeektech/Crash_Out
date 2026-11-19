@@ -3,6 +3,7 @@ User accounts + per-user settings (encrypted Vidu credentials).
 """
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -51,14 +52,8 @@ class UserSettings:
         return decrypt_secret(self.vidu_api_key_enc)
 
 
-DEFAULT_LOGIN_EMAIL = "test@gmail.com"
-DEFAULT_LOGIN_PASSWORD = "test123"
-DEFAULT_LOGIN_NAME = "Test"
-
-
 def ensure_auth_ready() -> None:
     init_db()
-    ensure_default_login_user()
 
 
 def normalize_email(email: str) -> str:
@@ -126,14 +121,6 @@ def _insert_user(email: str, password: str, display_name: str = "") -> User:
     if not user:
         raise RuntimeError("Failed to create user.")
     return user
-
-
-def ensure_default_login_user() -> User:
-    """Seed the shared studio login if it does not already exist."""
-    existing = get_user_by_email(DEFAULT_LOGIN_EMAIL)
-    if existing:
-        return existing
-    return _insert_user(DEFAULT_LOGIN_EMAIL, DEFAULT_LOGIN_PASSWORD, DEFAULT_LOGIN_NAME)
 
 
 def create_user(email: str, password: str, display_name: str = "") -> User:

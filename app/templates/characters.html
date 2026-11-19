@@ -13,13 +13,24 @@
     <div class="characters-layout">
         <aside class="char-nav panel">
             <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem;">Cast Roster</h3>
-            <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">Select character to edit</p>
+            <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.85rem;">Select character to edit</p>
+
+            <button type="button" class="char-list-add" onclick="openAddCharacterModal()" aria-label="Add new character" style="margin-bottom: 0.85rem;">
+                <div class="char-add-icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                </div>
+                <span>Add New Character</span>
+            </button>
+
             <div class="char-list">
                 {% for c in characters %}
-                <a class="char-list-item {% if c.id == active.id %}active{% endif %}" href="/characters?char_id={{ c.id }}">
+                <div class="char-list-item {% if c.id == active.id %}active{% endif %}" onclick="window.location.href='/characters?char_id={{ c.id }}'" style="cursor: pointer;">
                     <img src="{{ c.image_url }}" alt="{{ c.name }}">
-                    <span>{{ c.name }}</span>
-                </a>
+                    <span class="char-item-name">{{ c.name }}</span>
+                </div>
                 {% endfor %}
             </div>
         </aside>
@@ -35,6 +46,16 @@
                 {% if active.audio_url %}
                 <audio class="char-audio-player" controls preload="metadata" src="{{ active.audio_url }}"></audio>
                 {% endif %}
+            </div>
+            <div class="char-editor-delete-box">
+                <button type="button" class="char-editor-delete-btn" title="Delete {{ active.name }}" onclick="confirmDeleteCharacter('{{ active.id }}', '{{ active.name|escape }}');">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                </button>
             </div>
         </div>
 
@@ -94,4 +115,139 @@
     </div>
     </div>
 </section>
+
+<!-- Add New Character Modal -->
+<div id="add-character-modal" class="char-modal-backdrop" onclick="handleBackdropClick(event)">
+    <div class="char-modal-card">
+        <div class="char-modal-head">
+            <div>
+                <h2>Add New Character Persona</h2>
+                <p class="muted" style="margin: 0.25rem 0 0; font-size: 0.88rem;">Create a new animated persona to expand future episodes.</p>
+            </div>
+            <button type="button" class="char-modal-close" onclick="closeAddCharacterModal()" aria-label="Close modal">&times;</button>
+        </div>
+
+        <form method="post" action="/ui/characters/new" enctype="multipart/form-data" class="form-grid" style="margin: 0;">
+            <label class="full">Character Name *
+                <input class="input" name="name" required placeholder="e.g. Officer Miller, Grandma Joyce, Tech Bro Dave">
+            </label>
+            <label>Role
+                <input class="input" name="role" placeholder="e.g. HOA Inspector, Neighbor, Rival">
+            </label>
+            <label>Archetype
+                <input class="input" name="archetype" placeholder="e.g. Overzealous Authority, Skeptical Boomer">
+            </label>
+            <label class="full">Description / Psychological Profile
+                <textarea class="input" name="description" rows="3" placeholder="Core motivations, anxieties, and comedic triggers in suburban satire..."></textarea>
+            </label>
+            <label class="full">Personality & Mannerisms
+                <textarea class="input" name="personality" rows="2" placeholder="Speaking quirks, physical ticks, catchphrases..."></textarea>
+            </label>
+            <label class="full">Visual Generation Prompt (9:16 portrait prompt)
+                <textarea class="input" name="visual_prompt" rows="3" placeholder="Animated 2D satirical caricature, distinct clothing, expressive face, 9:16 vertical..."></textarea>
+            </label>
+            <label>Reference Portrait (9:16 Image) *
+                <input class="input" type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
+            </label>
+            <label>Voice Audio Sample *
+                <input class="input" type="file" name="audio" accept="audio/*" required>
+            </label>
+            <label>Voice Tone
+                <input class="input" name="voice_tone" placeholder="e.g. Nasal, pompous, sarcastic">
+            </label>
+            <label>Delivery Tag
+                <input class="input" name="voice_delivery" placeholder="[Officer Miller, smug bureaucrat]:">
+            </label>
+
+            <div class="full" style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+                <button type="button" class="btn btn-ghost" onclick="closeAddCharacterModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Confirm & Add Character</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Character Confirmation Modal -->
+<div id="delete-character-modal" class="char-modal-backdrop" onclick="handleDeleteBackdropClick(event)">
+    <div class="char-modal-card" style="max-width: 440px;">
+        <div class="char-modal-head" style="border-bottom: none; padding-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(225, 29, 72, 0.15); display: flex; align-items: center; justify-content: center; color: #e11d48; flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                </div>
+                <div>
+                    <h2 style="font-size: 1.15rem;">Delete Character</h2>
+                </div>
+            </div>
+            <button type="button" class="char-modal-close" onclick="closeDeleteCharacterModal()">&times;</button>
+        </div>
+        <p class="muted" style="margin: 0; font-size: 0.92rem; line-height: 1.5;">
+            Are you sure you want to delete <strong id="delete-char-name-label" style="color: var(--text);"></strong>? This will permanently remove the character profile, portrait, and audio reference.
+        </p>
+        <form id="delete-character-form" method="post" action="" style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem;">
+            <button type="button" class="btn btn-ghost" onclick="closeDeleteCharacterModal()">Cancel</button>
+            <button type="submit" class="btn" style="background: #e11d48; color: #fff; border: none; font-weight: 700;">Delete Character</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function openAddCharacterModal() {
+    var modal = document.getElementById('add-character-modal');
+    if (modal) {
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeAddCharacterModal() {
+    var modal = document.getElementById('add-character-modal');
+    if (modal) {
+        modal.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+}
+
+function handleBackdropClick(e) {
+    if (e.target.id === 'add-character-modal') {
+        closeAddCharacterModal();
+    }
+}
+
+function confirmDeleteCharacter(charId, charName) {
+    var modal = document.getElementById('delete-character-modal');
+    var form = document.getElementById('delete-character-form');
+    var label = document.getElementById('delete-char-name-label');
+    if (!modal || !form) return;
+    form.action = '/ui/characters/' + encodeURIComponent(charId) + '/delete';
+    if (label) label.textContent = charName;
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeDeleteCharacterModal() {
+    var modal = document.getElementById('delete-character-modal');
+    if (modal) {
+        modal.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+}
+
+function handleDeleteBackdropClick(e) {
+    if (e.target.id === 'delete-character-modal') {
+        closeDeleteCharacterModal();
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeAddCharacterModal();
+        closeDeleteCharacterModal();
+    }
+});
+</script>
 {% endblock %}

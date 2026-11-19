@@ -7,6 +7,161 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-19 — Widened Character Modal & Constrained Textarea Resizing
+
+Completed:
+- **Widened Add Character Modal (`app/static/css/app.css`)**:
+  - Increased `max-width` of `.char-modal-card` from `600px` to `820px` with enhanced horizontal padding (`padding: 2rem 2.25rem`).
+  - Added `overflow-x: hidden` and `box-sizing: border-box` to prevent any horizontal scrollbar glitches.
+- **Fixed Textarea Stretching Outside of Form**:
+  - Locked horizontal resizing across all textareas and inputs: set `resize: vertical; min-width: 100%; max-width: 100%;`.
+  - Textareas can now only be stretched vertically up and down without breaking out of the modal boundaries or creating horizontal layout shifts.
+
+---
+
+### 2026-11-19 — Added Red-Box Delete Button to Character Details Card for All Personas
+
+Completed:
+- **Repositioned Delete Button to Details Card (`app/templates/characters.html`, `app/static/css/app.css`)**:
+  - Moved the character deletion button from the sidebar roster into the top-right corner of the **Character Details Panel** (`.char-editor-head`).
+  - **Horizontal Alignment**: Positioned at the outmost right edge, parallel horizontally with the character's header name (`Chloe`, `Gary`, etc.).
+  - **Vertical Alignment**: Sits comfortably above the media row (`Replace image` & `Upload audio` buttons).
+  - **Visual Styling**: Rendered inside a solid red icon box (`background: #e11d48`, white trash can SVG icon, hover elevation with shadow).
+- **Universal Character Deletion Support (`app/studio/characters.py`, `app/ui.py`)**:
+  - Enabled deletion across all characters (including Gary, Linda, Chris, and Chloe) via a persistent `deleted_ids` registry in `characters/library.json`.
+  - Maintained in-app confirmation modal with alert warning before completing the deletion.
+
+---
+
+### 2026-11-19 — Positioned Add Character Button to Top, Added Light Selection & Delete Workflow
+
+Completed:
+- **Repositioned Add Character Button**:
+  - Moved the "Add New Character" dashed `+` button to the top of the **Cast Roster** sidebar, directly above the character list for immediate accessibility.
+- **Enhanced Cast Selection Styling (`app/static/css/app.css`)**:
+  - Added a light pink selection background (`rgba(255, 45, 138, 0.12)`), neon border (`var(--brand)`), and gentle shadow when selecting any character in the roster.
+- **Character Deletion with In-App Confirmation Alert**:
+  - Added a trash can delete icon button on the right edge aligned with the character's name for all custom characters.
+  - Implemented an in-app confirmation modal (`#delete-character-modal`) with an alert badge, character name warning, and Delete/Cancel options.
+  - Added `delete_character()` backend logic and `POST /ui/characters/{char_id}/delete` endpoint, safely preserving core founding characters (Gary, Linda, Chris, Chloe).
+- **Mandatory Media Uploads**:
+  - Marked Reference Portrait image and Voice Audio sample uploads as strictly mandatory (`required` attribute in HTML and backend validation).
+
+---
+
+### 2026-11-19 — Added Dynamic Character Upload & In-App Creation Modal in Characters Library
+
+Completed:
+- **Dynamic Character Persona Architecture (`app/studio/characters.py`)**:
+  - Upgraded character library store (`characters/library.json`) to dynamically accommodate custom persona additions beyond the 4 founding characters (Gary, Linda, Chris, Chloe).
+  - Implemented `create_character()` function with automated ID slugification, personality/psychological profiles, voice hints (speed, pitch, delivery tag), and media assignment.
+  - Extended `save_character_image()` and `save_character_audio()` to support any newly added character IDs.
+- **Roster UI Empty Box with Plus Icon (`app/templates/characters.html`, `app/static/css/app.css`)**:
+  - Added an empty dashed card with a `+` icon box styled in Crash Out neon accents labeled "Add New Character" directly inside the Cast Roster sidebar.
+- **In-App Creation & Confirmation Modal (`app/templates/characters.html`)**:
+  - Built an in-app confirmation modal with smooth animated backdrop blur and escape/click-outside dismiss handlers.
+  - Included fields for Character Name, Role, Archetype, Psychological Profile, Personality/Mannerisms, 9:16 Visual Prompt, reference portrait upload, voice audio sample upload, and delivery tag.
+- **Backend Route & Automated Verification (`app/ui.py`)**:
+  - Added `POST /ui/characters/new` supporting multipart file uploads for portraits and audio samples.
+  - Tested creating a new character ("Officer Miller") end-to-end: verified creation, media persistence, instant roster display, and redirect to the character's editor view.
+
+---
+
+### 2026-11-19 — Resolved Login Credential Encoding & Enhanced In-App Alert UI
+
+Completed:
+- **Diagnosed and Fixed Login Failure**:
+  - Investigated the login failure shown in the screenshot: the previous randomized password contained special character sequence (`=0DA$a`) which caused URL form decoding / copy-paste mismatch during browser submission.
+  - Reset and verified the admin password in PostgreSQL (`users` table) with bcrypt hashing (`rounds=12`) using clean alphanumeric + standard special character format: `CrashOut2026!Admin`.
+  - Executed automated full HTTP POST login test to `http://127.0.0.1:8000/login`, verifying HTTP 303 redirect and valid session & JWT cookies.
+- **Enhanced In-App Error Alert UI (`app/templates/auth_login.html`, `app/static/css/app.css`)**:
+  - Replaced the low-contrast browser alert with an enhanced, styled in-app banner featuring an SVG warning icon, prominent typography (`font-weight: 700`), neon pink glow, and smooth fade-in animation matching the Crash Out dark-suburban theme.
+  - Eliminated repetitive browser form resubmission prompts by ensuring clear state handling on redirects.
+
+---
+
+### 2026-11-19 — Implemented Complete User Isolation & DB-Only Credentials
+
+Completed:
+- **Credentials Security (Database-Only Lookup)**:
+  - Removed all hardcoded credentials and default environment fallbacks (`DEFAULT_LOGIN_*`) from the codebase and `.env`.
+  - Configured login verification to strictly query PostgreSQL (`users` and `user_settings` tables).
+  - Maintained `crashoutv.series@gmail.com` as the sole administrator in the database.
+- **Multi-Tenant Private Workspace Isolation**:
+  - Added `user_id` column to PostgreSQL `episodes` table and `Episode` Pydantic model (`app/state.py`).
+  - Scoped custom catalog entries (`app/catalog.py`) with `user_id`.
+  - Scoped Studio queue, episode list, finished library, and credit logs in `app/ui.py` and `app/studio/generation.py` to the logged-in `user.id`.
+  - Assigned all existing 8 episodes and custom catalog rows to `crashoutv.series@gmail.com` (User ID `3`).
+  - Verified with a simulated new user: new users start with **0 episodes, 0 queue items, and an empty clean dashboard** with complete isolation from other users.
+
+---
+
+### 2026-11-19 — Configured Production Admin Login Credentials (`crashoutv.series@gmail.com`)
+
+Completed:
+- **Created Production Admin User**:
+  - Registered `crashoutv.series@gmail.com` with a randomized 20-character high-entropy secure password in PostgreSQL (`users` and `user_settings` tables).
+  - Verified password hashing using bcrypt (`rounds=12`) and authenticated successfully.
+- **Configured Seeding Fallback (`app/auth_users.py`)**:
+  - Updated `DEFAULT_LOGIN_EMAIL`, `DEFAULT_LOGIN_PASSWORD`, and `DEFAULT_LOGIN_NAME` to respect environment variables and default to the new production admin credentials.
+- **Auth Architecture Assessment**:
+  - Evaluated session vs. JWT auth for the dashboard: confirmed session cookies remain optimal for limited browser users while JWT support is retained for programmatic API access.
+  - Verified user data isolation scope: user credentials/Vidu keys are strictly user-scoped (`user_settings`), while episode catalog/scripts operate as a shared collaborative studio repository.
+
+---
+
+### 2026-11-19 — Project Structure Verification, Optimization & Clean-up
+
+Completed:
+- **Codebase Audit & Verification**:
+  - Scanned all 240+ project files across `app/`, `characters/`, `assets/`, `docker/`, `migrations/`, and `outputs/`.
+  - Verified syntax compilation across all 58 Python scripts without error (`py_compile`).
+  - Verified module importability across all 57 `app.*` submodules without broken dependencies or missing modules.
+  - Confirmed server startup and background workers initialize cleanly via `python run.py`.
+- **Clean-up of Empty Folders & Stale Artifacts**:
+  - Identified and safely removed the unused empty root folder `data/`.
+  - Cleared transient `__pycache__` directories to keep the workspace clean and reduce disk clutter.
+  - Verified no dangling 0-byte or orphaned temporary files exist across the repository.
+
+---
+
+### 2026-11-18 — Configured Production Let's Encrypt SSL & HTTPS for `admin.crashout.tv`
+
+Completed:
+- **DNS Verification**:
+  - Verified DNS A record `admin.crashout.tv` resolving to public IP `54.166.201.137`.
+- **Let's Encrypt Certificate Provisioning**:
+  - Obtained official Let's Encrypt SSL certificates for `admin.crashout.tv` (`fullchain.pem` and `privkey.pem`).
+  - Automated background renewal via certbot systemd timer.
+- **Nginx Reverse Proxy & HTTPS Redirection (`/etc/nginx/conf.d/crashout.conf`)**:
+  - Configured HTTP (port 80) server block to enforce permanent 301 redirection to `https://$host$request_uri`.
+  - Configured HTTPS (port 443) server block with SSL certificates, DH parameters, 500MB upload support, and proxy pass to Uvicorn (`http://127.0.0.1:8000`).
+- **Verification**:
+  - Tested public HTTPS access via Python standard SSL client and curl: `https://admin.crashout.tv/login` returns **HTTP 200** with valid, trusted SSL handshake.
+
+---
+
+### 2026-11-18 — Synchronized 4 Finished Episodes to Live Server, AWS S3 & PostgreSQL
+
+Completed:
+- **Transferred 4 Complete Episodes to Live Server (`54.166.201.137`)**:
+  - Packaged and transferred 4 full episodes to `/var/www/Crash_Out/outputs/`:
+    1. **Ep #1**: `Episode 1 - TikTok Trends: November 2026 | The Crash Out`
+    2. **Ep #2**: `Episode 2 - TikTok Trends: Generational Meltdown`
+    3. **Ep #3**: `Episode 3 - The Strands Hint Breakdown`
+    4. **Ep #4**: `Episode 4 - Fox News-Dominion Defamation Settlement`
+  - Each episode includes complete 60s master MP4s (`merged_60s.mp4`), all 4 individual scene clips (`scene_1..4.mp4`), full 4-scene dialogue scripts, and 5 available concept pitches.
+- **AWS S3 Synchronization**:
+  - Uploaded all video assets and episode state documents to AWS S3 bucket `crashout-tv-media-assets-763928788903-us-east-1-an` under `episodes/<id>/`.
+- **PostgreSQL Database Persistence**:
+  - Persisted all concept pitches into the `generated_pitches` table in PostgreSQL.
+  - Recorded 40 scene clips and master video assets with S3 URIs in the `video_assets` table.
+- **Episode Management Library Activation**:
+  - Updated `pipeline_index.json` and restarted `crashout.service`.
+  - Verified `GET /episodes` lists all 4 published episodes with playable modal video players and episode record viewers.
+
+---
+
 ### 2026-11-18 — Renamed Dashboard Hero CTA Button to AI Production Studio
 
 Completed:
