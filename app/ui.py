@@ -107,8 +107,28 @@ def _get_total_credits_used() -> float:
         return 0.0
 
 
+def _get_pending_hitl_count(user_id: Optional[int] = None) -> int:
+    """Count episodes currently requiring human-in-the-loop sign-off."""
+    try:
+        from app.agents.agent_m_orchestrator import orchestrator
+        return len(orchestrator.get_pending_hitl_assignments(user_id=user_id))
+    except Exception:
+        return 0
+
+
+def _get_unread_notifications_count(user_id: Optional[int] = None) -> int:
+    """Count unread push/system notifications."""
+    try:
+        from app.infra.notifications import get_unread_notifications_count
+        return get_unread_notifications_count(user_id)
+    except Exception:
+        return 0
+
+
 templates.env.globals["static_cache_bust"] = _static_cache_bust
 templates.env.globals["get_total_credits_used"] = _get_total_credits_used
+templates.env.globals["get_pending_hitl_count"] = _get_pending_hitl_count
+templates.env.globals["get_unread_notifications_count"] = _get_unread_notifications_count
 
 router = APIRouter(tags=["ui"])
 
@@ -748,6 +768,8 @@ def build_context(
     ctx = {
         "request": request,
         "user": get_current_user(request),
+        "pending_hitl_count": _get_pending_hitl_count(user_id),
+        "unread_notifications_count": _get_unread_notifications_count(user_id),
         "ep": ep,
         "viewing_stage": stage,
         "show_completed": show_completed,
@@ -824,10 +846,14 @@ def render(
 
 def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
     """Shared chrome context for non-pipeline pages (nav, toast, engine badge)."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
     ctx = {
         "request": request,
-        "user": get_current_user(request),
+        "user": user,
         "page": page,
+        "pending_hitl_count": _get_pending_hitl_count(user_id),
+        "unread_notifications_count": _get_unread_notifications_count(user_id),
         "platform": _platform_status(),
         "toast": extra.pop("toast", None),
         "toast_kind": extra.pop("toast_kind", "info"),
@@ -950,6 +976,428 @@ def ui_credits_page(request: Request):
             episode_breakdown=breakdown,
         ),
     )
+
+
+@router.get("/agent-m", response_class=HTMLResponse)
+@router.get("/orchestrator", response_class=HTMLResponse)
+async def ui_agent_m_page(
+    request: Request,
+    hitl_page: int = 1,
+    incidents_page: int = 1,
+):
+    """Agent M: Master Orchestrator, Temporal telemetry, and HITL Gateway Approvals."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/agent-m", status_code=303)
+
+    user_id = user.id if user else None
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=incidents_page,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "agent_m.html",
+        _shell_context(
+            request,
+            "agent_m",
+            overview=overview,
+        ),
+    )
+
+
+@router.get("/tasks", response_class=HTMLResponse)
+@router.get("/tasks-schedule", response_class=HTMLResponse)
+async def ui_tasks_schedule_page(
+    request: Request,
+    agent_id: str = "all",
+    page: int = 1,
+    page_size: int = 6,
+):
+    """Dedicated page for Per-Agent Task Transparency & Schedule (Agent M + Agents 0–5)."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url=f"/login?next=/tasks?agent_id={agent_id}", status_code=303)
+
+    user_id = user.id if user else None
+    agent_tasks = orchestrator.get_agent_tasks_transparency(
+        user_id=user_id,
+        agent_id=agent_id,
+        page=page,
+        page_size=page_size,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "tasks_schedule.html",
+        _shell_context(
+            request,
+            "tasks",
+            agent_tasks=agent_tasks,
+            selected_agent=agent_id,
+        ),
+    )
+
+
+@router.get("/notifications", response_class=HTMLResponse)
+async def ui_notifications_page(
+    request: Request,
+    category: str = "all",
+    unread: int = 0,
+    page: int = 1,
+    page_size: int = 12,
+):
+    """
+    Dedicated notifications & mobile push alerts page displaying HITL approval gates,
+    critical errors & SLA incidents, and live publishing confirmations.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url=f"/login?next=/notifications", status_code=303)
+
+    user_id = user.id if user else None
+    from app.infra.notifications import list_notifications
+
+    is_unread_only = bool(unread)
+    notifs_data = list_notifications(
+        user_id=user_id,
+        category=None if category.lower() == "all" else category,
+        unread_only=is_unread_only,
+        page=page,
+        page_size=page_size,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "notifications.html",
+        _shell_context(
+            request,
+            "notifications",
+            notifications=notifs_data,
+            selected_category=category.lower(),
+            unread_only=is_unread_only,
+        ),
+    )
+
+
+@router.post("/notifications/{notification_id}/read")
+async def ui_notification_mark_read(
+    request: Request,
+    notification_id: int,
+):
+    """Mark an individual notification as read."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    from app.infra.notifications import mark_notification_read
+    mark_notification_read(notification_id, user_id=user_id)
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            '<span class="status-chip status-ok" style="font-size: 0.72rem; padding: 2px 7px;">Read</span>'
+        )
+    return RedirectResponse(url="/notifications", status_code=303)
+
+
+@router.post("/notifications/read-all")
+async def ui_notifications_mark_all_read(
+    request: Request,
+):
+    """Mark all notifications as read."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    from app.infra.notifications import mark_all_notifications_read
+    mark_all_notifications_read(user_id=user_id)
+    return RedirectResponse(url="/notifications", status_code=303)
+
+
+
+@router.get("/ui/agent-m/telemetry", response_class=HTMLResponse)
+async def ui_agent_m_telemetry_partial(
+    request: Request,
+    hitl_page: int = 1,
+    incidents_page: int = 1,
+):
+    """Live partial refresh endpoint for Agent M telemetry, HITL gates, and incident board."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=incidents_page,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/agent_m_telemetry.html",
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+
+
+@router.get("/ui/agent-m/hitl", response_class=HTMLResponse)
+async def ui_agent_m_hitl_partial(
+    request: Request,
+    page: int = 1,
+    incidents_page: int = 1,
+):
+    """Paginated partial for HITL Assignments list."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=page,
+        incidents_page=incidents_page,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/agent_m_hitl_section.html",
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+
+
+@router.get("/ui/agent-m/incidents", response_class=HTMLResponse)
+async def ui_agent_m_incidents_partial(
+    request: Request,
+    page: int = 1,
+    hitl_page: int = 1,
+):
+    """Paginated partial for System Error & Incident Log Board."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=page,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/agent_m_incidents_section.html",
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+
+
+@router.get("/ui/agent-m/agent-tasks", response_class=HTMLResponse)
+async def ui_agent_m_tasks_partial(
+    request: Request,
+    agent_id: str = "all",
+    page: int = 1,
+    page_size: int = 6,
+):
+    """Paginated partial for Per-Agent Task Transparency & Schedule."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    agent_tasks = orchestrator.get_agent_tasks_transparency(
+        user_id=user_id,
+        agent_id=agent_id,
+        page=page,
+        page_size=page_size,
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/agent_m_tasks_section.html",
+        {
+            "request": request,
+            "user": user,
+            "agent_tasks": agent_tasks,
+        },
+    )
+
+
+@router.post("/agent-m/incidents/{incident_id}/retry", response_class=HTMLResponse)
+async def ui_agent_m_retry_incident(
+    request: Request,
+    incident_id: str,
+    hitl_page: int = 1,
+    incidents_page: int = 1,
+):
+    """One-click task retry for failed Vidu rendering, FFmpeg, or API tasks."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    actor = user.email if user else "Admin"
+
+    success, message = orchestrator.retry_task(incident_id, actor=actor)
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=incidents_page,
+    )
+
+    template_name = "partials/agent_m_incidents_section.html" if request.headers.get("hx-target") == "system-log-board" else "partials/agent_m_telemetry.html"
+    resp = templates.TemplateResponse(
+        request,
+        template_name,
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+    if not request.headers.get("hx-request"):
+        return RedirectResponse(url="/agent-m", status_code=303)
+    return resp
+
+
+@router.post("/agent-m/gateways/{episode_id}/approve", response_class=HTMLResponse)
+async def ui_agent_m_approve_gateway(
+    request: Request,
+    episode_id: str,
+    gateway: Optional[int] = None,
+    hitl_page: int = 1,
+    incidents_page: int = 1,
+):
+    """Direct approval of an episode gateway from the Agent M supervisor board."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+
+    ep = state_manager.episodes.get(episode_id)
+    if ep:
+        target_gw = int(gateway or ep.current_gateway or 1)
+        payload: Dict[str, Any] = {}
+
+        if target_gw == 1:
+            concept = ep.selected_concept or (ep.available_concepts[0] if ep.available_concepts else None)
+            if not concept:
+                from app.agents.agent_0_trend_ingest import trend_ingest_agent
+                pitches = trend_ingest_agent.fetch_daily_pitches().get("pitches", [])
+                concept = pitches[0] if pitches else {
+                    "title": ep.title,
+                    "premise": "Suburban satire meltdown",
+                    "cultural_hook": "Viral social trend",
+                    "characters_involved": ["gary", "linda", "chris", "chloe"],
+                }
+            payload["selected_concept"] = concept
+        elif target_gw == 2:
+            payload["script"] = ep.script
+        elif target_gw == 3:
+            payload["video_url"] = ep.video_url or ep.merged_video_url
+        elif target_gw == 4:
+            payload["social"] = ep.social_posts
+            payload["merch"] = ep.merch_listing
+        elif target_gw == 5:
+            payload["seeding"] = ep.seeding_drafts
+
+        try:
+            orchestrator.approve_gateway(episode_id, target_gw, payload)
+        except Exception as exc:
+            logger.warning("Agent M approval note for %s (GW %d): %s", episode_id, target_gw, exc)
+
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=incidents_page,
+    )
+
+    template_name = "partials/agent_m_hitl_section.html" if request.headers.get("hx-target") == "hitl-assignments" else "partials/agent_m_telemetry.html"
+    resp = templates.TemplateResponse(
+        request,
+        template_name,
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+    if not request.headers.get("hx-request"):
+        return RedirectResponse(url="/agent-m", status_code=303)
+    return resp
+
+
+@router.post("/agent-m/trigger-agent0")
+async def ui_agent_m_trigger_agent0(request: Request):
+    """Trigger Agent 0 daily trend ingestion on demand."""
+    user = get_current_user(request)
+    actor = user.email if user else "Admin"
+    try:
+        from app.agents.agent_0_trend_ingest import trend_ingest_agent
+        trend_ingest_agent.fetch_daily_pitches(force_refresh=True)
+        from app.db import log_system_incident
+        log_system_incident("AGENT_0_MANUAL_TRIGGER", actor=actor, details={"action": "Manual trend ingestion run"})
+    except Exception as exc:
+        logger.warning("Manual Agent 0 trigger notice: %s", exc)
+
+    return RedirectResponse(url="/agent-m", status_code=303)
+
+
+@router.post("/agent-m/test-incident", response_class=HTMLResponse)
+async def ui_agent_m_test_incident(
+    request: Request,
+    hitl_page: int = 1,
+    incidents_page: int = 1,
+):
+    """Generate a test incident for verification of the incident recovery board."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    actor = user.email if user else "Admin"
+
+    from app.db import log_system_incident
+    episodes = state_manager.list_episodes_sorted(user_id=user_id)
+    ep = episodes[0] if episodes else None
+    ep_title = ep.title if ep else "Episode 3 - The Strands Hint Breakdown"
+    ep_id = ep.id if ep else "ep_test"
+
+    log_system_incident(
+        event_type="INCIDENT_VIDU_RENDER_TIMEOUT",
+        actor=actor,
+        details={
+            "task_name": "Scene 3 Vidu Q4 Video Render",
+            "category": "Vidu Q4 Preview API",
+            "error": "HTTP 504 Gateway Timeout during frame interpolation (retry limit exceeded)",
+            "retry_count": 2,
+            "episode_id": ep_id,
+            "episode_title": ep_title,
+            "scene_id": 3,
+        },
+    )
+
+    telemetry = await orchestrator.get_temporal_telemetry()
+    overview = orchestrator.get_orchestration_overview(
+        user_id=user_id,
+        temporal_info=telemetry,
+        hitl_page=hitl_page,
+        incidents_page=incidents_page,
+    )
+
+    template_name = "partials/agent_m_incidents_section.html" if request.headers.get("hx-target") == "system-log-board" else "partials/agent_m_telemetry.html"
+    resp = templates.TemplateResponse(
+        request,
+        template_name,
+        {
+            "request": request,
+            "user": user,
+            "overview": overview,
+        },
+    )
+    if not request.headers.get("hx-request"):
+        return RedirectResponse(url="/agent-m", status_code=303)
+    return resp
 
 
 @router.get("/studio", response_class=HTMLResponse)
@@ -1607,6 +2055,19 @@ def ui_mock_scheduler_run(request: Request):
         f"Mock Scheduler manually executed (06:00 EST job) → Top pitches: {detail}",
     )
     state_manager.save()
+
+    try:
+        from app.infra.notifications import notify_hitl_gate
+        notify_hitl_gate(
+            episode_id=ep.id,
+            gateway_num=1,
+            title=ep.title or "Agent 0 Friction Pitches",
+            summary=f"5 pitches ready for Gate 1 selection: {detail}",
+            user_id=user_id,
+        )
+    except Exception:
+        pass
+
     return render(
         request,
         "partials/htmx_workspace.html",

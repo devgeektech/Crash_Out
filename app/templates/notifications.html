@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Notifications & Mobile Alerts — Crash Out{% endblock %}
+
+{% block content %}
+<section class="page-shell notifications-page">
+    <div class="page-head" style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <h1 style="margin: 0; font-weight: 700;">Notifications & Alerts</h1>
+                {% if notifications.unread_count > 0 %}
+                <span class="status-chip" style="background: var(--brand-soft, #ffe4f1); color: var(--brand, #ff2d8a); border: 1px solid #fed7ea; font-weight: 700;">
+                    {{ notifications.unread_count }} Unread
+                </span>
+                {% endif %}
+            </div>
+            <p class="muted" style="margin-top: 0.25rem;">
+                Real-time activity log for Human-in-the-Loop approvals, critical system incidents, and live publishing confirmations.
+            </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+            <a href="/settings#notifications" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                <span>📱</span>
+                <span>Configure Telegram Push</span>
+            </a>
+            {% if notifications.unread_count > 0 %}
+            <form method="post" action="/notifications/read-all" style="margin: 0;">
+                <button type="submit" class="btn btn-secondary" style="font-size: 0.85rem;">
+                    ✓ Mark All as Read
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Category Filter Tabs -->
+    <div class="panel" style="padding: 0.5rem; margin-bottom: 1.25rem; border-radius: var(--radius-sm, 8px);">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <a href="/notifications?category=all{% if unread_only %}&unread=1{% endif %}" 
+               class="btn btn-sm {% if selected_category == 'all' and not unread_only %}btn-primary{% else %}btn-outline{% endif %}" 
+               style="text-decoration: none;">
+                All Notifications
+            </a>
+            <a href="/notifications?category=hitl{% if unread_only %}&unread=1{% endif %}" 
+               class="btn btn-sm {% if selected_category == 'hitl' %}btn-primary{% else %}btn-outline{% endif %}" 
+               style="text-decoration: none;">
+                ✋ HITL Approvals
+            </a>
+            <a href="/notifications?category=error{% if unread_only %}&unread=1{% endif %}" 
+               class="btn btn-sm {% if selected_category == 'error' %}btn-primary{% else %}btn-outline{% endif %}" 
+               style="text-decoration: none;">
+                🚨 Critical Errors & SLA
+            </a>
+            <a href="/notifications?category=published{% if unread_only %}&unread=1{% endif %}" 
+               class="btn btn-sm {% if selected_category == 'published' %}btn-primary{% else %}btn-outline{% endif %}" 
+               style="text-decoration: none;">
+                🚀 Published Episodes
+            </a>
+            <div style="margin-left: auto;">
+                <a href="/notifications?category={{ selected_category }}&unread={% if unread_only %}0{% else %}1{% endif %}" 
+                   class="btn btn-sm {% if unread_only %}btn-secondary{% else %}btn-outline{% endif %}" 
+                   style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <span>{% if unread_only %}● Showing Unread Only{% else %}○ Filter Unread Only{% endif %}</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications Feed -->
+    <div class="panel" style="padding: 0; overflow: hidden; border-radius: var(--radius, 12px);">
+        {% if notifications['items'] %}
+        <div class="notifications-feed-list" style="display: flex; flex-direction: column;">
+            {% for n in notifications['items'] %}
+            <article class="notification-item" id="notif-{{ n.id }}" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.4rem; border-bottom: 1px solid var(--border, #e8d5e0); background: {% if not n.is_read %}var(--surface-2, #fffafd){% else %}var(--surface, #ffffff){% endif %}; transition: background 0.15s ease;">
+                <div style="display: flex; align-items: flex-start; gap: 1rem; flex: 1;">
+                    <!-- Category Icon Badge -->
+                    <div style="width: 2.5rem; height: 2.5rem; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+                        {% if n.category == 'hitl' %}
+                            background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;
+                        {% elif n.category == 'error' %}
+                            background: #fee2e2; color: #dc2626; border: 1px solid #fecaca;
+                        {% elif n.category == 'published' %}
+                            background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0;
+                        {% else %}
+                            background: var(--surface-2, #fbf7fa); color: var(--muted, #6b5a66); border: 1px solid var(--border, #e8d5e0);
+                        {% endif %}">
+                        {% if n.category == 'hitl' %}✋
+                        {% elif n.category == 'error' %}🚨
+                        {% elif n.category == 'published' %}🚀
+                        {% else %}🔔{% endif %}
+                    </div>
+
+                    <!-- Notification Body -->
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+                            <span class="status-chip" style="font-size: 0.72rem; padding: 2px 7px;
+                                {% if n.category == 'hitl' %}
+                                    background: #e0f2fe; color: #0369a1;
+                                {% elif n.category == 'error' %}
+                                    background: #fee2e2; color: #b91c1c;
+                                {% elif n.category == 'published' %}
+                                    background: #dcfce7; color: #15803d;
+                                {% else %}
+                                    background: var(--surface-2, #fbf7fa); color: var(--muted, #6b5a66);
+                                {% endif %}">
+                                {% if n.category == 'hitl' %}HITL GATE
+                                {% elif n.category == 'error' %}CRITICAL ALERT
+                                {% elif n.category == 'published' %}PUBLISHED
+                                {% else %}SYSTEM{% endif %}
+                            </span>
+
+                            <h3 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--text, #1a1220);">
+                                {{ n.title }}
+                            </h3>
+
+                            {% if not n.is_read %}
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--brand, #ff2d8a);" title="Unread notification"></span>
+                            {% endif %}
+
+                            <span class="muted" style="font-size: 0.78rem; margin-left: auto;" title="{{ n.created_at_str }}">
+                                {{ n.time_ago }}
+                            </span>
+                        </div>
+
+                        <p style="font-size: 0.88rem; color: var(--text, #1a1220); margin: 0 0 0.65rem; line-height: 1.45; font-weight: 400; word-break: break-word;">
+                            {{ n.message }}
+                        </p>
+
+                        <!-- Action Bar: Deep Link + Telegram Status -->
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                            {% if n.deep_link %}
+                            <a href="{{ n.deep_link }}" class="btn btn-primary btn-sm" style="text-decoration: none; font-size: 0.8rem; padding: 0.35rem 0.75rem;">
+                                {% if n.category == 'hitl' %}Review Gate in Studio ↗
+                                {% elif n.category == 'error' %}Inspect on System Board ↗
+                                {% elif n.category == 'published' %}View Episode Live ↗
+                                {% else %}Open Screen ↗{% endif %}
+                            </a>
+                            {% endif %}
+
+                            {% if n.telegram_sent %}
+                            <span class="status-chip status-ok" style="font-size: 0.72rem; padding: 2px 7px;">
+                                📱 Telegram Delivered
+                            </span>
+                            {% else %}
+                            <span class="status-chip" style="font-size: 0.72rem; padding: 2px 7px; color: var(--muted, #6b5a66);">
+                                🔔 In-App Bell
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mark as Read Button -->
+                {% if not n.is_read %}
+                <form method="post" action="/notifications/{{ n.id }}/read" 
+                      hx-post="/notifications/{{ n.id }}/read"
+                      hx-target="#notif-mark-{{ n.id }}" 
+                      hx-swap="outerHTML" 
+                      style="margin: 0; flex-shrink: 0;">
+                    <div id="notif-mark-{{ n.id }}">
+                        <button type="submit" class="btn btn-outline btn-sm" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; color: var(--muted, #6b5a66);" title="Mark as read">
+                            Mark Read
+                        </button>
+                    </div>
+                </form>
+                {% else %}
+                <span class="status-chip status-ok" style="font-size: 0.72rem; padding: 2px 7px; flex-shrink: 0;">Read</span>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination Bar -->
+        {% if notifications.total_pages > 1 %}
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.4rem; border-top: 1px solid var(--border, #e8d5e0); background: var(--surface-2, #fbf7fa); flex-wrap: wrap; gap: 0.75rem;">
+            <div class="muted" style="font-size: 0.82rem;">
+                Showing page <strong>{{ notifications.current_page }}</strong> of <strong>{{ notifications.total_pages }}</strong> ({{ notifications.total_items }} total notifications)
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                {% if notifications.has_prev %}
+                <a href="/notifications?category={{ selected_category }}{% if unread_only %}&unread=1{% endif %}&page={{ notifications.prev_page }}" class="btn btn-outline btn-sm">
+                    « Previous
+                </a>
+                {% endif %}
+
+                {% if notifications.has_next %}
+                <a href="/notifications?category={{ selected_category }}{% if unread_only %}&unread=1{% endif %}&page={{ notifications.next_page }}" class="btn btn-outline btn-sm">
+                    Next »
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Empty State -->
+        <div style="text-align: center; padding: 4rem 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="width: 3.5rem; height: 3.5rem; border-radius: 50%; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1rem; color: var(--muted, #6b5a66);">
+                🔔
+            </div>
+            <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--text, #1a1220);">
+                No notifications in this view
+            </h3>
+            <p class="muted" style="font-size: 0.88rem; max-width: 420px; margin: 0 0 1.25rem;">
+                {% if unread_only %}
+                    You have read all your notifications! Great job staying on top of HITL gates and system alerts.
+                {% else %}
+                    When HITL approval gates await review, critical errors occur, or episodes are published live, real-time alerts will appear here.
+                {% endif %}
+            </p>
+            {% if unread_only %}
+            <a href="/notifications?category={{ selected_category }}&unread=0" class="btn btn-outline btn-sm">
+                View All Notifications History
+            </a>
+            {% else %}
+            <a href="/studio" class="btn btn-primary btn-sm">
+                Open Studio Pipeline
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

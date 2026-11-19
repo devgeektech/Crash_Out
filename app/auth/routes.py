@@ -18,6 +18,7 @@ from app.auth.users import (
     change_password,
     get_settings,
     settings_public_view,
+    update_notification_settings,
     update_profile,
     update_vidu_settings,
 )
@@ -30,8 +31,8 @@ from app.engines.vidu_models import (
     options_with_current,
 )
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
-STATIC_CSS_PATH = os.path.join(os.path.dirname(__file__), "static", "css", "app.css")
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+STATIC_CSS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "css", "app.css")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
@@ -55,8 +56,26 @@ def _get_total_credits_used() -> float:
         return 0.0
 
 
+def _get_unread_notifications_count(user_id: Optional[int] = None) -> int:
+    try:
+        from app.infra.notifications import get_unread_notifications_count
+        return get_unread_notifications_count(user_id)
+    except Exception:
+        return 0
+
+
+def _get_pending_hitl_count(user_id: Optional[int] = None) -> int:
+    try:
+        from app.agents.agent_m_orchestrator import orchestrator
+        return len(orchestrator.get_pending_hitl_assignments(user_id=user_id))
+    except Exception:
+        return 0
+
+
 templates.env.globals["static_cache_bust"] = _static_cache_bust
 templates.env.globals["get_total_credits_used"] = _get_total_credits_used
+templates.env.globals["get_pending_hitl_count"] = _get_pending_hitl_count
+templates.env.globals["get_unread_notifications_count"] = _get_unread_notifications_count
 
 router = APIRouter(tags=["auth"])
 
@@ -314,4 +333,141 @@ def settings_vidu(
         request,
         "settings.html",
         _settings_ctx(request, toast=msg, toast_kind="ok"),
+    )
+
+
+@router.post("/settings/notifications", response_class=HTMLResponse)
+def settings_notifications(
+    request: Request,
+    telegram_bot_token: str = Form(""),
+    clear_telegram_token: Optional[str] = Form(None),
+    telegram_chat_id: str = Form(""),
+    telegram_enabled: Optional[str] = Form(None),
+    notify_hitl: Optional[str] = Form(None),
+    notify_errors: Optional[str] = Form(None),
+    notify_published: Optional[str] = Form(None),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/settings", status_code=303)
+
+    clear = bool(clear_telegram_token)
+    token_arg = None if (not telegram_bot_token.strip() and not clear) else telegram_bot_token
+
+    update_notification_settings(
+        user.id,
+        bot_token=token_arg,
+        clear_bot_token=clear,
+        chat_id=telegram_chat_id,
+        telegram_enabled=bool(telegram_enabled),
+        notify_hitl=bool(notify_hitl),
+        notify_errors=bool(notify_errors),
+        notify_published=bool(notify_published),
+    )
+
+    msg = "Telegram token cleared." if clear else "Notification & Telegram preferences saved."
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(request, toast=msg, toast_kind="ok"),
+    )
+
+
+@router.post("/settings/notifications/test", response_class=HTMLResponse)
+def settings_notifications_test(
+    request: Request,
+    telegram_bot_token: str = Form(""),
+    telegram_chat_id: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/settings", status_code=303)
+
+    from app.infra.notifications import test_telegram_connection
+
+    settings = get_settings(user.id)
+    token = telegram_bot_token.strip() or settings.decrypted_telegram_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = telegram_chat_id.strip() or settings.telegram_chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
+
+    if not token or not chat_id:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(
+                request,
+                error="Please enter both Telegram Bot Token and Chat ID before testing.",
+                toast_kind="error",
+            ),
+            status_code=400,
+        )
+
+    ok, detail = test_telegram_connection(token, chat_id)
+    if ok:
+        toast_msg = "Test push sent to Telegram! Check your phone."
+        kind = "ok"
+        err = None
+    else:
+        toast_msg = f"Telegram push failed: {detail}"
+        kind = "error"
+        err = f"Telegram delivery error: {detail}"
+
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(request, toast=toast_msg, toast_kind=kind, error=err),
+    )
+
+
+@router.post("/settings/notifications/detect-chat-id", response_class=HTMLResponse)
+def settings_notifications_detect_chat_id(
+    request: Request,
+    telegram_bot_token: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/settings", status_code=303)
+
+    from app.infra.notifications import detect_telegram_chat_id, test_telegram_connection
+
+    settings = get_settings(user.id)
+    token = telegram_bot_token.strip() or settings.decrypted_telegram_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+    if not token:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(request, error="Telegram Bot Token is required to detect Chat ID.", toast_kind="error"),
+            status_code=400,
+        )
+
+    cid, sender, err = detect_telegram_chat_id(token)
+    if not cid:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            _settings_ctx(
+                request,
+                error=err or "No incoming messages found from Telegram yet. Open t.me/CrashhOut_bot and send a message first.",
+                toast=f"No messages yet: Open @CrashhOut_bot, press Start, then click Detect again.",
+                toast_kind="info",
+            ),
+        )
+
+    # Save the detected chat ID
+    update_notification_settings(
+        user.id,
+        chat_id=cid,
+        telegram_enabled=True,
+    )
+    # Send verification push
+    test_telegram_connection(token, cid)
+
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(
+            request,
+            toast=f"Linked to Telegram user '{sender}' (Chat ID: {cid})! Test push delivered.",
+            toast_kind="ok",
+        ),
     )
