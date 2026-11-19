@@ -6,7 +6,7 @@
     <div class="page-head">
         <div>
             <h1>Settings</h1>
-            <p class="muted">Profile, password, and encrypted Vidu credentials.</p>
+            <p class="muted">Profile, password, AI models (OpenAI, Vidu), and mobile push alerts.</p>
         </div>
     </div>
 
@@ -100,6 +100,122 @@
 
                 <div class="settings-actions">
                     <button class="btn btn-primary" type="submit">Save Vidu settings</button>
+                </div>
+            </form>
+        </article>
+
+        <article class="panel settings-panel settings-panel-wide" id="openai">
+            <header class="panel-header">
+                <h2>OpenAI API Credentials</h2>
+            </header>
+            <form class="settings-form" method="post" action="/settings/openai" autocomplete="off">
+                <div class="settings-key-status" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.65rem;">
+                        {% if settings.has_openai_key %}
+                        <span class="status-chip status-ok">Key on file</span>
+                        <span class="mono muted settings-key-mask">{{ settings.openai_key_masked }}</span>
+                        {% else %}
+                        <span class="status-chip">No key saved</span>
+                        {% endif %}
+                    </div>
+                    {% if settings.has_openai_key %}
+                    <button class="btn btn-danger btn-sm settings-clear-key" type="submit" name="clear_openai_key" value="1">Clear stored key</button>
+                    {% endif %}
+                </div>
+
+                <label class="field">
+                    <span class="field-label">OpenAI API Key</span>
+                    <input class="input" type="password" name="openai_api_key" placeholder="{% if settings.has_openai_key %}Paste key to replace — leave blank to keep current{% else %}sk-...{% endif %}" autocomplete="off">
+                </label>
+
+                <div class="settings-actions">
+                    <button class="btn btn-primary" type="submit">Save OpenAI key</button>
+                </div>
+            </form>
+        </article>
+
+        <article class="panel settings-panel settings-panel-wide" id="notifications">
+            <header class="panel-header">
+                <div>
+                    <h2>Real-Time Mobile Push & Telegram Notifications</h2>
+                    <p class="muted settings-secure-note">
+                        Instant mobile alerts with direct deep-links back to <code>admin.crashout.tv</code> for HITL approval gates, critical errors, and live publishing.
+                    </p>
+                </div>
+            </header>
+            <form class="settings-form" method="post" action="/settings/notifications" autocomplete="off">
+                <div class="settings-key-status" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.65rem;">
+                        {% if settings.telegram_enabled and settings.telegram_chat_id %}
+                        <span class="status-chip status-ok">Mobile Push Active</span>
+                        <span class="mono muted settings-key-mask">Chat ID: {{ settings.telegram_chat_id }}</span>
+                        {% else %}
+                        <span class="status-chip">Push Inactive</span>
+                        <span class="muted">Configure Telegram Bot & Chat ID to receive instant mobile notifications.</span>
+                        {% endif %}
+                    </div>
+                    {% if settings.has_telegram_bot_token %}
+                    <button class="btn btn-danger btn-sm settings-clear-key" type="submit" name="clear_telegram_token" value="1">Clear Bot Token</button>
+                    {% endif %}
+                </div>
+
+                <div style="padding: 1rem; border-radius: var(--radius-sm, 8px); background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0); display: flex; flex-direction: column; gap: 0.75rem;">
+                    <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                        <input type="checkbox" name="telegram_enabled" value="1" {% if settings.telegram_enabled %}checked{% endif %} style="width: 1.15rem; height: 1.15rem; accent-color: var(--brand, #ff2d8a); cursor: pointer;">
+                        <div>
+                            <strong style="font-size: 0.92rem; color: var(--text, #1a1220);">Enable Telegram Mobile Push Notifications</strong>
+                            <p class="muted" style="font-size: 0.8rem; margin: 0.15rem 0 0;">Receive immediate push alerts on iOS/Android via your Telegram bot.</p>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="field-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <label class="field">
+                        <span class="field-label">Telegram Bot Token (from @BotFather)</span>
+                        <input class="input" type="password" name="telegram_bot_token" placeholder="{% if settings.has_telegram_bot_token %}{{ settings.telegram_bot_token_masked }}{% else %}e.g. 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ{% endif %}" autocomplete="off">
+                        <span class="field-hint muted" style="font-size: 0.75rem;">Connected to <a href="https://t.me/CrashhOut_bot" target="_blank" rel="noopener" style="color: var(--brand, #ff2d8a); font-weight: 600;">@CrashhOut_bot</a>. Tokens are encrypted with AES-256 (Fernet).</span>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">Telegram Chat ID / Channel ID</span>
+                        <input class="input" type="text" name="telegram_chat_id" value="{{ settings.telegram_chat_id }}" placeholder="e.g. 123456789 or @your_channel">
+                        <span class="field-hint muted" style="font-size: 0.75rem;">Message <a href="https://t.me/CrashhOut_bot" target="_blank" rel="noopener" style="color: var(--brand, #ff2d8a); font-weight: 600;">@CrashhOut_bot</a> and click "Auto-Detect Chat ID" below, or query <code>@userinfobot</code>.</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                    <span class="field-label" style="font-weight: 700; font-size: 0.85rem; color: var(--text, #1a1220);">Automatic Alert Preferences</span>
+                    
+                    <label style="display: flex; align-items: flex-start; gap: 0.65rem; cursor: pointer; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0);">
+                        <input type="checkbox" name="notify_hitl" value="1" {% if settings.notify_hitl %}checked{% endif %} style="margin-top: 0.2rem; accent-color: var(--brand, #ff2d8a);">
+                        <div>
+                            <span style="font-weight: 600; font-size: 0.86rem; color: var(--text, #1a1220);">✋ HITL Approval Gates</span>
+                            <p class="muted" style="font-size: 0.78rem; margin: 0.15rem 0 0;">Triggered when a Pitch Card batch, Script/Audio, or Final Video is waiting for manual approval (Gates 1–5).</p>
+                        </div>
+                    </label>
+
+                    <label style="display: flex; align-items: flex-start; gap: 0.65rem; cursor: pointer; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0);">
+                        <input type="checkbox" name="notify_errors" value="1" {% if settings.notify_errors %}checked{% endif %} style="margin-top: 0.2rem; accent-color: var(--brand, #ff2d8a);">
+                        <div>
+                            <span style="font-weight: 600; font-size: 0.86rem; color: var(--text, #1a1220);">🚨 Critical Errors & SLA Incidents</span>
+                            <p class="muted" style="font-size: 0.78rem; margin: 0.15rem 0 0;">Triggered on any agent failure, API outage (Vidu, ElevenLabs, OpenAI), or task exceeding retry limits.</p>
+                        </div>
+                    </label>
+
+                    <label style="display: flex; align-items: flex-start; gap: 0.65rem; cursor: pointer; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0);">
+                        <input type="checkbox" name="notify_published" value="1" {% if settings.notify_published %}checked{% endif %} style="margin-top: 0.2rem; accent-color: var(--brand, #ff2d8a);">
+                        <div>
+                            <span style="font-weight: 600; font-size: 0.86rem; color: var(--text, #1a1220);">🚀 Episode Published Confirmations</span>
+                            <p class="muted" style="font-size: 0.78rem; margin: 0.15rem 0 0;">Triggered with confirmation alert and live direct links once an episode goes live on YouTube Shorts, TikTok, and Instagram Reels.</p>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="settings-actions" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary" type="submit">Save Notification Preferences</button>
+                        <button class="btn btn-secondary" type="submit" formaction="/settings/notifications/detect-chat-id">Auto-Detect Chat ID from Bot 🔍</button>
+                    </div>
+                    <button class="btn btn-outline" type="submit" formaction="/settings/notifications/test">Send Test Telegram Notification 📱</button>
                 </div>
             </form>
         </article>

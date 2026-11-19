@@ -42,6 +42,14 @@ class UserSettings:
     vidu_model: str = ""
     vidu_reference_model: str = ""
     vidu_resolution: str = ""
+    telegram_bot_token_enc: str = ""
+    telegram_chat_id: str = ""
+    telegram_enabled: bool = False
+    notify_hitl: bool = True
+    notify_errors: bool = True
+    notify_published: bool = True
+    openai_api_key_enc: str = ""
+    openai_model: str = ""
     updated_at: float = 0.0
 
     @property
@@ -50,6 +58,20 @@ class UserSettings:
 
     def decrypted_vidu_key(self) -> str:
         return decrypt_secret(self.vidu_api_key_enc)
+
+    @property
+    def has_telegram_bot_token(self) -> bool:
+        return bool(self.telegram_bot_token_enc)
+
+    def decrypted_telegram_bot_token(self) -> str:
+        return decrypt_secret(self.telegram_bot_token_enc)
+
+    @property
+    def has_openai_key(self) -> bool:
+        return bool(self.openai_api_key_enc)
+
+    def decrypted_openai_key(self) -> str:
+        return decrypt_secret(self.openai_api_key_enc)
 
 
 def ensure_auth_ready() -> None:
@@ -224,12 +246,20 @@ def get_settings(user_id: int) -> UserSettings:
             return UserSettings(user_id=int(user_id), updated_at=now)
     return UserSettings(
         user_id=int(row["user_id"]),
-        vidu_api_key_enc=str(row["vidu_api_key_enc"] or ""),
-        vidu_email=str(row["vidu_email"] or ""),
-        vidu_model=str(row["vidu_model"] or ""),
-        vidu_reference_model=str(row["vidu_reference_model"] or ""),
-        vidu_resolution=str(row["vidu_resolution"] or ""),
-        updated_at=float(row["updated_at"] or 0),
+        vidu_api_key_enc=str(row.get("vidu_api_key_enc") or ""),
+        vidu_email=str(row.get("vidu_email") or ""),
+        vidu_model=str(row.get("vidu_model") or ""),
+        vidu_reference_model=str(row.get("vidu_reference_model") or ""),
+        vidu_resolution=str(row.get("vidu_resolution") or ""),
+        telegram_bot_token_enc=str(row.get("telegram_bot_token_enc") or ""),
+        telegram_chat_id=str(row.get("telegram_chat_id") or ""),
+        telegram_enabled=bool(row.get("telegram_enabled")),
+        notify_hitl=True if row.get("notify_hitl") is None else bool(row.get("notify_hitl")),
+        notify_errors=True if row.get("notify_errors") is None else bool(row.get("notify_errors")),
+        notify_published=True if row.get("notify_published") is None else bool(row.get("notify_published")),
+        openai_api_key_enc=str(row.get("openai_api_key_enc") or ""),
+        openai_model=str(row.get("openai_model") or ""),
+        updated_at=float(row.get("updated_at") or 0),
     )
 
 
@@ -284,8 +314,102 @@ def update_vidu_settings(
     return get_settings(user_id)
 
 
+def update_notification_settings(
+    user_id: int,
+    *,
+    bot_token: Optional[str] = None,
+    clear_bot_token: bool = False,
+    chat_id: Optional[str] = None,
+    telegram_enabled: Optional[bool] = None,
+    notify_hitl: Optional[bool] = None,
+    notify_errors: Optional[bool] = None,
+    notify_published: Optional[bool] = None,
+) -> UserSettings:
+    settings = get_settings(user_id)
+    now = time.time()
+    token_enc = settings.telegram_bot_token_enc
+    cid = settings.telegram_chat_id
+    tg_enabled = settings.telegram_enabled
+    n_hitl = settings.notify_hitl
+    n_err = settings.notify_errors
+    n_pub = settings.notify_published
+
+    if clear_bot_token:
+        token_enc = ""
+    elif bot_token is not None:
+        cleaned = bot_token.strip()
+        if cleaned:
+            token_enc = encrypt_secret(cleaned)
+
+    if chat_id is not None:
+        cid = chat_id.strip()
+    if telegram_enabled is not None:
+        tg_enabled = bool(telegram_enabled)
+    if notify_hitl is not None:
+        n_hitl = bool(notify_hitl)
+    if notify_errors is not None:
+        n_err = bool(notify_errors)
+    if notify_published is not None:
+        n_pub = bool(notify_published)
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE user_settings
+            SET telegram_bot_token_enc = ?,
+                telegram_chat_id = ?,
+                telegram_enabled = ?,
+                notify_hitl = ?,
+                notify_errors = ?,
+                notify_published = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (token_enc, cid, tg_enabled, n_hitl, n_err, n_pub, now, int(user_id)),
+        )
+    return get_settings(user_id)
+
+
+def update_openai_settings(
+    user_id: int,
+    *,
+    api_key: Optional[str] = None,
+    clear_api_key: bool = False,
+    model: Optional[str] = None,
+) -> UserSettings:
+    settings = get_settings(user_id)
+    now = time.time()
+    enc = settings.openai_api_key_enc
+    openai_model = settings.openai_model
+
+    if clear_api_key:
+        enc = ""
+    elif api_key is not None:
+        cleaned = api_key.strip()
+        if cleaned:
+            enc = encrypt_secret(cleaned)
+
+    if model is not None:
+        openai_model = model.strip()
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE user_settings
+            SET openai_api_key_enc = ?,
+                openai_model = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (enc, openai_model, now, int(user_id)),
+        )
+    return get_settings(user_id)
+
+
 def settings_public_view(settings: UserSettings) -> Dict[str, Any]:
     plaintext = settings.decrypted_vidu_key()
+    plaintext_tg = settings.decrypted_telegram_bot_token()
+    plaintext_openai = settings.decrypted_openai_key()
     return {
         "has_vidu_key": settings.has_vidu_key,
         "vidu_key_masked": mask_secret(plaintext) if plaintext else "",
@@ -293,11 +417,21 @@ def settings_public_view(settings: UserSettings) -> Dict[str, Any]:
         "vidu_model": settings.vidu_model,
         "vidu_reference_model": settings.vidu_reference_model,
         "vidu_resolution": settings.vidu_resolution,
+        "has_telegram_bot_token": settings.has_telegram_bot_token,
+        "telegram_bot_token_masked": mask_secret(plaintext_tg) if plaintext_tg else "",
+        "telegram_chat_id": settings.telegram_chat_id,
+        "telegram_enabled": settings.telegram_enabled,
+        "notify_hitl": settings.notify_hitl,
+        "notify_errors": settings.notify_errors,
+        "notify_published": settings.notify_published,
+        "has_openai_key": settings.has_openai_key,
+        "openai_key_masked": mask_secret(plaintext_openai) if plaintext_openai else "",
+        "openai_model": settings.openai_model,
     }
 
 
 def apply_user_credentials_to_config(user_id: int) -> None:
-    """Load this user's encrypted Vidu key into the live process config."""
+    """Load this user's encrypted Vidu & OpenAI keys into the live process config."""
     from app.config import config
 
     settings = get_settings(user_id)
@@ -312,3 +446,11 @@ def apply_user_credentials_to_config(user_id: int) -> None:
         config.vidu_reference_model = settings.vidu_reference_model
     if settings.vidu_resolution:
         config.vidu_resolution = settings.vidu_resolution
+
+    key_openai = settings.decrypted_openai_key()
+    if key_openai:
+        config.openai_api_key = key_openai
+        os.environ["OPENAI_API_KEY"] = key_openai
+    if settings.openai_model:
+        config.openai_model = settings.openai_model
+        os.environ["OPENAI_MODEL"] = settings.openai_model
