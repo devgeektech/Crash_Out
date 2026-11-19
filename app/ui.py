@@ -19,7 +19,7 @@ from app.agents.agent_1_scriptwriter import scriptwriter_agent
 from app.agents.agent_4_publisher import publisher_agent
 from app.agents.agent_5_seeder import seeder_agent
 from app.agents.agent_m_orchestrator import orchestrator
-from app.catalog import (
+from app.core.catalog import (
     add_manual_catalog_video,
     concepts_for_catalog,
     delete_manual_catalog_video,
@@ -78,7 +78,7 @@ from app.paths import (
     build_episode_folder_name,
     scene_file_candidates,
 )
-from app.auth_middleware import get_current_user
+from app.auth.middleware import get_current_user
 from app.state import Episode, state_manager
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -845,7 +845,7 @@ def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
 @router.get("/", response_class=HTMLResponse)
 def ui_home(request: Request):
     """Production dashboard — overview of pipeline health and recent work."""
-    from app.catalog import list_catalog_items
+    from app.core.catalog import list_catalog_items
 
     user = get_current_user(request)
     user_id = user.id if user else None
@@ -1283,7 +1283,7 @@ def ui_rename_queue_video(request: Request, item_id: str, title: str = Form(...)
         state_manager.rename_episode(ep.id, new_title)
 
     # 2. Also update in catalog if custom catalog item exists
-    from app.catalog import _load_custom_catalog, _save_custom_catalog
+    from app.core.catalog import _load_custom_catalog, _save_custom_catalog
     items = _load_custom_catalog()
     changed = False
     for it in items:

@@ -11,7 +11,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from app.paths import CHARACTERS_DIR
-from app.personas import CHARACTERS
+from app.core.personas import CHARACTERS
 
 LIBRARY_PATH = os.path.join(CHARACTERS_DIR, "library.json")
 CHAR_IDS = ("gary", "linda", "chris", "chloe")

@@ -11,8 +11,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth_middleware import JWT_COOKIE_NAME, get_current_user, login_user, logout_user
-from app.auth_users import (
+from app.auth.middleware import JWT_COOKIE_NAME, get_current_user, login_user, logout_user
+from app.auth.users import (
     apply_user_credentials_to_config,
     authenticate,
     change_password,
@@ -183,7 +183,7 @@ def api_auth_token(
     user = authenticate(email, password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    from app.security import create_access_token
+    from app.auth.security import create_access_token
 
     token = create_access_token(user_id=user.id, email=user.email)
     return {

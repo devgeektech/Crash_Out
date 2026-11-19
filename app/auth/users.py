@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from app.db import get_conn, init_db
-from app.security import (
+from app.auth.security import (
     decrypt_secret,
     encrypt_secret,
     hash_password,

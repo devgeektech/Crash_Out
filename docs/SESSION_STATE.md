@@ -7,6 +7,23 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-19 — Modularized App Codebase into Structured Domain Packages
+
+Completed:
+- **Clean Architecture & Directory Modularization**:
+  - Reorganized root `app/` files into domain-driven subpackages:
+    - **`app/auth/`**: `users.py`, `middleware.py`, `routes.py`, `security.py`, and `__init__.py`.
+    - **`app/core/`**: `personas.py`, `prompts.py`, `catalog.py`, and `__init__.py`.
+    - **`app/infra/`**: `storage.py` (AWS S3), `temporal.py` (Temporal orchestration), `logging.py` (Request & file logging framework), and `__init__.py`.
+- **Zero-Breakage Compatibility Shims**:
+  - Added lightweight backward-compatible shims at `app/auth_users.py`, `app/auth_middleware.py`, `app/auth_routes.py`, `app/security.py`, `app/personas.py`, `app/prompts.py`, `app/catalog.py`, `app/storage.py`, `app/temporal_setup.py`, and `app/logging_framework.py` so existing external imports and legacy code paths remain completely functional.
+- **Verification & Smoke Tests**:
+  - Verified 100% compilation across all modules (`0 errors`).
+  - Audited module import trees across all 68 Python files (`0 failed imports`).
+  - Executed automated HTTP smoke tests across `/login`, `/studio`, `/characters`, and `/episodes` with 200 OK responses.
+
+---
+
 ### 2026-11-19 — Widened Character Modal & Constrained Textarea Resizing
 
 Completed:
