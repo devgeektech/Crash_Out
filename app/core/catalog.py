@@ -369,11 +369,15 @@ def _save_deleted_builtin_id(item_id: str) -> None:
         pass
 
 
-def list_catalog_items() -> List[Dict[str, Any]]:
-    """Built-in catalog first, then manually added videos (excluding deleted)."""
+def list_catalog_items(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Built-in catalog first, then manually added videos (scoped by user_id if provided)."""
     deleted_ids = _load_deleted_builtin_ids()
     builtins = [it for it in VIDEO_CATALOG if it.get("id") not in deleted_ids]
-    return builtins + _load_custom_catalog()
+    # Built-ins are only shown if not deleted
+    custom_items = _load_custom_catalog()
+    if user_id is not None:
+        custom_items = [it for it in custom_items if it.get("user_id") == int(user_id)]
+    return builtins + custom_items
 
 
 def get_catalog_item(catalog_id: str) -> Optional[Dict[str, Any]]:
@@ -448,6 +452,7 @@ def add_manual_catalog_video(
     title: str,
     subtitle: str = "",
     merch: str = "Capitalism broke my dad",
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Append a user-created video to the catalog (newest = highest list number)."""
     clean_title = (title or "").strip() or "Untitled video"
@@ -458,6 +463,7 @@ def add_manual_catalog_video(
 
     item = {
         "id": catalog_id,
+        "user_id": user_id,
         "script_key": catalog_id,
         "title": clean_title,
         "subtitle": clean_sub,

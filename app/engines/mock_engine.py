@@ -14,7 +14,7 @@ import imageio_ffmpeg
 
 from app.engines.base import BaseVideoEngine, VideoJobResult
 from app.paths import OUTPUT_DIR, public_url
-from app.personas import SCENE_DURATION_SEC
+from app.core.personas import SCENE_DURATION_SEC
 
 
 class MockVideoEngine(BaseVideoEngine):

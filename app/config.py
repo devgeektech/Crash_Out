@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
 
-from app.personas import (  # noqa: F401 — re-exported for existing imports
+from app.core.personas import (  # noqa: F401 — re-exported for existing imports
     CHARACTERS,
     EPISODE_HOA_VIOLATION,
     SCENE_COUNT,

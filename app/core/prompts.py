@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Sequence, Tuple
 
-from app.personas import (
+from app.core.personas import (
     CHARACTERS,
     STYLE_SHORT,
     VIDU_PROMPT_MAX_CHARS,

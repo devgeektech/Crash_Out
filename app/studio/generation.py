@@ -43,11 +43,13 @@ def is_final_episode(ep: Episode) -> bool:
     return int(getattr(ep, "current_gateway", 1) or 1) >= 6
 
 
-def list_final_episodes_sorted() -> List[Episode]:
-    """Library list: published episodes only."""
+def list_final_episodes_sorted(user_id: Optional[int] = None) -> List[Episode]:
+    """Library list: published episodes only (scoped by user_id if provided)."""
     ensure_episode_numbers()
     migrate_legacy_production_statuses()
     finals = [ep for ep in state_manager.episodes.values() if is_final_episode(ep)]
+    if user_id is not None:
+        finals = [ep for ep in finals if ep.user_id == int(user_id)]
     return sorted(
         finals,
         key=lambda e: (
@@ -339,11 +341,11 @@ def cost_summary(ep: Episode) -> Dict[str, Any]:
     }
 
 
-def studio_dashboard_snapshot() -> Dict[str, Any]:
-    """Aggregate production metrics for the top-level dashboard."""
+def studio_dashboard_snapshot(user_id: Optional[int] = None) -> Dict[str, Any]:
+    """Aggregate production metrics for the top-level dashboard (scoped by user_id if provided)."""
     migrate_legacy_production_statuses()
     ensure_episode_numbers()
-    episodes = state_manager.list_episodes_sorted()
+    episodes = state_manager.list_episodes_sorted(user_id=user_id)
     by_prod: Dict[str, int] = {s: 0 for s in PRODUCTION_STATUSES}
     jobs_waiting = 0
     jobs_failed = 0
@@ -373,7 +375,7 @@ def studio_dashboard_snapshot() -> Dict[str, Any]:
                 }
             )
     notes.sort(key=lambda n: float(n.get("at") or 0), reverse=True)
-    active = state_manager.get_active_episode()
+    active = state_manager.get_active_episode(user_id=user_id)
     if active and normalize_production_status(active.production_status) == "published":
         # Prefer an in-studio show for the active card when possible.
         active_studio = next((e for e in studio_eps if e.id == active.id), None)

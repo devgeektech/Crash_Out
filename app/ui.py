@@ -19,7 +19,7 @@ from app.agents.agent_1_scriptwriter import scriptwriter_agent
 from app.agents.agent_4_publisher import publisher_agent
 from app.agents.agent_5_seeder import seeder_agent
 from app.agents.agent_m_orchestrator import orchestrator
-from app.catalog import (
+from app.core.catalog import (
     add_manual_catalog_video,
     concepts_for_catalog,
     delete_manual_catalog_video,
@@ -34,6 +34,8 @@ from app.catalog import (
 )
 from app.config import CHARACTERS, config
 from app.studio.characters import (
+    create_character,
+    delete_character,
     format_speed_hint,
     get_character,
     list_characters,
@@ -76,7 +78,7 @@ from app.paths import (
     build_episode_folder_name,
     scene_file_candidates,
 )
-from app.auth_middleware import get_current_user
+from app.auth.middleware import get_current_user
 from app.state import Episode, state_manager
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -313,13 +315,13 @@ SCENE_BOUNDS = [
 ]
 
 
-def _ensure_episode() -> Episode:
-    ep = state_manager.get_active_episode()
+def _ensure_episode(user_id: Optional[int] = None) -> Episode:
+    ep = state_manager.get_active_episode(user_id=user_id)
     if not ep:
         from app.engines.factory import video_engine_mode
 
         ep = state_manager.create_episode(
-            "Episode 1: The HOA Violation", engine=video_engine_mode()
+            "Episode 1: The HOA Violation", engine=video_engine_mode(), user_id=user_id
         )
         ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
         state_manager.save()
@@ -616,10 +618,12 @@ def _format_queue_status(ep: Optional[Episode]) -> str:
     return status_raw.replace("_", " ").title() if status_raw else "Draft"
 
 
-def _catalog_cards() -> list:
+def _catalog_cards(user_id: Optional[int] = None) -> list:
     cards = []
-    for index, item in enumerate(list_catalog_items(), start=1):
+    for index, item in enumerate(list_catalog_items(user_id=user_id), start=1):
         related = _related_episodes_for_item(item)
+        if user_id is not None:
+            related = [e for e in related if e.user_id == int(user_id)]
         latest = _pick_best_related_episode(related)
         if latest:
             _attach_local_renders(latest)
@@ -644,7 +648,7 @@ def _catalog_cards() -> list:
     return cards
 
 
-def _studio_queue_cards() -> list:
+def _studio_queue_cards(user_id: Optional[int] = None) -> list:
     """Studio queue only: in-progress catalog rows + orphan studio episodes (never published)."""
     from app.studio.generation import is_final_episode, normalize_production_status
 
@@ -657,7 +661,7 @@ def _studio_queue_cards() -> list:
 
     cards: list = []
     seen_ep_ids: set[str] = set()
-    for card in _catalog_cards():
+    for card in _catalog_cards(user_id=user_id):
         ep = card.get("episode")
         if _published(ep):
             continue
@@ -667,7 +671,7 @@ def _studio_queue_cards() -> list:
 
     # Draft / scripting / generating episodes that are not represented by a catalog row.
     extras: list = []
-    for ep in state_manager.list_episodes_sorted():
+    for ep in state_manager.list_episodes_sorted(user_id=user_id):
         if ep.id in seen_ep_ids or _published(ep):
             continue
         prod = normalize_production_status(getattr(ep, "production_status", None))
@@ -720,7 +724,9 @@ def build_context(
     script_scene: Optional[int] = None,
     error: Optional[str] = None,
 ) -> Dict[str, Any]:
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     stage = _resolve_viewing_stage(ep, viewing_stage)
     # Queue selection must stay light — only hydrate when entering pipeline stages.
     if stage != 0:
@@ -758,9 +764,9 @@ def build_context(
         "toast_kind": "error" if error else toast_kind,
         "scene_cards": _build_scene_cards(ep),
         "master_video": _resolve_master_video(ep),
-        "catalog_cards": _studio_queue_cards(),
+        "catalog_cards": _studio_queue_cards(user_id=user_id),
         "page": "studio",
-        "episode_list": state_manager.list_episodes_sorted(),
+        "episode_list": state_manager.list_episodes_sorted(user_id=user_id),
         "production_statuses": list(PRODUCTION_STATUSES),
         "generation_jobs": list(reversed(ep.generation_jobs or []))[:20],
         "revision_notes": list(reversed(list(ep.revision_notes or [])))[:20],
@@ -839,9 +845,12 @@ def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
 @router.get("/", response_class=HTMLResponse)
 def ui_home(request: Request):
     """Production dashboard — overview of pipeline health and recent work."""
-    from app.catalog import list_catalog_items
+    from app.core.catalog import list_catalog_items
 
-    snap = studio_dashboard_snapshot()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    snap = studio_dashboard_snapshot(user_id=user_id)
+    queue = _studio_queue_cards(user_id=user_id)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -849,15 +858,15 @@ def ui_home(request: Request):
             request,
             "dashboard",
             dashboard=snap,
-            catalog_count=len(_studio_queue_cards()),
-            catalog_cards=_studio_queue_cards()[:8],
+            catalog_count=len(queue),
+            catalog_cards=queue[:8],
         ),
     )
 
 
-def _select_top_queue_item() -> Optional[Episode]:
+def _select_top_queue_item(user_id: Optional[int] = None) -> Optional[Episode]:
     """Select the first (top) Studio queue row so Queue always has an active video."""
-    cards = _studio_queue_cards()
+    cards = _studio_queue_cards(user_id=user_id)
     if not cards:
         return None
     top = cards[0]
@@ -914,6 +923,8 @@ def ui_credits_page(request: Request):
     breakdown = []
     total = 0.0
     for ep in state_manager.episodes.values():
+        if ep.user_id != user.id:
+            continue
         c_info = cost_summary(ep)
         ep_total = float(c_info.get("total_credits") or 0.0)
         total += ep_total
@@ -1001,16 +1012,20 @@ def _apply_catalog_concepts(ep: Episode, catalog_id: str) -> None:
     ep.available_concepts = concepts
 
 
-def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
+def _activate_catalog_item(item: Dict[str, Any], user_id: Optional[int] = None) -> Episode:
     from app.studio.naming import make_studio_episode_name
 
     catalog_id = str(item["id"])
     related = _related_episodes_for_item(item)
+    if user_id is not None:
+        related = [e for e in related if e.user_id == int(user_id)]
     ep = _pick_best_related_episode(related)
     if ep:
         state_manager.set_active(ep.id)
         ep.catalog_id = catalog_id
         ep.script_key = str(item.get("script_key") or catalog_id)
+        if user_id is not None:
+            ep.user_id = user_id
         # Keep Episode_Date_Time naming; do not overwrite with catalog marketing titles.
         if not (ep.title or "").strip():
             ep.title = make_studio_episode_name(serial_number=ep.episode_number)
@@ -1036,6 +1051,7 @@ def _activate_catalog_item(item: Dict[str, Any]) -> Episode:
         catalog_id=catalog_id,
         script_key=str(item.get("script_key") or catalog_id),
         episode_number=target_num,
+        user_id=user_id,
     )
     _apply_catalog_concepts(ep, catalog_id)
     state_manager.save()
@@ -1050,7 +1066,7 @@ def _activate_catalog_video(catalog_id: str) -> Episode:
     return _activate_catalog_item(item)
 
 
-def _select_queue_item(item_id: str) -> Episode:
+def _select_queue_item(item_id: str, user_id: Optional[int] = None) -> Episode:
     """Select a queue row only — set active episode, no render hydrate / stage jump."""
     from app.studio.generation import is_final_episode, normalize_production_status
 
@@ -1061,6 +1077,7 @@ def _select_queue_item(item_id: str) -> Episode:
             for ep in _related_episodes_for_item(item)
             if normalize_production_status(getattr(ep, "production_status", None)) != "published"
             and not is_final_episode(ep)
+            and (user_id is None or ep.user_id == int(user_id))
         ]
         ep = _pick_best_related_episode(related)
         if ep:
@@ -1080,13 +1097,14 @@ def _select_queue_item(item_id: str) -> Episode:
             catalog_id=str(item["id"]),
             script_key=str(item.get("script_key") or item["id"]),
             episode_number=target_num,
+            user_id=user_id,
         )
         _apply_catalog_concepts(ep, str(item["id"]))
         state_manager.save()
         return ep
 
     ep = state_manager.set_active(item_id)
-    if not ep:
+    if not ep or (user_id is not None and ep.user_id != user_id):
         raise HTTPException(status_code=404, detail="Queue item not found")
     return ep
 
@@ -1120,11 +1138,15 @@ def ui_mockup_queue_scheduler(request: Request):
         headline = pitches[0].get("headline") if pitches else "Daily Trend Ingest Run"
         merch = pitches[0].get("proposed_merch_hook") if pitches else "Capitalism broke my dad"
 
+        user = get_current_user(request)
+        user_id = user.id if user else None
+
         # Create a catalog item for this scheduler mock run
         item = add_manual_catalog_video(
             title=headline,
             subtitle=f"Agent 0 Mockup ({len(pitches)} Pitches) · {run.get('run_date')}",
             merch=merch or "Capitalism broke my dad",
+            user_id=user_id,
         )
 
         # Activate the episode and populate with the 5 generated pitch cards
@@ -1137,6 +1159,7 @@ def ui_mockup_queue_scheduler(request: Request):
             catalog_id=catalog_id,
             script_key=str(item.get("script_key") or catalog_id),
             episode_number=target_num,
+            user_id=user_id,
         )
         ep.available_concepts = concepts
         ep.selected_concept = None
@@ -1176,9 +1199,11 @@ def ui_add_catalog_video(
             viewing_stage=0,
             error="Title is required to add a video.",
         )
+    user = get_current_user(request)
+    user_id = user.id if user else None
     try:
-        item = add_manual_catalog_video(title=title, subtitle=subtitle)
-        ep = _activate_catalog_item(item)
+        item = add_manual_catalog_video(title=title, subtitle=subtitle, user_id=user_id)
+        ep = _activate_catalog_item(item, user_id=user_id)
     except Exception as exc:
         return render(
             request,
@@ -1258,7 +1283,7 @@ def ui_rename_queue_video(request: Request, item_id: str, title: str = Form(...)
         state_manager.rename_episode(ep.id, new_title)
 
     # 2. Also update in catalog if custom catalog item exists
-    from app.catalog import _load_custom_catalog, _save_custom_catalog
+    from app.core.catalog import _load_custom_catalog, _save_custom_catalog
     items = _load_custom_catalog()
     changed = False
     for it in items:
@@ -1283,7 +1308,9 @@ def ui_rename_queue_video(request: Request, item_id: str, title: str = Form(...)
 @router.post("/ui/catalog/{item_id}/select", response_class=HTMLResponse)
 def ui_select_queue_video(request: Request, item_id: str):
     """Row click: select only — stay on Studio queue, do not open/load stages."""
-    ep = _select_queue_item(item_id)
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _select_queue_item(item_id, user_id=user_id)
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1296,9 +1323,12 @@ def ui_select_queue_video(request: Request, item_id: str):
 @router.post("/ui/episodes/{episode_id}/select", response_class=HTMLResponse)
 def ui_select_episode(request: Request, episode_id: str):
     """Select an existing episode in the Studio queue (no pipeline load)."""
-    ep = state_manager.set_active(episode_id)
-    if not ep:
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = state_manager.episodes.get(episode_id)
+    if not ep or (user_id is not None and ep.user_id != user_id):
         raise HTTPException(status_code=404, detail="Episode not found")
+    state_manager.set_active(episode_id)
     return render(
         request,
         "partials/htmx_workspace.html",
@@ -1311,9 +1341,12 @@ def ui_select_episode(request: Request, episode_id: str):
 @router.post("/ui/episodes/{episode_id}/studio", response_class=HTMLResponse)
 def ui_open_episode_in_studio(request: Request, episode_id: str):
     """Arrow/open: activate episode and resume at furthest approved stage."""
-    ep = state_manager.set_active(episode_id)
-    if not ep:
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = state_manager.episodes.get(episode_id)
+    if not ep or (user_id is not None and ep.user_id != user_id):
         raise HTTPException(status_code=404, detail="Episode not found")
+    state_manager.set_active(episode_id)
     stage = _stage_for_selected_episode(ep)
     gate_label = {1: "Pitch", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
     return render(
@@ -1329,7 +1362,12 @@ def ui_open_episode_in_studio(request: Request, episode_id: str):
 @router.post("/ui/catalog/{catalog_id}/gate1", response_class=HTMLResponse)
 def ui_open_catalog_video(request: Request, catalog_id: str):
     """Arrow/open: activate catalog video and resume at furthest approved stage."""
-    ep = _activate_catalog_video(catalog_id)
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    item = get_catalog_item(catalog_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Video not found in catalog")
+    ep = _activate_catalog_item(item, user_id=user_id)
     stage = _stage_for_selected_episode(ep)
     gate_label = {1: "Pitch", 2: "Script", 3: "Video"}.get(stage, f"Stage {stage}")
     return render(
@@ -1344,7 +1382,12 @@ def ui_open_catalog_video(request: Request, catalog_id: str):
 @router.post("/ui/episodes/{episode_id}/pitches", response_class=HTMLResponse)
 def ui_open_episode_pitches(request: Request, episode_id: str):
     """Open pitch page directly for an episode (Stage 1 concept cards)."""
-    ep = state_manager.set_active(episode_id)
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = state_manager.episodes.get(episode_id)
+    if not ep or (user_id is not None and ep.user_id != user_id):
+        raise HTTPException(status_code=404, detail="Episode not found")
+    state_manager.set_active(episode_id)
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
     _remember_studio_ui(ep, 1)
@@ -1383,7 +1426,9 @@ def ui_stage(
     char: str = "gary",
     scene: Optional[int] = None,
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     if scene is None and stage_num == 2 and getattr(ep, "studio_ui_scene", None):
         scene = int(ep.studio_ui_scene)
     _remember_studio_ui(ep, stage_num, scene if stage_num == 2 else None)
@@ -1399,7 +1444,9 @@ def ui_stage(
 @router.get("/ui/script/scene/{scene_id}", response_class=HTMLResponse)
 def ui_script_scene(request: Request, scene_id: int):
     """Gate 2: swap only the active scene panel + tab strip."""
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     _remember_studio_ui(ep, 2, scene_id)
     return render(
         request,
@@ -1414,7 +1461,9 @@ def ui_generate_script_scene_clip(request: Request, scene_id: int):
     """Generate a single Vidu clip for the active script scene, then open Video stage."""
     from app.main import generate_single_scene
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     if not ep.script or not (ep.script.get("scenes") or []):
         return render(
             request,
@@ -1460,7 +1509,9 @@ def ui_save_script_scene(
     source_prompt: str = Form(""),
 ):
     """Persist editable scene prompt (autosave or Save). Full prompt is stored as written."""
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     scenes = (ep.script or {}).get("scenes") or []
     scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == scene_id), None)
     if not scene:
@@ -1530,7 +1581,9 @@ def ui_mock_scheduler_run(request: Request):
     from app.trends.scheduler import run_daily_agent0_job
     from app.db import save_pitches_to_db
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         run_res = run_daily_agent0_job()
         pitches = run_res.get("pitches") or []
@@ -1630,7 +1683,9 @@ def ui_update_concept(
     youth_sources: str = Form(""),
     action: str = Form("save"),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     # If Gateway 1 is already approved, lock pitches from edits
     if int(ep.current_gateway or 1) >= 2 or bool(ep.script):
         return render(
@@ -1705,7 +1760,9 @@ def ui_update_concept(
 
 @router.post("/ui/concepts/select", response_class=HTMLResponse)
 def ui_select_concept(request: Request, index: int = Form(...)):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     # If Gateway 1 is already approved, prevent selecting another pitch
     if int(ep.current_gateway or 1) >= 2 or bool(ep.script):
         return render(
@@ -1742,7 +1799,9 @@ def ui_approve_gateway_1(request: Request):
     from app.trends.schema import is_sensitive_pitch
     from app.trends.store import remember_episode_topic
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     selected = ep.selected_concept
     if not selected or is_empty_concept(selected):
         return render(
@@ -1814,7 +1873,9 @@ def ui_approve_gateway_1(request: Request):
 
 @router.post("/ui/merch/update", response_class=HTMLResponse)
 def ui_update_merch(request: Request, punchline: str = Form(...)):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     cleaned = punchline.strip()
     if cleaned:
         ep.merch_punchline = cleaned
@@ -1835,7 +1896,9 @@ def ui_update_merch(request: Request, punchline: str = Form(...)):
 def ui_approve_gateway_2(request: Request):
     from app.main import merge_episode_scenes, render_all_episode_scenes
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         orchestrator.approve_gateway(ep.id, 2, {"script": ep.script})
         # Keep SCRIPT_APPROVED visible after Generate Video (do not overwrite with WAITING_GATEWAY_3).
@@ -1883,7 +1946,9 @@ def ui_approve_gateway_2(request: Request):
 def ui_generate_all_scenes(request: Request):
     from app.main import render_all_episode_scenes
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         render_all_episode_scenes(ep)
     except HTTPException as exc:
@@ -1942,7 +2007,9 @@ def ui_generate_scene(request: Request, scene_id: int):
 def ui_merge_scenes(request: Request):
     from app.main import merge_episode_scenes
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         merge_res = merge_episode_scenes(ep)
         if not merge_res.get("success"):
@@ -1972,7 +2039,9 @@ def ui_merge_scenes(request: Request):
 
 @router.post("/ui/video/lock-vidu", response_class=HTMLResponse)
 def ui_lock_vidu(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     ep.selected_engine = "vidu"
     ep.final_platform_decision = "vidu"
     state_manager.log_qa(ep.id, "Production platform locked: Vidu Q4 Preview API.")
@@ -2020,7 +2089,9 @@ async def ui_import_video(
 
 @router.post("/ui/gateway/3/approve", response_class=HTMLResponse)
 def ui_approve_gateway_3(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         orchestrator.approve_gateway(ep.id, 3, {"video_url": ep.video_url or ep.merged_video_url})
         orchestrator.log(ep.id, "Agent 4 preparing social metadata and merch mockup...")
@@ -2047,7 +2118,9 @@ def ui_approve_gateway_3(request: Request):
 
 @router.post("/ui/gateway/4/approve", response_class=HTMLResponse)
 def ui_approve_gateway_4(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         orchestrator.approve_gateway(ep.id, 4, {"social": ep.social_posts, "merch": ep.merch_listing})
         orchestrator.log(ep.id, "Agent 5 drafting community seeding responses...")
@@ -2077,7 +2150,9 @@ def ui_approve_gateway_4(request: Request):
 
 @router.post("/ui/gateway/5/approve", response_class=HTMLResponse)
 def ui_approve_gateway_5(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         orchestrator.approve_gateway(ep.id, 5, {"seeding": ep.seeding_drafts})
         mark_episode_final(ep)
@@ -2106,14 +2181,16 @@ def ui_approve_gateway_5(request: Request):
 @router.get("/episodes", response_class=HTMLResponse)
 def ui_episodes_page(request: Request):
     """Finished library only — in-progress work stays in Studio."""
-    _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    _ensure_episode(user_id=user_id)
     return templates.TemplateResponse(
         request,
         "episodes.html",
         _shell_context(
             request,
             "episodes",
-            episodes=list_final_episodes_sorted(),
+            episodes=list_final_episodes_sorted(user_id=user_id),
             active_id=state_manager.active_episode_id,
         ),
     )
@@ -2124,8 +2201,10 @@ def ui_episode_record(request: Request, episode_id: str):
     """Read-only record view (video archive) — does not open Studio."""
     from app.studio.generation import is_final_episode
 
+    user = get_current_user(request)
+    user_id = user.id if user else None
     ep = state_manager.episodes.get(episode_id)
-    if not ep:
+    if not ep or (user_id is not None and ep.user_id != user_id):
         raise HTTPException(status_code=404, detail="Episode not found")
     if not is_final_episode(ep):
         # In-progress shows belong in Studio, not the records library.
@@ -2151,9 +2230,12 @@ def ui_episode_record(request: Request, episode_id: str):
 def ui_episodes_create(request: Request, title: str = Form("New Episode")):
     from app.engines.factory import video_engine_mode
 
+    user = get_current_user(request)
+    user_id = user.id if user else None
     ep = state_manager.create_episode(
         title=(title or "New Episode").strip() or "New Episode",
         engine=video_engine_mode(),
+        user_id=user_id,
     )
     ep.available_concepts = trend_ingest_agent.fetch_trending_concepts()
     state_manager.save()
@@ -2164,15 +2246,19 @@ def ui_episodes_create(request: Request, title: str = Form("New Episode")):
 @router.post("/ui/episodes/{episode_id}/open", response_class=HTMLResponse)
 def ui_episodes_open(request: Request, episode_id: str):
     """Legacy POST open → record page (not Studio)."""
+    user = get_current_user(request)
+    user_id = user.id if user else None
     ep = state_manager.episodes.get(episode_id)
-    if not ep:
+    if not ep or (user_id is not None and ep.user_id != user_id):
         raise HTTPException(status_code=404, detail="Episode not found")
     return RedirectResponse(url=f"/episodes/{episode_id}", status_code=303)
 
 
 @router.post("/ui/episodes/{episode_id}/duplicate", response_class=HTMLResponse)
 def ui_episodes_duplicate(request: Request, episode_id: str):
-    clone = state_manager.duplicate_episode(episode_id)
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    clone = state_manager.duplicate_episode(episode_id, user_id=user_id)
     if not clone:
         raise HTTPException(status_code=404, detail="Episode not found")
     orchestrator.log(clone.id, f"Duplicated from {episode_id} → #{clone.episode_number}")
@@ -2212,7 +2298,9 @@ def ui_episodes_autosave(
 
 @router.post("/ui/production/status", response_class=HTMLResponse)
 def ui_production_status(request: Request, status: str = Form(...)):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         set_production_status(ep, status)
         state_manager.save()
@@ -2237,7 +2325,9 @@ def ui_production_note(
     request: Request,
     note: str = Form(...),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     add_revision_note(ep, note, author="")
     state_manager.save()
     return render(
@@ -2251,7 +2341,9 @@ def ui_production_note(
 
 @router.post("/ui/script/version", response_class=HTMLResponse)
 def ui_script_version(request: Request, label: str = Form("")):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     scene = getattr(ep, "studio_ui_scene", None)
     try:
         save_script_version(ep, label=label)
@@ -2278,7 +2370,9 @@ def ui_script_version(request: Request, label: str = Form("")):
 def ui_job_retry(request: Request, job_id: str):
     from app.main import generate_single_scene
 
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     job = find_job(ep, job_id)
     if not job:
         return render(
@@ -2330,6 +2424,97 @@ def ui_characters_page(request: Request, char_id: str = "gary"):
             library_characters=list_characters(),
         ),
     )
+
+
+@router.post("/ui/characters/new", response_class=HTMLResponse)
+async def ui_characters_create(
+    request: Request,
+    name: str = Form(...),
+    role: str = Form(""),
+    archetype: str = Form(""),
+    description: str = Form(""),
+    personality: str = Form(""),
+    visual_prompt: str = Form(""),
+    voice_tone: str = Form(""),
+    voice_speed: str = Form("1.00"),
+    voice_pitch: str = Form("medium"),
+    voice_delivery: str = Form(""),
+    image: UploadFile = File(...),
+    audio: UploadFile = File(...),
+):
+    try:
+        if not image or not image.filename:
+            raise ValueError("Reference portrait image is mandatory.")
+        if not audio or not audio.filename:
+            raise ValueError("Voice audio sample is mandatory.")
+
+        raw_img = await image.read()
+        if not raw_img:
+            raise ValueError("Uploaded image file is empty.")
+        raw_aud = await audio.read()
+        if not raw_aud:
+            raise ValueError("Uploaded audio file is empty.")
+
+        new_char = create_character(
+            name=name,
+            role=role,
+            archetype=archetype,
+            description=description,
+            personality=personality,
+            visual_prompt=visual_prompt,
+            voice_tone=voice_tone,
+            voice_speed=voice_speed,
+            voice_pitch=voice_pitch,
+            voice_delivery=voice_delivery,
+        )
+        cid = new_char["id"]
+
+        import tempfile
+        ext_img = os.path.splitext(image.filename)[1] or ".png"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext_img) as tf:
+            tf.write(raw_img)
+            tmp_img = tf.name
+        try:
+            save_character_image(cid, tmp_img, ext=ext_img)
+        finally:
+            if os.path.exists(tmp_img):
+                os.remove(tmp_img)
+
+        ext_aud = os.path.splitext(audio.filename)[1] or ".mp3"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext_aud) as tf:
+            tf.write(raw_aud)
+            tmp_aud = tf.name
+        try:
+            save_character_audio(cid, tmp_aud, ext=ext_aud)
+        finally:
+            if os.path.exists(tmp_aud):
+                os.remove(tmp_aud)
+
+        return RedirectResponse(url=f"/characters?char_id={cid}", status_code=303)
+    except Exception as exc:
+        logger.exception("Failed to create character: %s", exc)
+        return templates.TemplateResponse(
+            request,
+            "characters.html",
+            _shell_context(
+                request,
+                "characters",
+                characters=list_characters(),
+                active=get_character("gary"),
+                library_characters=list_characters(),
+                toast=f"{exc}",
+                toast_kind="error",
+            ),
+        )
+
+
+@router.post("/ui/characters/{char_id}/delete", response_class=HTMLResponse)
+def ui_characters_delete(request: Request, char_id: str):
+    cid = (char_id or "").lower()
+    delete_character(cid)
+    remaining = list_characters()
+    target_id = remaining[0]["id"] if remaining else "gary"
+    return RedirectResponse(url=f"/characters?char_id={target_id}", status_code=303)
 
 
 @router.post("/ui/characters/{char_id}/save", response_class=HTMLResponse)
@@ -2429,7 +2614,9 @@ async def ui_characters_audio(
 
 @router.post("/ui/script/version/{version_id}/restore", response_class=HTMLResponse)
 def ui_script_version_restore(request: Request, version_id: str):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         restore_script_version(ep, version_id)
         state_manager.save()
@@ -2454,7 +2641,9 @@ def ui_script_line_save(
     time_end: float = Form(0),
     character: str = Form("gary"),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     scenes = (ep.script or {}).get("scenes") or []
     scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == scene_id), None)
     if not scene:
@@ -2485,7 +2674,9 @@ def ui_templates_apply(
     scene_id: int = Form(1),
     characters: str = Form("gary,linda,chris,chloe"),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     cast = [c.strip().lower() for c in characters.split(",") if c.strip()]
     scenes = (ep.script or {}).get("scenes") or []
     scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == int(scene_id)), None)
@@ -2536,7 +2727,9 @@ def ui_templates_save(
 
 @router.post("/ui/clips/{scene_id}/restore/{version}", response_class=HTMLResponse)
 def ui_clip_restore(request: Request, scene_id: int, version: int):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         restore_clip_version(ep, scene_id, version)
         state_manager.save()
@@ -2553,7 +2746,9 @@ def ui_clip_restore(request: Request, scene_id: int, version: int):
 
 @router.post("/ui/jobs/enqueue/{scene_id}", response_class=HTMLResponse)
 def ui_jobs_enqueue(request: Request, scene_id: int):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     try:
         enqueue_background(ep, scene_id)
     except ValueError as exc:
@@ -2575,7 +2770,9 @@ def ui_notifications_read(request: Request):
 
 @router.post("/ui/export/zip", response_class=HTMLResponse)
 def ui_export_zip(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     res = export_episode_zip(ep)
     if not res.get("success"):
         return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
@@ -2590,7 +2787,9 @@ def ui_export_zip(request: Request):
 
 @router.post("/ui/export/16x9", response_class=HTMLResponse)
 def ui_export_16x9(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     res = export_16x9_letterbox(ep)
     if not res.get("success"):
         return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
@@ -2605,7 +2804,9 @@ def ui_export_16x9(request: Request):
 
 @router.post("/ui/audio/timing/sync", response_class=HTMLResponse)
 def ui_audio_timing_sync(request: Request):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     sync_dialogue_timing_from_script(ep)
     state_manager.save()
     return render(
@@ -2627,7 +2828,9 @@ def ui_audio_timing_row(
     speed: str = Form("1.0x"),
     text: str = Form(""),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     row = update_dialogue_timing_row(
         ep,
         row_id,
@@ -2654,7 +2857,9 @@ def ui_qa_update(
     passed: str = Form("true"),
     note: str = Form(""),
 ):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     flag = None if passed == "pending" else (passed.lower() == "true")
     update_qa(ep, scene_id, section=section, check_id=check_id, passed=flag, note=note)
     state_manager.save()
@@ -2670,7 +2875,9 @@ def ui_qa_update(
 
 @router.post("/ui/continuity/{scene_id}/extract", response_class=HTMLResponse)
 def ui_continuity_extract(request: Request, scene_id: int):
-    ep = _ensure_episode()
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    ep = _ensure_episode(user_id=user_id)
     res = extract_last_frame(ep, scene_id)
     if not res.get("success"):
         return render(request, "partials/htmx_workspace.html", viewing_stage=3, error=res.get("error"))
