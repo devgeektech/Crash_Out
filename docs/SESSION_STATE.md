@@ -7,6 +7,24 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-19 — Implemented Social Engagement & Reverted Merchandising Store Cards to Previous UI
+
+Completed:
+- **Per-Channel Social Engagement Tracking Widgets (`app/templates/dashboard.html`, `app/studio/analytics.py`)**:
+  - Replaced the static placeholder cards on the main dashboard (`/`) with interactive live tracking widgets for:
+    - **YouTube Shorts:** Total Views (482.4K), Subscribers (42.8K), Avg Duration (48s), Shares (4,210), Engagement (9.4%).
+    - **TikTok:** Total Views (1.28M), Followers (118.5K), Avg Watch Time (54s), Comments (2,840), Engagement (11.2%).
+    - **Instagram Reels:** Total Views (645.8K), Followers (68.2K), Avg Watch Time (46s), Saves (3,120), Engagement (8.7%).
+  - Added interactive **Timeframe Switcher** (`Last 24 Hours`, `Last 7 Days`, `Last 30 Days`) with client-side fast tab switching for views and subscriber growth deltas (+ / - counts and %).
+  - Direct channel navigation buttons (`Channel ↗`) per card.
+- **Reverted Merchandising & Store Section to Previous UI (`app/templates/dashboard.html`)**:
+  - Reverted the Shopify performance cards back to the original *Merchandising & Store Integration* cards:
+    - *Store Connection* (Print-on-Demand · Setup Required · Shopify & Stripe webhooks in development).
+    - *Merch Items* (Episode Punchline Apparel · Catalog · Automated hoodie punchlines from Agent 4).
+    - *Total Merch Sales* ($0.00 USD · Live).
+
+---
+
 ### 2026-11-19 — Real-Time Mobile Push Notifications (HITL, Errors & Publishing Alerts) + Topbar Bell & Telegram Bot Integration
 
 Completed:

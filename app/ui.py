@@ -869,14 +869,18 @@ def _shell_context(request: Request, page: str, **extra: Any) -> Dict[str, Any]:
 
 
 @router.get("/", response_class=HTMLResponse)
-def ui_home(request: Request):
-    """Production dashboard — overview of pipeline health and recent work."""
+def ui_home(request: Request, timeframe: str = "24h"):
+    """Production dashboard — overview of pipeline health, social tracking, and Shopify revenue."""
     from app.core.catalog import list_catalog_items
+    from app.studio.analytics import get_social_engagement_metrics, get_shopify_store_metrics
 
     user = get_current_user(request)
     user_id = user.id if user else None
     snap = studio_dashboard_snapshot(user_id=user_id)
     queue = _studio_queue_cards(user_id=user_id)
+    social_data = get_social_engagement_metrics(timeframe=timeframe)
+    shopify_data = get_shopify_store_metrics(timeframe=timeframe)
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -886,6 +890,9 @@ def ui_home(request: Request):
             dashboard=snap,
             catalog_count=len(queue),
             catalog_cards=queue[:8],
+            social_metrics=social_data,
+            shopify_metrics=shopify_data,
+            selected_timeframe=timeframe,
         ),
     )
 
