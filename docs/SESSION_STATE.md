@@ -7,6 +7,23 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-19 — Deployed Latest Master Codebase to Production (`admin.crashout.tv`)
+
+Completed:
+- **Codebase Fast-Forward to Master on EC2 (`54.166.201.137`)**:
+  - Connected securely via SSH using `crashout.pem`.
+  - Fast-forward pulled latest `origin/master` (Commit `9367bd5`) into `/var/www/Crash_Out`.
+  - Verified all dependencies in `/var/www/Crash_Out/venv` are satisfied.
+- **Database Migrations on Production**:
+  - Executed migration `006_add_openai_settings.sql` (added `openai_api_key_enc`, `openai_model` columns) in PostgreSQL.
+  - Confirmed PostgreSQL schema is fully up to date.
+- **Service Restart & Health Verification**:
+  - Restarted `crashout.service` systemd daemon.
+  - Verified Uvicorn process is running on `0.0.0.0:8000` with Temporal schedule `agent0-daily-6am-est` active.
+  - Performed live HTTP/HTTPS smoke checks against `http://127.0.0.1:8000/login` and `https://admin.crashout.tv/login` returning HTTP 200 OK.
+
+---
+
 ### 2026-11-19 — Added OpenAI API Key Configuration in Settings (Simplified UI)
 
 Completed:

@@ -1425,7 +1425,10 @@ def ui_studio(
     queue_select = False
     if episode:
         if not state_manager.set_active(episode):
-            raise HTTPException(status_code=404, detail="Episode not found")
+            # Graceful fallback: if requested episode is missing/archived, select top queue item
+            ep_active = state_manager.get_active_episode()
+            if not ep_active:
+                _select_top_queue_item()
         queue_select = True
     elif catalog:
         _select_queue_item(catalog)

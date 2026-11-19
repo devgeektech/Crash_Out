@@ -11,7 +11,8 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, List, Tuple
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -191,6 +192,35 @@ app.include_router(ui_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/characters", StaticFiles(directory=CHARACTERS_DIR), name="characters")
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import logging
+    logging.getLogger("app.crash").error(
+        "Unhandled exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            f'<div class="auth-alert" style="background: rgba(225, 29, 72, 0.15); border: 1px solid #e11d48; color: #fff; padding: 0.75rem 1rem; border-radius: 8px;">'
+            f'⚠️ An unexpected error occurred: {exc}. Please refresh or try again.</div>',
+            status_code=200,
+        )
+    return HTMLResponse(
+        """<!DOCTYPE html><html><head><title>Crash Out — Error</title><meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="/static/css/app.css"></head>
+        <body style="background: #0d0914; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; text-align: center; padding: 1.5rem;">
+        <div style="max-width: 500px; background: #161022; padding: 2rem; border-radius: 12px; border: 1px solid rgba(255, 45, 138, 0.3);">
+            <h1 style="color: #ff2d8a; margin-top: 0;">Something went wrong</h1>
+            <p style="color: #a098aa; line-height: 1.5;">An internal error occurred while processing this request. The system has logged the details.</p>
+            <a href="/" style="display: inline-block; margin-top: 1rem; background: #ff2d8a; color: #fff; padding: 0.6rem 1.4rem; border-radius: 8px; text-decoration: none; font-weight: bold;">Return to Dashboard</a>
+        </div></body></html>""",
+        status_code=500,
+    )
 
 
 @app.get("/api/state")

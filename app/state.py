@@ -101,6 +101,15 @@ class Episode(BaseModel):
     final_platform_decision: Optional[str] = "mock"
     catalog_id: Optional[str] = None
     script_key: str = "hoa_violation"
+    cultural_hook: Optional[str] = None
+
+    @property
+    def hook(self) -> str:
+        if self.cultural_hook:
+            return self.cultural_hook
+        if self.selected_concept and isinstance(self.selected_concept, dict):
+            return str(self.selected_concept.get("cultural_hook") or self.selected_concept.get("hook") or "")
+        return ""
 
     available_concepts: List[Dict[str, Any]] = []
     selected_concept: Optional[Dict[str, Any]] = None

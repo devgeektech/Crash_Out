@@ -114,10 +114,13 @@ try:
         logger.info("[Temporal Activity] Executing Agent 4 Publisher for %s...", episode_id)
         ep = state_manager.get_episode(episode_id)
         if ep:
+            hook = getattr(ep, "cultural_hook", None)
+            if not hook and getattr(ep, "selected_concept", None) and isinstance(ep.selected_concept, dict):
+                hook = ep.selected_concept.get("cultural_hook") or ep.selected_concept.get("hook")
             package = publisher_agent.generate_publishing_package(
                 episode_title=ep.title,
-                concept_summary=ep.cultural_hook,
-                merch_punchline=ep.merch_punchline or "Capitalism Broke My Dad",
+                concept_summary=hook or ep.title,
+                merch_punchline=getattr(ep, "merch_punchline", None) or "Capitalism Broke My Dad",
             )
             return package
         return {}

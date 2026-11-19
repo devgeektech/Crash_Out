@@ -321,54 +321,62 @@ class AgentMOrchestrator:
 
         episodes = state_manager.list_episodes_sorted(user_id=user_id)
         for ep in episodes:
-            gw = int(getattr(ep, "current_gateway", 1) or 1)
-            status = (getattr(ep, "status", "") or "").upper()
+            try:
+                gw = int(getattr(ep, "current_gateway", 1) or 1)
+                status = (getattr(ep, "status", "") or "").upper()
 
-            # Skip fully completed episodes (Gateway 6 or COMPLETED)
-            if gw > 5 or status in {"COMPLETED", "PUBLISHED_FINAL", "FINAL"}:
+                # Skip fully completed episodes (Gateway 6 or COMPLETED)
+                if gw > 5 or status in {"COMPLETED", "PUBLISHED_FINAL", "FINAL"}:
+                    continue
+
+                # Identify if it is actively waiting at this gateway
+                meta = GATEWAY_METADATA.get(gw, GATEWAY_METADATA[1])
+
+                gate_entered_at = getattr(ep, "updated_at", None) or getattr(ep, "created_at", None) or now
+                elapsed_sec = now - float(gate_entered_at or now)
+                elapsed_str, sla_status, sla_class = self.format_sla(elapsed_sec)
+
+                # Specific details based on gateway
+                if gw == 1:
+                    hook = getattr(ep, "cultural_hook", None)
+                    if not hook and getattr(ep, "selected_concept", None) and isinstance(ep.selected_concept, dict):
+                        hook = ep.selected_concept.get("cultural_hook") or ep.selected_concept.get("hook")
+                    summary = hook or f"{len(getattr(ep, 'available_concepts', None) or [])} pitches available for review"
+                elif gw == 2:
+                    summary = getattr(ep, "merch_punchline", None) or "4-Scene dialogue script & merch punchline"
+                elif gw == 3:
+                    scenes = getattr(ep, "scene_videos", None) or []
+                    summary = f"4 scenes ({len(scenes)} rendered) - Master vertical 9:16 video"
+                elif gw == 4:
+                    summary = "Social packaging (YouTube Shorts/TikTok/IG) & Shopify merch mockup"
+                elif gw == 5:
+                    summary = "Reddit/TikTok guerrilla seeding draft campaigns ready"
+                else:
+                    summary = "Awaiting verification"
+
+                pending.append({
+                    "episode_id": ep.id,
+                    "episode_number": getattr(ep, "episode_number", 0) or 0,
+                    "title": getattr(ep, "title", "Untitled Episode"),
+                    "gateway_num": gw,
+                    "gateway_title": meta["title"],
+                    "agent_name": meta["agent"],
+                    "stage": meta["stage"],
+                    "description": meta["description"],
+                    "summary": summary,
+                    "badge_color": meta["badge_color"],
+                    "badge_bg": meta["badge_bg"],
+                    "action_label": meta["action_label"],
+                    "entered_at": gate_entered_at,
+                    "elapsed_seconds": elapsed_sec,
+                    "elapsed_str": elapsed_str,
+                    "sla_status": sla_status,
+                    "sla_class": sla_class,
+                    "deep_link": f"/studio?stage={meta['stage']}&episode={ep.id}",
+                })
+            except Exception as exc:
+                logger.warning("Error processing episode %s in get_pending_hitl_assignments: %s", getattr(ep, "id", "?"), exc)
                 continue
-
-            # Identify if it is actively waiting at this gateway
-            meta = GATEWAY_METADATA.get(gw, GATEWAY_METADATA[1])
-
-            gate_entered_at = getattr(ep, "updated_at", None) or ep.created_at
-            elapsed_sec = now - float(gate_entered_at or now)
-            elapsed_str, sla_status, sla_class = self.format_sla(elapsed_sec)
-
-            # Specific details based on gateway
-            if gw == 1:
-                summary = ep.cultural_hook or f"{len(ep.available_concepts or [])} pitches available for review"
-            elif gw == 2:
-                summary = ep.merch_punchline or "4-Scene dialogue script & merch punchline"
-            elif gw == 3:
-                summary = f"4 scenes ({len(ep.scene_videos or [])} rendered) - Master vertical 9:16 video"
-            elif gw == 4:
-                summary = "Social packaging (YouTube Shorts/TikTok/IG) & Shopify merch mockup"
-            elif gw == 5:
-                summary = "Reddit/TikTok guerrilla seeding draft campaigns ready"
-            else:
-                summary = "Awaiting verification"
-
-            pending.append({
-                "episode_id": ep.id,
-                "episode_number": getattr(ep, "episode_number", 0) or 0,
-                "title": ep.title,
-                "gateway_num": gw,
-                "gateway_title": meta["title"],
-                "agent_name": meta["agent"],
-                "stage": meta["stage"],
-                "description": meta["description"],
-                "summary": summary,
-                "badge_color": meta["badge_color"],
-                "badge_bg": meta["badge_bg"],
-                "action_label": meta["action_label"],
-                "entered_at": gate_entered_at,
-                "elapsed_seconds": elapsed_sec,
-                "elapsed_str": elapsed_str,
-                "sla_status": sla_status,
-                "sla_class": sla_class,
-                "deep_link": f"/studio?stage={meta['stage']}&episode={ep.id}",
-            })
 
         # Sort: first by SLA status (breached -> attention -> on_track), then by elapsed descending
         priority_order = {"SLA BREACHED": 0, "ATTENTION": 1, "ON TRACK": 2}
