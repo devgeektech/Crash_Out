@@ -20,14 +20,14 @@ import requests
 from app.config import config
 from app.engines.base import BaseVideoEngine, VideoJobResult
 from app.paths import CHARACTERS_DIR, OUTPUT_DIR, public_url
-from app.personas import (
+from app.core.personas import (
     CHARACTERS,
     SCENE_DURATION_SEC,
     VIDU_PROMPT_MAX_CHARS,
     characters_in_scene,
     get_vidu_character_persona_prompt,
 )
-from app.prompts import build_scene_prompt, prepare_api_prompt
+from app.core.prompts import build_scene_prompt, prepare_api_prompt
 
 CHAR_DIR = CHARACTERS_DIR
 os.makedirs(OUTPUT_DIR, exist_ok=True)

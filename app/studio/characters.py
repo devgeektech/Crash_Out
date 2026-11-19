@@ -11,7 +11,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from app.paths import CHARACTERS_DIR
-from app.personas import CHARACTERS
+from app.core.personas import CHARACTERS
 
 LIBRARY_PATH = os.path.join(CHARACTERS_DIR, "library.json")
 CHAR_IDS = ("gary", "linda", "chris", "chloe")
@@ -84,10 +84,8 @@ def load_library() -> Dict[str, Any]:
             data = json.load(fh)
     except Exception:
         data = _default_library()
-    chars = data.setdefault("characters", {})
-    for cid in CHAR_IDS:
-        if cid not in chars:
-            chars[cid] = _seed_entry(cid)
+    data.setdefault("characters", {})
+    data.setdefault("deleted_ids", [])
     return data
 
 
@@ -140,24 +138,121 @@ def _with_media_urls(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 def list_characters() -> List[Dict[str, Any]]:
     lib = load_library()
+    chars = lib.get("characters") or {}
+    deleted = set(lib.get("deleted_ids") or [])
     out = []
+    seen = set()
+    # Core IDs first in order (unless deleted)
     for cid in CHAR_IDS:
-        entry = dict(lib["characters"].get(cid) or _seed_entry(cid))
-        out.append(_with_media_urls(entry))
+        if cid in deleted:
+            continue
+        if cid in chars:
+            out.append(_with_media_urls(dict(chars[cid])))
+            seen.add(cid)
+        else:
+            out.append(_with_media_urls(_seed_entry(cid)))
+            seen.add(cid)
+    # Then any custom personas added later
+    for cid, entry in sorted(chars.items()):
+        if cid not in seen and cid not in deleted:
+            out.append(_with_media_urls(dict(entry)))
+            seen.add(cid)
     return out
 
 
 def get_character(char_id: str) -> Dict[str, Any]:
     cid = (char_id or "").lower()
     lib = load_library()
-    entry = dict(lib["characters"].get(cid) or _seed_entry(cid))
-    return _with_media_urls(entry)
+    chars = lib.get("characters") or {}
+    deleted = set(lib.get("deleted_ids") or [])
+    if cid not in deleted:
+        if cid in chars:
+            return _with_media_urls(dict(chars[cid]))
+        if cid in CHAR_IDS:
+            return _with_media_urls(_seed_entry(cid))
+    # Fallback to first available character
+    available = list_characters()
+    if available:
+        return available[0]
+    return _with_media_urls(_seed_entry("gary"))
+
+
+def delete_character(char_id: str) -> bool:
+    """Delete any character persona (founding or custom) and its reference media."""
+    cid = (char_id or "").lower()
+    lib = load_library()
+    chars = lib.setdefault("characters", {})
+    deleted = lib.setdefault("deleted_ids", [])
+    if cid not in deleted:
+        deleted.append(cid)
+    if cid in chars:
+        chars.pop(cid, None)
+    save_library(lib)
+    return True
+
+
+def create_character(
+    *,
+    name: str,
+    role: str = "",
+    archetype: str = "",
+    description: str = "",
+    personality: str = "",
+    visual_prompt: str = "",
+    voice_tone: str = "",
+    voice_speed: str = "1.00",
+    voice_pitch: str = "medium",
+    voice_delivery: str = "",
+) -> Dict[str, Any]:
+    import re
+
+    clean_name = (name or "").strip()
+    if not clean_name:
+        raise ValueError("Character name cannot be empty.")
+    slug = re.sub(r"[^a-z0-9]+", "_", clean_name.lower()).strip("_") or "character"
+    lib = load_library()
+    chars = lib.setdefault("characters", {})
+    deleted = set(lib.get("deleted_ids") or [])
+
+    cid = slug
+    counter = 1
+    while cid in chars or (cid in CHAR_IDS and cid not in deleted):
+        cid = f"{slug}_{counter}"
+        counter += 1
+
+    entry = {
+        "id": cid,
+        "name": clean_name,
+        "age": None,
+        "role": role.strip(),
+        "archetype": archetype.strip(),
+        "description": description.strip(),
+        "personality": personality.strip(),
+        "visual_prompt": visual_prompt.strip(),
+        "image_file": f"{cid}_9x16.png",
+        "voice": {
+            "tone": voice_tone.strip(),
+            "speed": format_speed_hint(voice_speed),
+            "pitch": normalize_pitch_hint(voice_pitch),
+            "delivery": voice_delivery.strip(),
+            "sample_file": "",
+        },
+        "updated_at": time.time(),
+    }
+    chars[cid] = entry
+    if cid in deleted:
+        lib["deleted_ids"].remove(cid)
+    save_library(lib)
+    return get_character(cid)
 
 
 def update_character(char_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     cid = (char_id or "").lower()
-    if cid not in CHAR_IDS:
+    lib = load_library()
+    chars = lib.setdefault("characters", {})
+    if cid not in chars and cid not in CHAR_IDS:
         raise ValueError(f"Unknown character: {char_id}")
+    entry = dict(chars.get(cid) or _seed_entry(cid))
     lib = load_library()
     entry = dict(lib["characters"].get(cid) or _seed_entry(cid))
     for key in (
@@ -190,7 +285,9 @@ def update_character(char_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
 
 def save_character_image(char_id: str, src_path: str, *, ext: str = ".png") -> str:
     cid = (char_id or "").lower()
-    if cid not in CHAR_IDS:
+    lib = load_library()
+    chars = lib.setdefault("characters", {})
+    if cid not in chars and cid not in CHAR_IDS:
         raise ValueError(f"Unknown character: {char_id}")
     safe_ext = ext if ext.startswith(".") else f".{ext}"
     if safe_ext.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
@@ -215,7 +312,9 @@ _AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".m4a", ".webm", ".aac", ".mp4"}
 def save_character_audio(char_id: str, src_path: str, *, ext: str = ".mp3") -> str:
     """Persist a voice reference sample for Vidu (characters/{id}_voice_sample.ext)."""
     cid = (char_id or "").lower()
-    if cid not in CHAR_IDS:
+    lib = load_library()
+    chars = lib.setdefault("characters", {})
+    if cid not in chars and cid not in CHAR_IDS:
         raise ValueError(f"Unknown character: {char_id}")
     safe_ext = (ext if ext.startswith(".") else f".{ext}").lower()
     if safe_ext == ".mpeg":

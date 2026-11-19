@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Agent M — Master Orchestrator | Crash Out{% endblock %}
+
+{% block content %}
+<section class="page-shell agent-m-page" style="display: flex; flex-direction: column; gap: 1.5rem; max-width: 1400px; margin: 0 auto; width: 100%;">
+
+    <!-- Top Orchestrator Header & Quick Controls -->
+    <div class="panel" style="background: linear-gradient(135deg, #18121f 0%, #26172e 50%, #150f1d 100%); border: 1.5px solid #3d2547; border-radius: var(--radius, 12px); padding: 1.5rem 1.75rem; color: #ffffff; box-shadow: 0 10px 30px rgba(20, 8, 25, 0.25); position: relative; overflow: hidden;">
+        <div style="position: absolute; right: -40px; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 45, 138, 0.15) 0%, rgba(0,0,0,0) 70%); pointer-events: none;"></div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1.25rem; position: relative; z-index: 1;">
+            <div style="max-width: 760px;">
+                <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.45rem;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--brand, #ff2d8a); color: #fff; font-weight: 800; font-size: 0.85rem; box-shadow: 0 0 12px rgba(255, 45, 138, 0.6);">
+                        M
+                    </span>
+                    <h1 style="margin: 0; font-size: 1.45rem; font-weight: 700; color: #ffffff !important; letter-spacing: -0.02em;">
+                        Agent M — Master Supervisor & Orchestration Board
+                    </h1>
+                </div>
+                <p style="margin: 0; font-size: 0.9rem; color: #d1c5d6; line-height: 1.5; font-weight: 400;">
+                    Central supervisor panel overseeing autonomous agents (0–5), active Temporal workflows, pending Human-in-the-Loop (HITL) approval gates with SLA monitoring, and the real-time system incident recovery board.
+                </p>
+            </div>
+
+            <!-- Header Action Controls & Live Status Pill -->
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255, 255, 255, 0.08); padding: 0.4rem 0.85rem; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.12);">
+                    <span style="position: relative; display: flex; height: 10px; width: 10px;">
+                        <span style="position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: {{ overview.status_color }}; opacity: 0.75; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+                        <span style="position: relative; display: inline-flex; border-radius: 50%; height: 10px; width: 10px; background-color: {{ overview.status_color }};"></span>
+                    </span>
+                    <span style="font-size: 0.8rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em;">
+                        {{ overview.status }}
+                    </span>
+                </div>
+
+                <button 
+                    hx-get="/ui/agent-m/telemetry" 
+                    hx-target="#agent-m-telemetry-container" 
+                    hx-swap="innerHTML"
+                    class="btn btn-outline" 
+                    style="background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); color: #fff; font-size: 0.84rem; padding: 0.45rem 0.9rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;">
+                    <span style="font-size: 0.9rem;">↻</span> Refresh Telemetry
+                </button>
+
+                <form method="POST" action="/agent-m/trigger-agent0" style="margin: 0;">
+                    <button type="submit" class="btn btn-primary" style="font-size: 0.84rem; padding: 0.45rem 1rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 14px rgba(255, 45, 138, 0.35);">
+                        <span>⚡</span> Run Agent 0 Ingest
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Supervisor KPI Badges Bar -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin-top: 1.35rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem;">
+            <!-- Health & Mode -->
+            <div>
+                <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">Supervisor State</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin-top: 0.15rem;">
+                    {{ overview.status }}
+                </div>
+                <div style="font-size: 0.78rem; color: #8ecae6; margin-top: 0.1rem;">Autonomous · HITL Enforced</div>
+            </div>
+
+            <!-- Pending HITL Gates -->
+            <div>
+                <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">Pending Approvals (HITL)</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: {% if overview.pending_hitl_count > 0 %}#ff548e{% else %}#10b981{% endif %}; margin-top: 0.15rem;">
+                    {{ overview.pending_hitl_count }} Gates Waiting
+                </div>
+                <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">Across 5 Creative Gateways</div>
+            </div>
+
+            <!-- Temporal Workflow State -->
+            <div>
+                <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">Temporal Workflows</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin-top: 0.15rem;">
+                    {% if overview.temporal.connected %}Online (Cluster){% else %}Async Local Fallback{% endif %}
+                </div>
+                <div style="font-size: 0.78rem; color: {% if overview.temporal.schedule.active %}#a7f3d0{% else %}#fed7aa{% endif %}; margin-top: 0.1rem;">
+                    {% if overview.temporal.schedule.active %}Daily Cron 06:00 EST Active{% else %}Schedule Inactive / Paused{% endif %}
+                </div>
+            </div>
+
+            <!-- Incident Counter -->
+            <div>
+                <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">System Errors & Retries</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: {% if overview.total_incidents > 0 %}#f87171{% else %}#34d399{% endif %}; margin-top: 0.15rem;">
+                    {{ overview.total_incidents }} Incidents
+                </div>
+                <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">With 1-Click Task Recovery</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Navigation Sub-Bar (Direct jump to HITL Assignments or Log Board) -->
+    <div style="display: flex; align-items: center; gap: 0.65rem; overflow-x: auto; padding: 0.2rem 0; scrollbar-width: none;">
+        <a href="#hitl-assignments" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <span>✋</span>
+            <span style="font-weight: 600;">HITL Assignments</span>
+            <span style="font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: {% if overview.pending_hitl_count > 0 %}#fff1f2{% else %}#e7f2ec{% endif %}; color: {% if overview.pending_hitl_count > 0 %}#be123c{% else %}#166534{% endif %}; border: 1px solid {% if overview.pending_hitl_count > 0 %}#fecdd3{% else %}#bbf7d0{% endif %};">{{ overview.pending_hitl_count }}</span>
+        </a>
+        <a href="#system-log-board" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <span>🚨</span>
+            <span style="font-weight: 600;">Log Board — Errors Monitoring</span>
+            <span style="font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: {% if overview.total_incidents > 0 %}#fff1f2{% else %}#e7f2ec{% endif %}; color: {% if overview.total_incidents > 0 %}#be123c{% else %}#166534{% endif %}; border: 1px solid {% if overview.total_incidents > 0 %}#fecdd3{% else %}#bbf7d0{% endif %};">{{ overview.total_incidents }}</span>
+        </a>
+        <a href="#temporal-telemetry" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <span>⚙️</span>
+            <span style="font-weight: 600;">Temporal Workflow Telemetry</span>
+        </a>
+        <a href="#agent-roster" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <span>🤖</span>
+            <span style="font-weight: 600;">Per-Agent Roster</span>
+        </a>
+        <a href="/tasks" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+            <span>📋</span>
+            <span style="font-weight: 600;">Task & Schedule »</span>
+        </a>
+    </div>
+
+    <!-- Live Telemetry Body (Auto-Refreshable via HTMX) -->
+    <div id="agent-m-telemetry-container" hx-get="/ui/agent-m/telemetry" hx-trigger="every 15s" hx-swap="innerHTML">
+        {% include "partials/agent_m_telemetry.html" %}
+    </div>
+
+</section>
+{% endblock %}

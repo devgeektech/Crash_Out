@@ -59,7 +59,7 @@ try:
     async def sync_episode_videos_to_s3_activity(episode_id: str) -> Dict[str, Any]:
         """Activity: Upload merged video and scene clips to Amazon S3."""
         from app.state import state_manager
-        from app.storage import s3_storage
+        from app.infra.storage import s3_storage
 
         logger.info("[Temporal Activity] Syncing episode videos to S3 for episode %s...", episode_id)
         if not s3_storage.is_configured:

@@ -38,6 +38,20 @@ CREATE TABLE IF NOT EXISTS video_assets (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Notifications & Push Tracking Table
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    category VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    deep_link VARCHAR(500) NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    telegram_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 2. Databases required for Temporal engine persistence
 CREATE DATABASE temporal;
 CREATE DATABASE temporal_visibility;

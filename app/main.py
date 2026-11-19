@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.catalog import get_hoa_q4_prompt_episode
+from app.core.catalog import get_hoa_q4_prompt_episode
 from app.config import (
     config,
     CHARACTERS,
@@ -112,15 +112,15 @@ _silence_windows_proactor_connection_reset()
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _install_windows_asyncio_exception_handler(asyncio.get_running_loop())
-    from app.logging_framework import setup_logging
+    from app.infra.logging import setup_logging
     setup_logging()
 
-    from app.auth_users import ensure_auth_ready
+    from app.auth.users import ensure_auth_ready
     from app.db import init_db
     from app.studio.worker import start_worker
     from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
     from app.trends.store import init_store
-    from app.temporal_setup import get_temporal_client, schedule_daily_agent0_cron
+    from app.infra.temporal import get_temporal_client, schedule_daily_agent0_cron
 
     init_db()
     ensure_auth_ready()
@@ -156,9 +156,9 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-from app.security import session_secret  # noqa: E402
-from app.auth_middleware import AuthMiddleware  # noqa: E402
-from app.logging_framework import RequestLoggingMiddleware  # noqa: E402
+from app.auth.security import session_secret  # noqa: E402
+from app.auth.middleware import AuthMiddleware  # noqa: E402
+from app.infra.logging import RequestLoggingMiddleware  # noqa: E402
 
 # Order matters: last added runs first. Request logger -> Auth -> Session.
 app.add_middleware(RequestLoggingMiddleware)
@@ -182,7 +182,7 @@ app.add_middleware(
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 # Register UI routes before static mounts so /ui/* is never shadowed.
-from app.auth_routes import router as auth_router  # noqa: E402
+from app.auth.routes import router as auth_router  # noqa: E402
 from app.ui import router as ui_router  # noqa: E402
 
 app.include_router(auth_router)
@@ -927,8 +927,8 @@ def approve_gateway_6(payload: Dict[str, Any] = Body(...)):
 def system_health():
     """System health & M2 component status check."""
     from app.db import is_postgres
-    from app.storage import s3_service
-    from app.temporal_setup import TEMPORAL_HOST
+    from app.infra.storage import s3_service
+    from app.infra.temporal import TEMPORAL_HOST
 
     db_status = "postgresql" if is_postgres() else "disconnected"
     return {

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def static_fallback_concepts() -> List[Dict[str, Any]]:
     """Hardcoded Gate 1 cards — last resort when live + cache fail."""
-    from app.catalog import VIDEO_CATALOG
+    from app.core.catalog import VIDEO_CATALOG
     from app.trends.schema import pitch_to_concept
 
     first = dict(VIDEO_CATALOG[0]["concept"])

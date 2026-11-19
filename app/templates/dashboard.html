@@ -197,110 +197,125 @@
 
     <!-- Dual Section Layout: Channel Analytics & Merchandising Store -->
     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-        <!-- Channel Performance & Episode Analytics -->
+        
+        <!-- 1. Per-Channel Social Engagement & Live Metrics -->
         <section class="panel" style="background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 1.35rem 1.5rem; box-shadow: 0 6px 20px rgba(40, 8, 28, 0.04);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 0.55rem;">
-                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #ecfeff; border: 1px solid #a5f3fc; font-size: 0.95rem;">📊</span>
-                        <h2 style="font-size: 1.18rem; font-weight: 700; margin: 0; color: var(--text); letter-spacing: -0.01em;">
-                            Channel Performance & Episode Analytics
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: #ecfeff; border: 1px solid #a5f3fc; font-size: 1rem;">📊</span>
+                        <h2 style="font-size: 1.22rem; font-weight: 700; margin: 0; color: var(--text); letter-spacing: -0.01em;">
+                            Channel Performance & Social Growth
                         </h2>
                     </div>
-                    <p class="muted" style="margin: 0.25rem 0 0; font-size: 0.84rem;">
-                        Channel-by-channel successes: views, likes, shares, and engagement rates across distributed episodes.
+                    <p class="muted" style="margin: 0.25rem 0 0; font-size: 0.84rem; font-weight: 400;">
+                        Live audience tracking, total views, subscribers/followers, and growth deltas across distributed micro-drama channels.
                     </p>
                 </div>
-                <span style="display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 800; text-transform: uppercase; font-size: 0.72rem; padding: 0.32rem 0.8rem; letter-spacing: 0.06em; background: #fff7ed; color: #c2410c; border: 1.5px solid #fdba74; border-radius: 999px;">
-                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ea580c;"></span>
-                    Coming Soon
-                </span>
+                
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    <!-- Live indicator -->
+                    <span style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; font-weight: 700; padding: 0.32rem 0.8rem; background: #e7f2ec; color: #166534; border: 1px solid #bbf7d0; border-radius: 999px;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #16a34a;"></span>
+                        Live Tracking
+                    </span>
+
+                    <!-- Timeframe Switcher Tabs -->
+                    <div class="timeframe-switcher" style="display: inline-flex; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 3px;">
+                        <button type="button" class="btn btn-sm timeframe-btn {% if selected_timeframe == '24h' or not selected_timeframe %}btn-primary{% else %}btn-outline{% endif %}" data-tf="24h" onclick="setTimeframe('24h')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; border-radius: 6px;">
+                            Last 24 Hours
+                        </button>
+                        <button type="button" class="btn btn-sm timeframe-btn {% if selected_timeframe == '7d' %}btn-primary{% else %}btn-outline{% endif %}" data-tf="7d" onclick="setTimeframe('7d')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; border-radius: 6px;">
+                            Last 7 Days
+                        </button>
+                        <button type="button" class="btn btn-sm timeframe-btn {% if selected_timeframe == '30d' %}btn-primary{% else %}btn-outline{% endif %}" data-tf="30d" onclick="setTimeframe('30d')" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; border-radius: 6px;">
+                            Last 30 Days
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.15rem;">
-                <!-- YouTube Shorts Card -->
-                <div style="background: linear-gradient(170deg, #ffffff 0%, #fcf7fa 100%); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between;">
+            <!-- Per-Channel Cards Grid (YouTube Shorts, TikTok, Instagram Reels) -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(285px, 1fr)); gap: 1.15rem;">
+                {% for ch in social_metrics.channels %}
+                <article style="background: linear-gradient(170deg, #ffffff 0%, #fdf8fb 100%); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; box-shadow: 0 4px 14px rgba(40, 8, 28, 0.02); display: flex; flex-direction: column; justify-content: space-between; gap: 0.85rem; position: relative; overflow: hidden;">
+                    <!-- Brand Accent Bar -->
+                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 3.5px; background: {{ ch.brand_color }};"></div>
+                    
+                    <!-- Card Top: Channel Identity -->
                     <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 0.55rem;">
-                                <div style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #fee2e2; border: 1px solid #fca5a5; color: #ef4444; font-weight: 900; font-size: 0.85rem;">
-                                    ▶
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: {{ ch.brand_bg }}; border: 1px solid {{ ch.brand_border }}; font-size: 1.05rem;">
+                                    {% if ch.icon_type == 'youtube' %}▶{% elif ch.icon_type == 'tiktok' %}🎵{% else %}📸{% endif %}
                                 </div>
                                 <div>
-                                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text); line-height: 1.2;">YouTube Shorts</div>
-                                    <div class="muted" style="font-size: 0.74rem;">9:16 Vertical Video</div>
+                                    <h3 style="font-size: 1rem; font-weight: 700; margin: 0; color: var(--text); line-height: 1.2;">
+                                        {{ ch.name }}
+                                    </h3>
+                                    <span class="muted" style="font-size: 0.75rem; font-weight: 400;">{{ ch.sub_label }}</span>
                                 </div>
                             </div>
-                            <span style="font-size: 0.7rem; font-weight: 700; background: #fee2e2; color: #b91c1c; padding: 0.18rem 0.55rem; border-radius: 999px;">
-                                Ready
-                            </span>
+                            <a href="{{ ch.channel_url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; display: inline-flex; align-items: center; gap: 0.25rem;" title="Open {{ ch.name }} Channel">
+                                <span>Channel</span>
+                                <span>↗</span>
+                            </a>
                         </div>
-                        <div style="margin: 1.2rem 0 0.4rem; display: flex; align-items: baseline; gap: 0.4rem;">
-                            <span style="font-size: 2rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; line-height: 1;">—</span>
-                            <span class="muted" style="font-size: 0.82rem; font-weight: 500;">views</span>
-                        </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.82rem; color: var(--muted); padding-top: 0.75rem; border-top: 1px dashed var(--border); margin-top: 0.4rem;">
-                        <div>Avg Duration: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                        <div>Engagement: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                    </div>
-                </div>
 
-                <!-- TikTok Card -->
-                <div style="background: linear-gradient(170deg, #ffffff 0%, #fcf7fa 100%); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between;">
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 0.55rem;">
-                                <div style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #e0f2fe; border: 1px solid #7dd3fc; color: #0284c7; font-weight: 900; font-size: 0.95rem;">
-                                    🎵
-                                </div>
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text); line-height: 1.2;">TikTok</div>
-                                    <div class="muted" style="font-size: 0.74rem;">Micro-Drama Algorithm</div>
+                        <!-- Core KPIs: Views & Followers -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1.15rem; padding: 0.85rem 1rem; border-radius: 8px; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border);">
+                            <div>
+                                <span class="muted" style="font-size: 0.73rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; display: block; margin-bottom: 0.15rem;">Total Views</span>
+                                <div style="font-size: 1.65rem; font-weight: 800; color: var(--text); line-height: 1; letter-spacing: -0.02em;">
+                                    {{ ch.total_views_fmt }}
                                 </div>
                             </div>
-                            <span style="font-size: 0.7rem; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 0.18rem 0.55rem; border-radius: 999px;">
-                                Ready
-                            </span>
-                        </div>
-                        <div style="margin: 1.2rem 0 0.4rem; display: flex; align-items: baseline; gap: 0.4rem;">
-                            <span style="font-size: 2rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; line-height: 1;">—</span>
-                            <span class="muted" style="font-size: 0.82rem; font-weight: 500;">impressions</span>
+                            <div>
+                                <span class="muted" style="font-size: 0.73rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; display: block; margin-bottom: 0.15rem;">{{ ch.follower_label }}</span>
+                                <div style="font-size: 1.65rem; font-weight: 800; color: var(--text); line-height: 1; letter-spacing: -0.02em;">
+                                    {{ ch.total_followers_fmt }}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.82rem; color: var(--muted); padding-top: 0.75rem; border-top: 1px dashed var(--border); margin-top: 0.4rem;">
-                        <div>Shares: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                        <div>Comments: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                    </div>
-                </div>
 
-                <!-- Instagram Reels Card -->
-                <div style="background: linear-gradient(170deg, #ffffff 0%, #fcf7fa 100%); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between;">
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 0.55rem;">
-                                <div style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: #fce7f3; border: 1px solid #f472b6; color: #db2777; font-weight: 900; font-size: 0.95rem;">
-                                    📸
-                                </div>
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text); line-height: 1.2;">Instagram Reels</div>
-                                    <div class="muted" style="font-size: 0.74rem;">Audience Growth</div>
+                    <!-- Growth Deltas (Dynamically toggled by timeframe) -->
+                    {% for tf_key in ['24h', '7d', '30d'] %}
+                    {% set m = ch.metrics[tf_key] %}
+                    <div class="timeframe-slot" data-tf="{{ tf_key }}" style="{% if tf_key != '24h' %}display: none;{% endif %}">
+                        <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                            <!-- Views Delta Row -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                                <span class="muted" style="font-weight: 400;">Views Growth:</span>
+                                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                    <span style="font-weight: 600; color: var(--text);">{{ m.views_delta_count }}</span>
+                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 999px; background: #e7f2ec; color: #166534; border: 1px solid #bbf7d0;">
+                                        ▲ {{ m.views_delta_pct }}
+                                    </span>
                                 </div>
                             </div>
-                            <span style="font-size: 0.7rem; font-weight: 700; background: #fce7f3; color: #be185d; padding: 0.18rem 0.55rem; border-radius: 999px;">
-                                Ready
-                            </span>
+
+                            <!-- Followers Delta Row -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
+                                <span class="muted" style="font-weight: 400;">{{ ch.follower_label }} Growth:</span>
+                                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                                    <span style="font-weight: 600; color: var(--text);">{{ m.followers_delta_count }}</span>
+                                    <span style="font-size: 0.74rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 999px; background: #e7f2ec; color: #166534; border: 1px solid #bbf7d0;">
+                                        ▲ {{ m.followers_delta_pct }}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <div style="margin: 1.2rem 0 0.4rem; display: flex; align-items: baseline; gap: 0.4rem;">
-                            <span style="font-size: 2rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; line-height: 1;">—</span>
-                            <span class="muted" style="font-size: 0.82rem; font-weight: 500;">reach</span>
+
+                        <!-- Card Footer: Engagement Rate & Secondary Metric -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.78rem; padding-top: 0.65rem; border-top: 1px dashed var(--border); margin-top: 0.65rem;">
+                            <div>Engagement: <strong style="color: var(--text); font-weight: 600;">{{ m.engagement_rate }}</strong></div>
+                            <div>{{ m.secondary_metric_label }}: <strong style="color: var(--text); font-weight: 600;">{{ m.secondary_metric_val }}</strong></div>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.82rem; color: var(--muted); padding-top: 0.75rem; border-top: 1px dashed var(--border); margin-top: 0.4rem;">
-                        <div>Saves: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                        <div>Followers: <strong style="color: var(--text); font-weight: 600;">—</strong></div>
-                    </div>
-                </div>
+                    {% endfor %}
+                </article>
+                {% endfor %}
             </div>
         </section>
 
@@ -407,5 +422,27 @@
             </div>
         </section>
     </div>
+
+    <!-- Client-side Interactive Timeframe Switcher Script -->
+    <script>
+    function setTimeframe(tf) {
+        document.querySelectorAll('.timeframe-btn').forEach(function(b) {
+            if (b.getAttribute('data-tf') === tf) {
+                b.classList.remove('btn-outline');
+                b.classList.add('btn-primary');
+            } else {
+                b.classList.remove('btn-primary');
+                b.classList.add('btn-outline');
+            }
+        });
+        document.querySelectorAll('.timeframe-slot').forEach(function(slot) {
+            if (slot.getAttribute('data-tf') === tf) {
+                slot.style.display = 'block';
+            } else {
+                slot.style.display = 'none';
+            }
+        });
+    }
+    </script>
 </section>
 {% endblock %}

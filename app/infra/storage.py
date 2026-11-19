@@ -131,3 +131,8 @@ class S3StorageService:
 
 
 s3_service = S3StorageService()
+s3_storage = s3_service
+
+
+def get_s3_service() -> S3StorageService:
+    return s3_service

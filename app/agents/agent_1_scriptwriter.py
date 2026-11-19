@@ -7,9 +7,9 @@ No LLM script model yet — returns a fixed package selected by script_key:
 """
 from typing import Dict, Any, List, Optional
 
-from app.catalog import get_hoa_q4_prompt_episode, get_script_package_for_key
-from app.personas import EPISODE_HOA_VIOLATION
-from app.prompts import build_scene_prompt, prompt_char_count
+from app.core.catalog import get_hoa_q4_prompt_episode, get_script_package_for_key
+from app.core.personas import EPISODE_HOA_VIOLATION
+from app.core.prompts import build_scene_prompt, prompt_char_count
 
 
 class Agent1Scriptwriter:

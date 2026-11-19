@@ -1,0 +1,180 @@
+<div id="system-log-board" class="panel" style="background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: 0 4px 18px rgba(40, 8, 28, 0.04);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: #fff1f2; color: #be123c; font-size: 0.85rem; font-weight: 800;">
+                    🚨
+                </span>
+                <h2 style="font-size: 1.18rem; font-weight: 700; margin: 0; color: var(--text); letter-spacing: -0.01em;">
+                    System Error & Incident Log Board (Separated from Pipeline)
+                </h2>
+            </div>
+            <p class="muted" style="font-size: 0.85rem; margin: 0.25rem 0 0; font-weight: 400;">
+                Live telemetry across external APIs (Vidu, ElevenLabs, OpenAI), FFmpeg stitchers, and worker tasks with 1-click retry recovery.
+            </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <form 
+                hx-post="/agent-m/test-incident?hitl_page={{ overview.hitl_pagination.page }}&incidents_page={{ overview.incidents_pagination.page }}" 
+                hx-target="#system-log-board" 
+                hx-swap="outerHTML" 
+                style="margin: 0;">
+                <button type="submit" class="btn btn-outline" style="font-size: 0.76rem; padding: 0.3rem 0.7rem; border-radius: 6px; cursor: pointer; color: var(--muted);">
+                    <span>🧪</span> Simulate Test Incident
+                </button>
+            </form>
+            <span class="badge" style="font-size: 0.78rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 999px; background: {% if overview.total_incidents > 0 %}#fff1f2{% else %}#e7f2ec{% endif %}; color: {% if overview.total_incidents > 0 %}#be123c{% else %}#166534{% endif %}; border: 1px solid {% if overview.total_incidents > 0 %}#fecdd3{% else %}#bbf7d0{% endif %};">
+                {{ overview.total_incidents }} Active Incidents
+            </span>
+        </div>
+    </div>
+
+    {% if overview.incidents and overview.incidents|length > 0 %}
+    <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 8px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
+            <thead>
+                <tr style="background: var(--surface-2); border-bottom: 1.5px solid var(--border); color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Timestamp</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Severity</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Component</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Task / Episode</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Incident Description</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700;">Retry Count</th>
+                    <th style="padding: 0.75rem 1rem; font-weight: 700; text-align: right;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inc in overview.incidents %}
+                <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s ease;">
+                    <td style="padding: 0.85rem 1rem; font-family: var(--font-mono, monospace); color: var(--muted); white-space: nowrap; font-weight: 400;">
+                        {{ inc.timestamp_str }}
+                    </td>
+                    <td style="padding: 0.85rem 1rem; white-space: nowrap; font-weight: 400;">
+                        {% if inc.severity == 'CRITICAL' %}
+                        <span style="display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #be123c; color: #fff;">
+                            CRITICAL
+                        </span>
+                        {% elif inc.severity == 'ERROR' %}
+                        <span style="display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #fff1f2; color: #be123c; border: 1px solid #fecdd3;">
+                            ERROR
+                        </span>
+                        {% else %}
+                        <span style="display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #fffbeb; color: #b45309; border: 1px solid #fde68a;">
+                            WARNING
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 0.85rem 1rem; font-weight: 600; color: var(--text);">
+                        {{ inc.category }}
+                    </td>
+                    <td style="padding: 0.85rem 1rem; font-weight: 400;">
+                        <div style="font-weight: 600; color: var(--text);">{{ inc.task_name }}</div>
+                        <div style="font-size: 0.76rem; color: var(--muted); line-height: 1.2;">{{ inc.episode_title }}</div>
+                    </td>
+                    <td style="padding: 0.85rem 1rem; max-width: 380px; font-weight: 400;">
+                        <div style="font-family: var(--font-mono, monospace); font-size: 0.78rem; color: #be123c; background: #fff1f2; padding: 0.35rem 0.55rem; border-radius: 6px; border: 1px solid #fecdd3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ inc.error_message }}">
+                            {{ inc.error_message }}
+                        </div>
+                    </td>
+                    <td style="padding: 0.85rem 1rem; font-family: var(--font-mono, monospace); white-space: nowrap; font-weight: 400;">
+                        <span style="font-weight: 700; color: {% if inc.retry_count >= 2 %}#be123c{% else %}var(--text){% endif %};">
+                            Attempt {{ inc.retry_count }}
+                        </span>
+                        <span style="color: var(--muted); font-size: 0.75rem;">/ {{ inc.max_retries }}</span>
+                    </td>
+                    <td style="padding: 0.85rem 1rem; text-align: right; white-space: nowrap; font-weight: 400;">
+                        {% if inc.can_retry %}
+                        <form 
+                            hx-post="/agent-m/incidents/{{ inc.incident_id }}/retry?hitl_page={{ overview.hitl_pagination.page }}&incidents_page={{ overview.incidents_pagination.page }}" 
+                            hx-target="#system-log-board" 
+                            hx-swap="outerHTML"
+                            style="margin: 0; display: inline-block;">
+                            <button type="submit" class="btn btn-primary" style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;">
+                                <span>↻</span> Retry Task
+                            </button>
+                        </form>
+                        {% else %}
+                        <span class="muted" style="font-size: 0.76rem;">Non-retryable</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Log Board Pagination Navigation -->
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.15rem; border-top: 1px solid var(--border); padding-top: 0.85rem;">
+        <div style="font-size: 0.8rem; color: var(--muted); font-weight: 400;">
+            Showing <strong style="color: var(--text); font-weight: 600;">{{ overview.incidents_pagination.start_idx }}–{{ overview.incidents_pagination.end_idx }}</strong> of <strong style="color: var(--text); font-weight: 600;">{{ overview.incidents_pagination.total }}</strong> incident logs
+            {% if overview.incidents_pagination.total_pages > 1 %}
+            · Page <strong style="color: var(--text); font-weight: 600;">{{ overview.incidents_pagination.page }}</strong> of {{ overview.incidents_pagination.total_pages }}
+            {% endif %}
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.35rem;">
+            <!-- Prev Button -->
+            {% if overview.incidents_pagination.has_prev %}
+            <button 
+                hx-get="/ui/agent-m/incidents?page={{ overview.incidents_pagination.prev_page }}&hitl_page={{ overview.hitl_pagination.page }}" 
+                hx-target="#system-log-board" 
+                hx-swap="outerHTML"
+                class="btn btn-outline" 
+                style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; cursor: pointer;">
+                « Prev
+            </button>
+            {% else %}
+            <button disabled class="btn btn-outline" style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; opacity: 0.4; cursor: not-allowed;">
+                « Prev
+            </button>
+            {% endif %}
+
+            <!-- Page Number Buttons -->
+            {% if overview.incidents_pagination.total_pages > 1 %}
+            {% for p in overview.incidents_pagination.pages_list %}
+            <button 
+                hx-get="/ui/agent-m/incidents?page={{ p }}&hitl_page={{ overview.hitl_pagination.page }}" 
+                hx-target="#system-log-board" 
+                hx-swap="outerHTML"
+                class="btn" 
+                style="font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 6px; min-width: 30px; text-align: center; cursor: pointer; {% if p == overview.incidents_pagination.page %}background: var(--brand, #ff2d8a); color: #fff; font-weight: 700; border: 1px solid var(--brand); box-shadow: 0 1px 4px rgba(255,45,138,0.3);{% else %}background: var(--surface); color: var(--text); border: 1px solid var(--border);{% endif %}">
+                {{ p }}
+            </button>
+            {% endfor %}
+            {% endif %}
+
+            <!-- Next Button -->
+            {% if overview.incidents_pagination.has_next %}
+            <button 
+                hx-get="/ui/agent-m/incidents?page={{ overview.incidents_pagination.next_page }}&hitl_page={{ overview.hitl_pagination.page }}" 
+                hx-target="#system-log-board" 
+                hx-swap="outerHTML"
+                class="btn btn-outline" 
+                style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; cursor: pointer;">
+                Next »
+            </button>
+            {% else %}
+            <button disabled class="btn btn-outline" style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; opacity: 0.4; cursor: not-allowed;">
+                Next »
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% else %}
+    <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 1.75rem 1.5rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: #dcfce7; color: #166534; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+            ✓
+        </div>
+        <div>
+            <h3 style="font-size: 0.98rem; font-weight: 700; margin: 0 0 0.2rem; color: #166534;">
+                Zero System Errors & API Incidents
+            </h3>
+            <p style="font-size: 0.84rem; margin: 0; color: #15803d; line-height: 1.4; font-weight: 400;">
+                All Vidu Q4 video generation jobs, FFmpeg stitches, and external API requests have executed with 100% success.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>

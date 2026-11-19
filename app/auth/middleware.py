@@ -15,8 +15,8 @@ from fastapi import Request
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.auth_users import User, apply_user_credentials_to_config, get_user_by_id
-from app.security import create_access_token, decode_access_token
+from app.auth.users import User, apply_user_credentials_to_config, get_user_by_id
+from app.auth.security import create_access_token, decode_access_token
 
 SESSION_USER_KEY = "user_id"
 JWT_COOKIE_NAME = "crashout_jwt"

@@ -263,6 +263,100 @@ def save_scripts_to_db(episode_id: str, scenes: List[Dict[str, Any]]) -> None:
             )
 
 
+
+def log_system_incident(
+    event_type: str,
+    actor: str = "system",
+    details: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """Insert a structured system audit or incident log entry in PostgreSQL."""
+    import json
+
+    try:
+        details_json = json.dumps(details or {})
+        with get_conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO system_audit_logs (event_type, actor, details, created_at)
+                VALUES (?, ?, ?::jsonb, NOW())
+                RETURNING id
+                """,
+                (event_type, actor, details_json),
+            )
+            row = cursor.fetchone()
+            log_id = row.get("id") if row else None
+
+            # Automatically dispatch real-time mobile push alert for critical errors / incidents
+            try:
+                evt_upper = event_type.upper()
+                if (evt_upper.startswith(("ERROR", "FAIL", "INCIDENT")) 
+                    and evt_upper not in {"INCIDENT_RESOLVED", "INCIDENT_RETRIED"}):
+                    from app.infra.notifications import notify_critical_error
+                    det = details or {}
+                    notify_critical_error(
+                        task_name=str(det.get("task_name") or event_type),
+                        error_message=str(det.get("error") or det.get("message") or "System execution incident"),
+                        episode_id=det.get("episode_id"),
+                        category=str(det.get("category") or "System Incident"),
+                        retry_count=int(det.get("retry_count") or 0),
+                    )
+            except Exception:
+                pass
+
+            return log_id
+    except Exception as exc:
+        logger.warning("Could not record system audit log in PostgreSQL: %s", exc)
+        return None
+
+
+def list_system_audit_logs(
+    limit: int = 50,
+    event_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Retrieve recent system audit and incident log entries from PostgreSQL."""
+    try:
+        with get_conn() as conn:
+            if event_type:
+                cursor = conn.execute(
+                    """
+                    SELECT id, event_type, actor, details, created_at
+                    FROM system_audit_logs
+                    WHERE event_type = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (event_type, int(limit)),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    SELECT id, event_type, actor, details, created_at
+                    FROM system_audit_logs
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (int(limit),),
+                )
+            return cursor.fetchall()
+    except Exception as exc:
+        logger.warning("Could not list system audit logs: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Notification Persistence Helpers
+# ---------------------------------------------------------------------------
+
+def get_unread_notifications_count(user_id: Optional[int] = None) -> int:
+    """Retrieve count of unread notifications from PostgreSQL."""
+    try:
+        from app.infra.notifications import get_unread_notifications_count as _get_unread
+        return _get_unread(user_id=user_id)
+    except Exception as exc:
+        logger.warning("Could not get unread notifications count: %s", exc)
+        return 0
+
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
