@@ -19,6 +19,7 @@ from app.auth.users import (
     get_settings,
     settings_public_view,
     update_notification_settings,
+    update_openai_settings,
     update_profile,
     update_vidu_settings,
 )
@@ -30,6 +31,14 @@ from app.engines.vidu_models import (
     VIDU_VIDEO_MODELS,
     options_with_current,
 )
+
+OPENAI_MODELS = [
+    ("gpt-4o", "GPT-4o (Omni Flagship — Fast & High Quality)"),
+    ("gpt-4o-mini", "GPT-4o Mini (Affordable & Ultra-Fast)"),
+    ("gpt-4.1", "GPT-4.1 (Next-Gen Reasoning & Creative Agent)"),
+    ("gpt-4.1-turbo", "GPT-4.1 Turbo (Fast Script & Merch Architecture)"),
+    ("gpt-6-luna", "GPT-6 Luna (Experimental Multi-Agent Creative)"),
+]
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 STATIC_CSS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "css", "app.css")
@@ -116,6 +125,7 @@ def _settings_ctx(request: Request, **extra: Any) -> Dict[str, Any]:
         or selected_model
     )
     selected_res = public.get("vidu_resolution") or config.vidu_resolution or "720p"
+    selected_openai_model = public.get("openai_model") or config.openai_model or "gpt-4o"
     return {
         "request": request,
         "page": "settings",
@@ -129,11 +139,16 @@ def _settings_ctx(request: Request, **extra: Any) -> Dict[str, Any]:
         "selected_vidu_model": selected_model,
         "selected_vidu_reference_model": selected_ref,
         "selected_vidu_resolution": selected_res,
+        "openai_model_options": options_with_current(OPENAI_MODELS, selected_openai_model),
+        "selected_openai_model": selected_openai_model,
+        "has_env_openai_key": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "platform": {
             "video_engine": video_engine_mode(),
             "engine_name": engine_display_name(),
             "vidu_model": config.vidu_model,
             "vidu_has_key": bool(config.vidu_api_key) or public["has_vidu_key"],
+            "openai_has_key": bool(config.openai_api_key) or public["has_openai_key"] or bool(os.getenv("OPENAI_API_KEY", "").strip()),
+            "openai_model": config.openai_model or selected_openai_model,
         },
         "toast": extra.pop("toast", None),
         "toast_kind": extra.pop("toast_kind", "info"),
@@ -329,6 +344,34 @@ def settings_vidu(
     )
     apply_user_credentials_to_config(user.id)
     msg = "Vidu API key cleared." if clear else "Vidu settings saved securely."
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        _settings_ctx(request, toast=msg, toast_kind="ok"),
+    )
+
+
+@router.post("/settings/openai", response_class=HTMLResponse)
+def settings_openai(
+    request: Request,
+    openai_api_key: str = Form(""),
+    clear_openai_key: Optional[str] = Form(None),
+    openai_model: Optional[str] = Form(None),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login?next=/settings", status_code=303)
+
+    clear = bool(clear_openai_key)
+    key_arg = None if (not openai_api_key.strip() and not clear) else openai_api_key
+    update_openai_settings(
+        user.id,
+        api_key=key_arg,
+        clear_api_key=clear,
+        model=(openai_model.strip() if openai_model else None),
+    )
+    apply_user_credentials_to_config(user.id)
+    msg = "OpenAI API key cleared." if clear else "OpenAI API key saved securely."
     return templates.TemplateResponse(
         request,
         "settings.html",

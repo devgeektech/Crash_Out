@@ -7,6 +7,30 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-19 — Added OpenAI API Key Configuration in Settings (Simplified UI)
+
+Completed:
+- **Database Schema Migration (`migrations/006_add_openai_settings.sql`)**:
+  - Added encrypted API key and model selection columns (`openai_api_key_enc`, `openai_model`) to PostgreSQL table `user_settings`.
+  - Executed migration safely via `app/db.py` (`run_migrations()`).
+- **Encrypted Storage & Process Config Binding (`app/auth/users.py`)**:
+  - Extended `UserSettings` dataclass with `openai_api_key_enc`, `openai_model`, `has_openai_key`, and `decrypted_openai_key()`.
+  - Implemented `update_openai_settings(user_id, api_key=..., clear_api_key=..., model=...)`.
+  - Added `apply_user_credentials_to_config(user_id)` to sync decrypted user OpenAI keys into `config.openai_api_key`, `config.openai_model`, `os.environ["OPENAI_API_KEY"]`, and `os.environ["OPENAI_MODEL"]`.
+  - Updated `settings_public_view()` to securely mask the OpenAI API key before returning to client templates.
+- **Settings Endpoint & Context (`app/auth/routes.py`)**:
+  - Added `POST /settings/openai` endpoint to save or clear OpenAI API credentials (`openai_api_key`, `clear_openai_key`).
+- **UI Configuration Panel (`app/templates/settings.html`)**:
+  - Added clean "OpenAI API Credentials" panel placed alongside Vidu API in the Settings grid.
+  - Simplified header and status bar by removing explanatory agent copy, `.env` override hints, and model selection.
+  - Focuses cleanly on the status chip (`Key on file` masked or `No key saved`), "Clear stored key" button, and password input to save a new API key.
+- **Verification**:
+  - Verified `GET /settings` renders without the model selection dropdown (HTTP 200).
+  - Verified `POST /settings/openai` encrypts key cleanly via `TestClient`.
+  - Verified key clearing resets credentials.
+
+---
+
 ### 2026-11-19 — Implemented Social Engagement & Reverted Merchandising Store Cards to Previous UI
 
 Completed:
