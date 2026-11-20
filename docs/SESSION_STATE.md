@@ -7,6 +7,22 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-20 — Enhanced Login Card: Increased Size, Enhanced Logo & Moved Inside Card
+
+Completed:
+- **Moved Logo & Brand Identity Inside Card (`app/templates/auth_login.html`, `app/templates/auth_base.html`)**:
+  - Relocated `.auth-brand` and tagline from floating on the backdrop into `.auth-card-brand` inside `.auth-card`.
+  - Added a subtle separator line between the brand identity and the form header.
+- **Increased Logo & Brand Size (`app/static/css/app.css`)**:
+  - Increased circular badge `.brand-mark` size from 42px to 68px (>60% larger), with glowing hot pink border (`3px solid var(--brand)`) and elevated drop shadow.
+  - Increased typography size for `.brand-title` to `clamp(1.35rem, 3.2vw, 1.65rem)` with dark, high-contrast text (`var(--text)`) suitable for the light card background.
+- **Expanded Login Card Dimensions & Layout (`app/static/css/app.css`)**:
+  - Increased `.auth-center` max-width from 380px–420px to 500px–520px on desktop screens.
+  - Increased card padding to `clamp(2rem, 5vw, 2.75rem)` with modern 20px rounded corners.
+  - Enhanced input fields and sign-in button with comfortable padding and height.
+
+---
+
 ### 2026-11-20 — Synchronized Local Branches (`dev`, `users/vikas/login-setup`) with `master`
 
 Completed:
