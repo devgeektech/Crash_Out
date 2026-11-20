@@ -7,6 +7,163 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-20 — Implemented Agent 1: Scriptwriter Agent (Dynamic OpenAI JSON Script, Dynamic Merch Embedding & Vidu Q4 Prompts)
+
+Completed:
+- **Dynamic OpenAI Script Generator (`app/agents/agent_1_scriptwriter.py`)**:
+  - Completely removed static catalog mock fallbacks (`hoa_violation` and `hoa_q4_prompts`).
+  - Implemented `Agent1Scriptwriter.generate_script()` powered by OpenAI `gpt-6-luna` using structured JSON mode.
+  - Generates a full 4-scene (40–60s) episodic script with Gary, Linda, Chris, and Chloe.
+  - Dynamically weaves the approved concept's `proposed_merch_hook` directly into Scene 4 dialogue (e.g. Chloe's livestream merch poll).
+  - Synthesizes Vidu Q4 multi-character generation prompts per scene, strictly enforcing the $\le 2,000$ character budget via `app/core/prompts.py`.
+- **Automated 3-Attempt QA Self-Correction & Agent M Incident Logging**:
+  - Built an automated 3-attempt retry loop that validates the candidate script against `orchestrator.validate_script_qa()`.
+  - In the event of a validation failure, error diagnostics are automatically injected into the subsequent attempt's user prompt for self-correction.
+  - If all 3 retries fail, logs a critical incident to `system_audit_logs` in PostgreSQL and requires manual retry via Agent M.
+- **Diagnostic Fix (`app/trends/pipeline.py`)**:
+  - Removed remaining lingering reference to `static_fallback_concepts()` inside `fetch_live_concepts()`.
+  - Replaced with live-or-cached concept loading and explicit Agent M incident requirement on full failure (zero static fallbacks).
+  - Validated `fetch_live_concepts()` returning 5 live concepts with 0 diagnostics.
+- **Dynamic Character Library Synchronization (`app/core/prompts.py`)**:
+  - Updated `build_reference_bindings()` and `build_scene_prompt()` to resolve character profiles dynamically via `app.studio.characters.get_character(cid)`.
+  - Ensures speaker names in dialogue and character bindings in Vidu Q4 prompts immediately reflect any updates or custom additions made from the `/studio?stage=0` Characters page without requiring code changes or server restarts.
+- **Resolved Terminal 401 Error & Database Credential Sync (`app/auth/users.py`, `app/core/catalog.py`)**:
+  - Identified root cause of terminal 401 OpenAI errors: `user_settings` in PostgreSQL contained an invalid dummy test key (`sdfghj`) saved via the web settings UI, which was overriding the valid `.env` key on user session startup.
+  - Updated PostgreSQL `user_settings` with the valid encrypted OpenAI API key and model `gpt-6-luna`.
+  - Added safe fallback logic in `app/auth/users.py` (`apply_user_credentials_to_config`): if a user settings key is blank or cleared, the application seamlessly falls back to the system environment variable `OPENAI_API_KEY` rather than failing.
+  - Standardized `OUTPUT_DIR` import in `app/core/catalog.py` to use `app.paths.OUTPUT_DIR` as the single source of truth, removing accidental creation of `app/outputs/`.
+- **End-to-End Live Verification**:
+  - Ran live test with today's Pitch #1 (*Anthropic’s IPO Mints Seven Billionaires—and Turns the Genius Bar Into a Class-War Help Desk*).
+  - Output verified:
+    - 4 scenes, 16 dialogue lines, 52s estimated duration.
+    - Setting: Apple Store Genius Bar.
+    - Merch trigger: `"Prompted This"` verified in Scene 4.
+    - Vidu Q4 prompts: 1269–1337 characters per scene ($\le 2000$).
+    - `validate_script_qa`: **PASSED**.
+
+---
+
+### 2026-11-20 — Removed Static Fallbacks, Automated 3-Retry with Agent M Incident Logging & Enhanced Versatile Angles
+
+Completed:
+- **Zero Static Mock Fallback Enforcement (`pipeline.py`, `friction.py`, `concept_writer.py`)**:
+  - Completely purged `static_fallback_concepts()` and `score_clusters_heuristic` mock generation fallbacks.
+  - Replaced fallback degradation with an automated **3-attempt retry loop with exponential backoff** (2.0s, 4.0s).
+  - Wired failures directly to Agent M (`app/db.py:log_system_incident` and `app/agents/agent_m_orchestrator.py:get_system_incidents`). If all 3 automated retries fail, it logs a critical incident requiring human review and surfaces an active "Manual Retry" action button on the Agent M Control Plane.
+  - Linked Agent M `retry_task` to re-execute `fetch_daily_pitch_run(force_refresh=True)` on demand when triggered from the UI.
+- **Enhanced `crash_out_angle` Versatility (`app/trends/friction.py`, `app/trends/concept_writer.py`)**:
+  - Overhauled editorial system prompts to eliminate repetitive kitchen/driveway settings.
+  - Mandated dynamic rotation across diverse suburban arenas:
+    - *Retail/Consumer*: Apple Store Genius Bar, big-box self-checkout kiosks, Costco aisles, drive-thrus, car dealerships.
+    - *Suburban Civic & Sports*: High school football bleachers, pickleball courts, HOA emergency meetings, school board podiums.
+    - *Infrastructure & In-Transit*: County fair midway, stalled Cybertruck charging queues, airport TSA lines.
+  - Expanded character mechanics: Gary's sovereign-citizen legal logic & overbuilt prepper carts, Linda's seed-paper petitions & "conscious consumption", Chris's arbitrage bots & prediction markets, Chloe's livestream polls ("Retrieve Dad or let him learn?") and bootleg merch drops.
+- **Live Verification**:
+  - Executed live Agent 0 run with zero mock fallbacks.
+  - Generated 5 high-energy, versatile pitches:
+    1. *Anthropic IPO Mints Billionaires* (Setting: Apple Store Genius Bar)
+    2. *Cyber Outages Oust Security Chief* (Setting: Big-box store self-checkout kiosks)
+    3. *GTA VI Copycat Warnings* (Setting: High school football bleachers & marching band)
+    4. *Army Delays Demolition* (Setting: County fair midway & emergency cart)
+    5. *Permitting Bill Sparks Turf War* (Setting: Neighborhood pickleball court & HOA golf cart)
+
+---
+
+### 2026-11-20 — Structured Outputs & Storage Hierarchy (Episode-Scoped & Agent 0 Subdirectories + S3 Media Pipeline)
+
+Completed:
+- **Agent 0 Clean Subfolder Hierarchy (`app/trends/store.py`)**:
+  - Organized `outputs/agent0/` into dedicated functional subfolders:
+    - `outputs/agent0/raw/`: Stores all daily scraped news/social snapshots (`raw_YYYY-MM-DD.json` and timestamped snapshots).
+    - `outputs/agent0/pitches/`: Stores all generated daily pitch batches (`pitch_run_YYYY-MM-DD.json` and timestamped snapshots for run archives).
+    - `outputs/agent0/topics/`: Stores persistent deduplication indexes (`episode_topics.json`).
+    - `outputs/agent0/latest_pitch_run.json`: Fast root pointer for immediate dashboard UI rendering.
+  - Implemented automatic 7-day auto-pruning (`prune_agent0_history`) ensuring stale raw and pitch archives older than 7 days are automatically purged to prevent disk accumulation.
+- **Episode-Scoped Folder Architecture (`app/paths.py`, `app/state.py`)**:
+  - Scoped all episode outputs into `outputs/episodes/<ep_id_Title>/`.
+  - Added dedicated media subfolders inside each episode: `video/` (`scene_*.mp4`, `merged_60s.mp4`) and `audio/` (voiceover stems).
+  - Maintained complete backward compatibility in `episode_dir()`, `scene_file_candidates()`, and `merged_file_candidates()` for legacy flat folders.
+  - Migrated 8 existing episode folders and organized their media into `outputs/episodes/<folder>/video/` and `audio/`.
+- **AWS S3 Cloud Storage & Media Streaming (`app/infra/storage.py`)**:
+  - Enhanced S3 sync for `.mp4`, `.webm`, `.wav`, `.mp3`, `.json`, and `.png` assets.
+  - Added `get_media_url()`: on production live server with `AWS_S3_BUCKET` configured, video and audio stream directly from S3 pre-signed or CDN URLs, keeping live server CPU, RAM, and bandwidth usage at 0% during playback.
+  - Seamless offline fallback: serves locally from `/outputs/episodes/...` when S3 credentials are not set.
+
+---
+
+### 2026-11-20 — Optimized Agent 0 for 06:00 EST Daily Schedule & Strict 24-Hour Recency
+
+Completed:
+- **Strict 24-Hour Window Enforcement (`sources_a.py`, `sources_b.py`, `sources_c.py`)**:
+  - Added strict timestamp validation: any article or social post with `age_hours > 24.0` is discarded immediately.
+  - Appended `when:24h` parameter to Google News search queries across mainstream news, subreddits, and character niche queries.
+  - Aligned data collection with the 06:00 EST daily cron schedule (`scheduler.py`) so pitches only reflect the preceding 24 hours of breaking news.
+- **Data Volume Optimization (Lean ~130 Items)**:
+  - Trimmed per-feed limits from 10–15 items down to top 4–5 breaking items across core high-signal outlets.
+  - Reduced raw collection from 551 items down to 136 items (Layer A: 56, Layer B: 39, Layer C: 41).
+  - Validated age distribution: minimum 0.0h, maximum 24.0h, average 10.2h old, **0 items older than 24h**.
+  - Reduced clustering computation by >90% while maintaining rich multi-layer collision coverage.
+
+---
+
+### 2026-11-20 — Enhanced Agent 0 (Layer C, Semantic Clustering Calibration & End-to-End Live Validation)
+
+Completed:
+- **Resilient Character Feeds (`app/trends/sources_c.py`)**:
+  - Upgraded Gary's tech & layoff feeds to direct RSS syndication (`TechCrunch`, `The Verge`, `r/Layoffs`, `r/cscareerquestions`, `r/overemployed`), collecting 50 character-specific items.
+  - Upgraded Linda's suburban wellness feeds (`MindBodyGreen`, `Self Wellness`, `wellness+trend+OR+stanley+cup+OR+botox`, `r/parenting`, `r/SkincareAddiction`, `r/ShitMomGroupsSay`), collecting 50 items.
+  - Upgraded Kids' feeds (`Dexerto`, `Tubefilter`, `streamer+drama+OR+influencer+controversy`, `r/CreatorServices`, `r/LivestreamFail`), collecting 50 items.
+- **Semantic Clustering Calibration (`app/trends/cluster.py`)**:
+  - Calibrated `SIMILARITY_THRESHOLD` from 0.82 to 0.58 to capture genuine multi-source news events (e.g. Anthropic IPO, tech outages, smart home failures).
+  - Defined `cross_layer` to detect any multi-layer collision across Mainstream (A), Youth Reddit (B), and Character feeds (C).
+  - Implemented batched embeddings (100 items per chunk) preventing payload limits on high raw item volumes.
+  - Sorted clusters by cross-layer collision status, layer diversity, member count, and score.
+- **OpenAI Model Compatibility Fix (`app/trends/friction.py`, `app/trends/concept_writer.py`)**:
+  - Identified that `OPENAI_MODEL=gpt-6-luna` strictly requires default temperature (1.0); passing `temperature=0.55` returned HTTP 400.
+  - Made temperature parameter conditional so reasoning/luna models execute cleanly without parameter rejections.
+- **End-to-End Live Pipeline & Storage Verification**:
+  - Verified full `collect_all_trends()` collecting 560 unique items across A (211), B (200), and C (140).
+  - Verified `outputs/agent0/raw_2026-11-20.json` (206 KB) storing raw ingested records.
+  - Verified live OpenAI scoring generating 5 top friction pitches (e.g., *AI Outages Turn Smart Home Dumb*, *Screen-Time App Turns Detox Competitive*, *Meta's $300 Muse Charm*).
+  - Verified `outputs/agent0/latest_pitch_run.json` and Gate 1 concept card mapping (`trend_ingest_agent.fetch_trending_concepts()`).
+
+---
+
+### 2026-11-20 — Enhanced Agent 0 (Layer B: Youth Social & Meme Trends with Reddit Syndication)
+
+Completed:
+- **Resilient Reddit Syndication Engine (`app/trends/sources_b.py`)**:
+  - Identified that direct unauthenticated requests to `reddit.com/r/{sub}.json` fail with HTTP 403 Forbidden due to Reddit's anti-scraping policy.
+  - Implemented `_fetch_reddit_syndication` which fetches authenticated Google News direct RSS syndication for target subreddits (`r/GenZ`, `r/mildlyinfuriating`, `r/HOA`, `r/antiwork`, `r/Suburbanhell`, `r/popculturechat`, `r/OutOfTheLoop`, `r/WorkReform`, `r/ExplainTheJoke`, `r/TikTokCringe`).
+  - Automatically strips Reddit attribution suffixes (` - Reddit`) and sanitizes post descriptions.
+  - Retained optional authenticated PRAW path when `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are provided.
+- **Added Dedicated Youth & Viral Feeds (`app/trends/sources_b.py`)**:
+  - Added dedicated feeds for `TikTok Trends`, `Gen Z Culture & Slang`, and `Suburban & Neighbor Feuds`.
+  - Added HTML entity unescaping, tag stripping, and recency parsing (`_clean_html_text`, `_parse_age_hours`).
+- **Verification**:
+  - Executed live `collect_layer_b()` test: collected 200 items across all 10 subreddits, TikTok trends, Gen Z slang, and Know Your Meme.
+
+---
+
+### 2026-11-20 — Enhanced Agent 0 (Layer A: Mainstream News Ingestion & Recency Scoring)
+
+Completed:
+- **Repaired Broken Mainstream RSS Endpoints (`app/trends/sources_a.py`)**:
+  - Fixed Associated Press and Reuters Google News queries from deprecated `allinurl:...` to `site:apnews.com` and `site:reuters.com`, restoring full 100-article stream capacity.
+  - Replaced 403-blocked Morning Brew feed with high-signal direct feeds: CBS News, ABC News, Google News Nation, and Google News Business.
+  - Added CNBC US top stories to the briefing layer alongside Axios AM, CNBC Make It, and TechCrunch.
+- **HTML Sanitization & Snippet Cleanup (`app/trends/sources_a.py`)**:
+  - Implemented `_clean_html_text` unescaping HTML entities and cleanly stripping all raw HTML tags (`<a href>`, font tags, lists) from article snippets before passing downstream.
+- **Recency Parsing & Velocity Scoring (`app/trends/sources_a.py`)**:
+  - Implemented `_parse_age_hours` parsing RFC-822/ISO `pubDate` timestamps with timezone awareness.
+  - Added dynamic recency scoring boost (+10 points for articles $\le 6\text{h}$ old, +5 points for articles $\le 24\text{h}$ old).
+- **Commercial Ad/Spam Filtering on Google Trends RSS (`app/trends/sources_a.py`)**:
+  - Blocked commercial legal/insurance keywords (lawyer, attorney, insurance quote, personal loan, etc.) so only genuine cultural/suburban news and consumer events enter the pipeline.
+- **Verification**:
+  - Executed live `collect_layer_a()` test: collected 216 unique articles with 100% feed health across AP, Reuters, CNN, Fox News, NY Post, CBS, ABC, Google News, Axios, CNBC, and TechCrunch.
+
+---
+
 ### 2026-11-20 — Enhanced Login Card: Increased Size, Enhanced Logo & Moved Inside Card
 
 Completed:

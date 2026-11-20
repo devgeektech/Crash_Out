@@ -3,9 +3,13 @@ Layer A — Mainstream US consensus & breaking news (parent / suburban signal).
 """
 from __future__ import annotations
 
+import email.utils
+import html
 import logging
+import re
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import requests
 
@@ -15,22 +19,39 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_TRENDS_RSS = "https://trends.google.com/trending/rss?geo=US"
 
-# Free Direct RSS Feeds requested by client (no paid API plan needed)
+# Google Trends commercial SEO spam keywords to discard
+GOOGLE_TRENDS_SPAM = {
+    "lawyer",
+    "attorney",
+    "law firm",
+    "settlement",
+    "lawsuit",
+    "mesothelioma",
+    "insurance quote",
+    "car accident",
+    "truck accident",
+    "slip and fall",
+    "crypto exchange",
+    "personal loan",
+    "mortgage rate",
+}
+
+# Free Direct RSS Feeds (high-signal mainstream US consensus & suburban signal, strictly last 24h)
 MAINSTREAM_RSS_FEEDS = [
-    ("Associated Press", "https://news.google.com/rss/search?q=when:24h+allinurl:apnews.com&hl=en-US&gl=US&ceid=US:en"),
-    ("Reuters", "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=en-US&gl=US&ceid=US:en"),
+    ("Associated Press", "https://news.google.com/rss/search?q=site:apnews.com+when:24h&hl=en-US&gl=US&ceid=US:en"),
+    ("Reuters", "https://news.google.com/rss/search?q=site:reuters.com+when:24h&hl=en-US&gl=US&ceid=US:en"),
     ("CNN", "http://rss.cnn.com/rss/cnn_topstories.rss"),
     ("Fox News", "https://moxie.foxnews.com/google-publisher/latest.xml"),
     ("New York Post", "https://nypost.com/feed/"),
-    ("Morning Brew", "https://www.morningbrew.com/daily/stories.rss"),
-    ("The Verge", "https://www.theverge.com/rss/index.xml"),
+    ("CBS News", "https://www.cbsnews.com/latest/rss/main"),
+    ("ABC News", "https://abcnews.go.com/abcnews/topstories"),
     ("Google News US", "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"),
+    ("Google News Business", "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en"),
 ]
 
 BRIEFING_FEEDS = [
     ("Axios AM", "https://api.axios.com/feed/"),
     ("CNBC Make It", "https://www.cnbc.com/id/10001147/device/rss/rss.html"),
-    ("Tech layoffs pulse", "https://techcrunch.com/category/startups/feed/"),
 ]
 
 NEWSAPI_OUTLETS = [
@@ -43,6 +64,30 @@ NEWSAPI_OUTLETS = [
     "fox-news",
     "new-york-post",
 ]
+
+
+def _clean_html_text(raw: str) -> str:
+    """Unescape HTML entities, strip tags, and collapse whitespace."""
+    if not raw:
+        return ""
+    text = html.unescape(raw)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return " ".join(text.split()).strip()
+
+
+def _parse_age_hours(date_str: str) -> Optional[float]:
+    """Parse RFC-822 or ISO pubDate string to age in hours."""
+    if not date_str:
+        return None
+    try:
+        dt = email.utils.parsedate_to_datetime(date_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        diff_sec = (now - dt).total_seconds()
+        return max(0.0, diff_sec / 3600.0)
+    except Exception:
+        return None
 
 
 def _item(
@@ -74,7 +119,12 @@ def _fetch_rss(url: str, *, timeout: int = 12) -> List[Dict[str, Any]]:
         resp = requests.get(
             url,
             timeout=timeout,
-            headers={"User-Agent": "CrashOutAgent0/1.0"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+            },
         )
         if resp.status_code != 200 or not resp.content:
             return []
@@ -86,10 +136,11 @@ def _fetch_rss(url: str, *, timeout: int = 12) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     # RSS 2.0 + Atom
     for node in root.findall(".//item") + root.findall(".//{http://www.w3.org/2005/Atom}entry"):
-        title = (
+        raw_title = (
             (node.findtext("title") or node.findtext("{http://www.w3.org/2005/Atom}title") or "")
             .strip()
         )
+        title = _clean_html_text(raw_title)
         if not title:
             continue
         link = node.findtext("link") or ""
@@ -97,20 +148,43 @@ def _fetch_rss(url: str, *, timeout: int = 12) -> List[Dict[str, Any]]:
             link_el = node.find("{http://www.w3.org/2005/Atom}link")
             if link_el is not None:
                 link = link_el.attrib.get("href") or ""
-        desc = (
+        raw_desc = (
             node.findtext("description")
             or node.findtext("{http://www.w3.org/2005/Atom}summary")
+            or node.findtext("{http://www.w3.org/2005/Atom}content")
             or ""
         )
-        items.append({"title": title, "link": link, "description": desc})
+        desc = _clean_html_text(raw_desc)
+        pub_date = (
+            node.findtext("pubDate")
+            or node.findtext("{http://www.w3.org/2005/Atom}published")
+            or node.findtext("{http://www.w3.org/2005/Atom}updated")
+            or ""
+        )
+        age_hours = _parse_age_hours(pub_date)
+        # Strict 24-hour window filter: only topics from the last 24 hours
+        if age_hours is not None and age_hours > 24.0:
+            continue
+        items.append({
+            "title": title,
+            "link": link,
+            "description": desc,
+            "pub_date": pub_date,
+            "age_hours": age_hours,
+        })
     return items
 
 
 def fetch_google_trends_us() -> List[Dict[str, Any]]:
     rows = _fetch_rss(GOOGLE_TRENDS_RSS)
     out: List[Dict[str, Any]] = []
-    for i, row in enumerate(rows[:40]):
+    rank = 0
+    for row in rows[:5]:
         title = row.get("title") or ""
+        lower_t = title.lower()
+        if any(spam in lower_t for spam in GOOGLE_TRENDS_SPAM):
+            continue
+
         # Google Trends RSS often includes approx traffic in description / ht:approx_traffic
         traffic = 0
         desc = row.get("description") or ""
@@ -118,7 +192,7 @@ def fetch_google_trends_us() -> List[Dict[str, Any]]:
             if token.isdigit():
                 traffic = max(traffic, int(token))
         # Prefer spikes; keep lower-volume as soft signals
-        score = 90.0 - i + (15.0 if traffic >= 50000 else 0.0)
+        score = 92.0 - rank + (15.0 if traffic >= 50000 else 0.0)
         out.append(
             _item(
                 title=title,
@@ -127,32 +201,41 @@ def fetch_google_trends_us() -> List[Dict[str, Any]]:
                 score=score,
                 snippet=desc[:240],
                 outlet="Google Trends US",
-                raw={"approx_traffic": traffic},
+                raw={"approx_traffic": traffic, "age_hours": row.get("age_hours")},
             )
         )
+        rank += 1
     return out
 
 
 def fetch_mainstream_rss() -> List[Dict[str, Any]]:
-    """Fetch free direct RSS feeds from AP, Reuters, CNN, Fox News, NY Post, Morning Brew, The Verge & Google News."""
+    """Fetch free direct RSS feeds from AP, Reuters, CNN, Fox News, NY Post, CBS, ABC, and Google News (top 5, last 24h)."""
     out: List[Dict[str, Any]] = []
     for label, url in MAINSTREAM_RSS_FEEDS:
         rows = _fetch_rss(url)
-        for i, row in enumerate(rows[:15]):
+        for i, row in enumerate(rows[:5]):
             title = row.get("title") or ""
             if not title:
                 continue
+            base_score = 85.0 - i
+            age = row.get("age_hours")
+            if age is not None:
+                if age <= 6.0:
+                    base_score += 10.0
+                elif age <= 24.0:
+                    base_score += 5.0
             out.append(
                 _item(
                     title=title,
                     source="mainstream_rss",
                     url=row.get("link") or "",
-                    score=85.0 - i,
+                    score=round(base_score, 1),
                     snippet=(row.get("description") or "")[:400],
                     outlet=label,
+                    raw={"age_hours": age, "pub_date": row.get("pub_date")},
                 )
             )
-        time.sleep(0.1)
+        time.sleep(0.05)
     return out
 
 
@@ -241,21 +324,29 @@ def fetch_briefing_rss() -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for label, url in BRIEFING_FEEDS:
         rows = _fetch_rss(url)
-        for i, row in enumerate(rows[:12]):
+        for i, row in enumerate(rows[:4]):
             title = row.get("title") or ""
             if not title:
                 continue
+            base_score = 75.0 - i
+            age = row.get("age_hours")
+            if age is not None:
+                if age <= 6.0:
+                    base_score += 10.0
+                elif age <= 24.0:
+                    base_score += 5.0
             out.append(
                 _item(
                     title=title,
                     source="briefing_rss",
                     url=row.get("link") or "",
-                    score=70.0 - i,
+                    score=round(base_score, 1),
                     snippet=(row.get("description") or "")[:400],
                     outlet=label,
+                    raw={"age_hours": age, "pub_date": row.get("pub_date")},
                 )
             )
-        time.sleep(0.15)
+        time.sleep(0.05)
     return out
 
 

@@ -17,9 +17,16 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.paths import OUTPUT_DIR, build_episode_folder_name, resolve_episode_folder
+from app.paths import (
+    EPISODES_DIR,
+    OUTPUT_DIR,
+    build_episode_folder_name,
+    episode_dir,
+    resolve_episode_folder,
+)
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(EPISODES_DIR, exist_ok=True)
 
 INDEX_FILE = os.path.join(OUTPUT_DIR, "pipeline_index.json")
 LEGACY_STATE_FILE = os.path.join(OUTPUT_DIR, "pipeline_state.json")
@@ -38,11 +45,10 @@ def _remove_legacy_deleted_file() -> None:
 
 
 def _ensure_episode_dir(ep: "Episode") -> str:
-    """Create episode folder without importing paths.ensure (avoids circular import)."""
+    """Create episode folder using canonical paths."""
     folder = ep.output_folder or build_episode_folder_name(ep.id, ep.title)
     ep.output_folder = folder
-    path = os.path.join(OUTPUT_DIR, folder)
-    os.makedirs(path, exist_ok=True)
+    path = episode_dir(folder)
     marker = os.path.join(path, ".episode_id")
     with open(marker, "w", encoding="utf-8") as fh:
         fh.write(ep.id)
@@ -51,7 +57,7 @@ def _ensure_episode_dir(ep: "Episode") -> str:
 
 def _episode_folder_path(ep: "Episode") -> str:
     folder = ep.output_folder or build_episode_folder_name(ep.id, ep.title)
-    return os.path.join(OUTPUT_DIR, folder)
+    return episode_dir(folder)
 
 
 def _episode_has_video_files(ep: "Episode") -> bool:
@@ -59,9 +65,10 @@ def _episode_has_video_files(ep: "Episode") -> bool:
     if not os.path.isdir(folder):
         return False
     try:
-        for name in os.listdir(folder):
-            if os.path.splitext(name)[1].lower() in _VIDEO_EXTS:
-                return True
+        for root, _, files in os.walk(folder):
+            for name in files:
+                if os.path.splitext(name)[1].lower() in _VIDEO_EXTS:
+                    return True
     except OSError:
         return False
     return False
@@ -166,7 +173,7 @@ class Episode(BaseModel):
 
 def episode_state_path(ep: Episode) -> str:
     folder = ep.output_folder or build_episode_folder_name(ep.id, ep.title)
-    return os.path.join(OUTPUT_DIR, folder, EPISODE_STATE_FILENAME)
+    return os.path.join(episode_dir(folder), EPISODE_STATE_FILENAME)
 
 
 def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
@@ -220,7 +227,7 @@ class StateManager:
                     folder = (meta or {}).get("output_folder") or build_episode_folder_name(
                         ep_id, (meta or {}).get("title") or ep_id
                     )
-                    path = os.path.join(OUTPUT_DIR, folder, EPISODE_STATE_FILENAME)
+                    path = os.path.join(episode_dir(folder), EPISODE_STATE_FILENAME)
                     ep = self._read_episode_file(path)
                     if ep is None:
                         continue
@@ -240,7 +247,7 @@ class StateManager:
     def _preferred_active_id(self) -> Optional[str]:
         for ep in self.episodes.values():
             folder = _episode_folder_path(ep)
-            if os.path.isfile(os.path.join(folder, "merged_60s.mp4")):
+            if os.path.isfile(os.path.join(folder, "merged_60s.mp4")) or os.path.isfile(os.path.join(folder, "video", "merged_60s.mp4")):
                 return ep.id
         return next(iter(self.episodes), None)
 
@@ -258,21 +265,24 @@ class StateManager:
     def _discover_orphan_episodes(self) -> None:
         """Only recover folders that still have video files."""
         try:
-            for name in os.listdir(OUTPUT_DIR):
-                folder = os.path.join(OUTPUT_DIR, name)
-                if not os.path.isdir(folder) or not name.startswith("ep_"):
+            for parent_dir in (EPISODES_DIR, OUTPUT_DIR):
+                if not os.path.isdir(parent_dir):
                     continue
-                path = os.path.join(folder, EPISODE_STATE_FILENAME)
-                if not os.path.isfile(path):
-                    continue
-                ep = self._read_episode_file(path)
-                if ep is None or ep.id in self.episodes:
-                    continue
-                if not ep.output_folder:
-                    ep.output_folder = name
-                if not _episode_has_video_files(ep):
-                    continue
-                self.episodes[ep.id] = ep
+                for name in os.listdir(parent_dir):
+                    folder = os.path.join(parent_dir, name)
+                    if not os.path.isdir(folder) or not name.startswith("ep_"):
+                        continue
+                    path = os.path.join(folder, EPISODE_STATE_FILENAME)
+                    if not os.path.isfile(path):
+                        continue
+                    ep = self._read_episode_file(path)
+                    if ep is None or ep.id in self.episodes:
+                        continue
+                    if not ep.output_folder:
+                        ep.output_folder = name
+                    if not _episode_has_video_files(ep):
+                        continue
+                    self.episodes[ep.id] = ep
         except OSError:
             pass
 
@@ -297,26 +307,32 @@ class StateManager:
             tracked_folders = {
                 (ep.output_folder or "") for ep in self.episodes.values() if ep.output_folder
             }
-            for name in list(os.listdir(OUTPUT_DIR)):
-                if not name.startswith("ep_"):
+            for parent_dir in (EPISODES_DIR, OUTPUT_DIR):
+                if not os.path.isdir(parent_dir):
                     continue
-                folder = os.path.join(OUTPUT_DIR, name)
-                if not os.path.isdir(folder):
-                    continue
-                has_video = False
-                try:
-                    for fname in os.listdir(folder):
-                        if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
-                            has_video = True
-                            break
-                except OSError:
-                    continue
-                if has_video:
-                    continue
-                if name in tracked_folders:
-                    continue
-                shutil.rmtree(folder, ignore_errors=True)
-                print(f"  scrubbed empty folder: {name}")
+                for name in list(os.listdir(parent_dir)):
+                    if not name.startswith("ep_"):
+                        continue
+                    folder = os.path.join(parent_dir, name)
+                    if not os.path.isdir(folder):
+                        continue
+                    has_video = False
+                    try:
+                        for root, _, files in os.walk(folder):
+                            for fname in files:
+                                if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
+                                    has_video = True
+                                    break
+                            if has_video:
+                                break
+                    except OSError:
+                        continue
+                    if has_video:
+                        continue
+                    if name in tracked_folders:
+                        continue
+                    shutil.rmtree(folder, ignore_errors=True)
+                    print(f"  scrubbed empty folder: {name}")
         except OSError:
             pass
 

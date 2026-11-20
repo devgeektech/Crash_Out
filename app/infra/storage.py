@@ -64,6 +64,12 @@ class S3StorageService:
             extra_args["ContentType"] = content_type
         elif local_path.endswith(".mp4"):
             extra_args["ContentType"] = "video/mp4"
+        elif local_path.endswith(".webm"):
+            extra_args["ContentType"] = "video/webm"
+        elif local_path.endswith(".wav"):
+            extra_args["ContentType"] = "audio/wav"
+        elif local_path.endswith(".mp3"):
+            extra_args["ContentType"] = "audio/mpeg"
         elif local_path.endswith(".json"):
             extra_args["ContentType"] = "application/json"
         elif local_path.endswith(".png"):
@@ -128,6 +134,18 @@ class S3StorageService:
                 if uri:
                     uploaded_uris.append(uri)
         return uploaded_uris
+
+    def get_media_url(self, episode_id: str, rel_path: str, fallback_local_url: str = "") -> str:
+        """
+        Returns an S3 presigned or direct URL if S3 is configured;
+        otherwise returns fallback_local_url.
+        """
+        if not self._s3_client:
+            return fallback_local_url
+        clean_rel = rel_path.replace("\\", "/").lstrip("/")
+        s3_key = f"episodes/{episode_id}/{clean_rel}"
+        url = self.generate_presigned_url(s3_key, expires_in=86400)
+        return url or fallback_local_url
 
 
 s3_service = S3StorageService()

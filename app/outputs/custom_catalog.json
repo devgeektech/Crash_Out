@@ -1,0 +1,314 @@
+{
+  "items": [
+    {
+      "id": "custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+      "user_id": 3,
+      "script_key": "custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+      "title": "AI IPO Face-Plants, Costco Bulk Aisle Becomes a Margin Call",
+      "subtitle": "Agent 0 Mockup (5 Pitches) \u00b7 2026-11-20",
+      "duration_label": "~55s \u00b7 15/15/15/10",
+      "status_label": "Ready to produce",
+      "premise": "Agent 0 Mockup (5 Pitches) \u00b7 2026-11-20",
+      "merch": "Buy The Dip",
+      "custom": true,
+      "created_at": 1795181022.228466,
+      "script_package": {
+        "episode_id": "custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+        "episode_title": "AI IPO Face-Plants, Costco Bulk Aisle Becomes a Margin Call",
+        "total_duration_sec": 55,
+        "scene_count": 4,
+        "location": "The Pearson Family Kitchen, Suburban Home",
+        "merch_punchline_trigger": "Buy The Dip",
+        "source": "manual_add",
+        "script_key": "custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+        "notes": [
+          "Manually added video \u2014 edit scene prompts before Generate Video"
+        ],
+        "scenes": [
+          {
+            "scene_id": 1,
+            "title": "Clip 1 \u00b7 00:00\u201300:15",
+            "time_range": "00:00 - 00:15",
+            "time_start_sec": 0,
+            "time_end_sec": 15,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 1 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 1 \u2014 Clip 1 \u00b7 00:00\u201300:15\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 2,
+            "title": "Clip 2 \u00b7 00:15\u201300:30",
+            "time_range": "00:15 - 00:30",
+            "time_start_sec": 15,
+            "time_end_sec": 30,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 2 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 2 \u2014 Clip 2 \u00b7 00:15\u201300:30\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 3,
+            "title": "Clip 3 \u00b7 00:30\u201300:45",
+            "time_range": "00:30 - 00:45",
+            "time_start_sec": 30,
+            "time_end_sec": 45,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 3 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 3 \u2014 Clip 3 \u00b7 00:30\u201300:45\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 4,
+            "title": "Clip 4 \u00b7 00:45\u201300:55",
+            "time_range": "00:45 - 00:55",
+            "time_start_sec": 45,
+            "time_end_sec": 55,
+            "duration_sec": 10,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 4 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 4 \u2014 Clip 4 \u00b7 00:45\u201300:55\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          }
+        ]
+      },
+      "concept": {
+        "id": "concept_custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+        "title": "AI IPO Face-Plants, Costco Bulk Aisle Becomes a Margin Call",
+        "headline": "AI IPO Face-Plants, Costco Bulk Aisle Becomes a Margin Call",
+        "cultural_hook": "",
+        "youth_sentiment_summary": "",
+        "premise": "",
+        "crash_out_angle": "",
+        "synopsis": "",
+        "conflict": "",
+        "tone": "",
+        "suggested_merch": "",
+        "proposed_merch_hook": "",
+        "characters_involved": [
+          "gary",
+          "linda",
+          "chris",
+          "chloe"
+        ],
+        "script_key": "custom_ai_ipo_face_plants_costco_bulk_aisle_becomes_a_margin_call_1795181022",
+        "manual": true,
+        "empty": false
+      }
+    },
+    {
+      "id": "custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+      "user_id": 3,
+      "script_key": "custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+      "title": "Anthropic IPO Whiplash Turns EV Showroom Into a Margin-Call Confessional",
+      "subtitle": "Agent 0 Mockup (5 Pitches) \u00b7 2026-11-20",
+      "duration_label": "~55s \u00b7 15/15/15/10",
+      "status_label": "Ready to produce",
+      "premise": "Agent 0 Mockup (5 Pitches) \u00b7 2026-11-20",
+      "merch": "IPO Dad Energy",
+      "custom": true,
+      "created_at": 1795181119.0631478,
+      "script_package": {
+        "episode_id": "custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+        "episode_title": "Anthropic IPO Whiplash Turns EV Showroom Into a Margin-Call Confessional",
+        "total_duration_sec": 55,
+        "scene_count": 4,
+        "location": "The Pearson Family Kitchen, Suburban Home",
+        "merch_punchline_trigger": "IPO Dad Energy",
+        "source": "manual_add",
+        "script_key": "custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+        "notes": [
+          "Manually added video \u2014 edit scene prompts before Generate Video"
+        ],
+        "scenes": [
+          {
+            "scene_id": 1,
+            "title": "Clip 1 \u00b7 00:00\u201300:15",
+            "time_range": "00:00 - 00:15",
+            "time_start_sec": 0,
+            "time_end_sec": 15,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 1 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 1 \u2014 Clip 1 \u00b7 00:00\u201300:15\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 2,
+            "title": "Clip 2 \u00b7 00:15\u201300:30",
+            "time_range": "00:15 - 00:30",
+            "time_start_sec": 15,
+            "time_end_sec": 30,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 2 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 2 \u2014 Clip 2 \u00b7 00:15\u201300:30\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 3,
+            "title": "Clip 3 \u00b7 00:30\u201300:45",
+            "time_range": "00:30 - 00:45",
+            "time_start_sec": 30,
+            "time_end_sec": 45,
+            "duration_sec": 15,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 3 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 3 \u2014 Clip 3 \u00b7 00:30\u201300:45\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          },
+          {
+            "scene_id": 4,
+            "title": "Clip 4 \u00b7 00:45\u201300:55",
+            "time_range": "00:45 - 00:55",
+            "time_start_sec": 45,
+            "time_end_sec": 55,
+            "duration_sec": 10,
+            "primary_character": "gary",
+            "characters": [
+              "gary",
+              "linda",
+              "chris",
+              "chloe"
+            ],
+            "camera_cue": "Kitchen continuity, 9:16.",
+            "scene_action": "Manual scene \u2014 edit prompt before generate.",
+            "dialogue": [
+              {
+                "character": "gary",
+                "text": "(Scene 4 dialogue \u2014 edit in prompt)",
+                "voice_tag": "neutral"
+              }
+            ],
+            "sfx": "",
+            "source_prompt": "SCENE 4 \u2014 Clip 4 \u00b7 00:45\u201300:55\n\nWrite the full Vidu prompt for this clip here.\nKeep Pearson family looks locked via reference images."
+          }
+        ]
+      },
+      "concept": {
+        "id": "concept_custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+        "title": "Anthropic IPO Whiplash Turns EV Showroom Into a Margin-Call Confessional",
+        "headline": "Anthropic IPO Whiplash Turns EV Showroom Into a Margin-Call Confessional",
+        "cultural_hook": "",
+        "youth_sentiment_summary": "",
+        "premise": "",
+        "crash_out_angle": "",
+        "synopsis": "",
+        "conflict": "",
+        "tone": "",
+        "suggested_merch": "",
+        "proposed_merch_hook": "",
+        "characters_involved": [
+          "gary",
+          "linda",
+          "chris",
+          "chloe"
+        ],
+        "script_key": "custom_anthropic_ipo_whiplash_turns_ev_showroom_into_a_margin_call_confessional_1795181119",
+        "manual": true,
+        "empty": false
+      }
+    }
+  ]
+}

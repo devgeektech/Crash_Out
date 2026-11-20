@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.paths import OUTPUT_DIR
@@ -18,12 +19,49 @@ from app.trends.schema import normalize_pitch_run, today_run_date
 logger = logging.getLogger(__name__)
 
 AGENT0_DIR = os.path.join(OUTPUT_DIR, "agent0")
+AGENT0_RAW_DIR = os.path.join(AGENT0_DIR, "raw")
+AGENT0_PITCHES_DIR = os.path.join(AGENT0_DIR, "pitches")
+AGENT0_TOPICS_DIR = os.path.join(AGENT0_DIR, "topics")
+
 LATEST_RUN_PATH = os.path.join(AGENT0_DIR, "latest_pitch_run.json")
-EPISODE_TOPICS_PATH = os.path.join(AGENT0_DIR, "episode_topics.json")
+EPISODE_TOPICS_PATH = os.path.join(AGENT0_TOPICS_DIR, "episode_topics.json")
+LEGACY_EPISODE_TOPICS_PATH = os.path.join(AGENT0_DIR, "episode_topics.json")
 
 
 def _ensure_dir() -> None:
     os.makedirs(AGENT0_DIR, exist_ok=True)
+    os.makedirs(AGENT0_RAW_DIR, exist_ok=True)
+    os.makedirs(AGENT0_PITCHES_DIR, exist_ok=True)
+    os.makedirs(AGENT0_TOPICS_DIR, exist_ok=True)
+
+
+def prune_agent0_history(retention_days: int = 7) -> int:
+    """
+    Remove raw scrapes and pitch archives older than retention_days.
+    Preserves latest_pitch_run.json and topic definitions.
+    """
+    deleted_count = 0
+    cutoff = time.time() - (retention_days * 86400)
+    for folder in (AGENT0_RAW_DIR, AGENT0_PITCHES_DIR, AGENT0_DIR):
+        if not os.path.isdir(folder):
+            continue
+        for fname in os.listdir(folder):
+            # Only prune dated archives like raw_*.json and pitch_run_*.json
+            if not (fname.startswith("raw_") or fname.startswith("pitch_run_")):
+                continue
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(folder, fname)
+            if os.path.isfile(fpath):
+                try:
+                    if os.path.getmtime(fpath) < cutoff:
+                        os.remove(fpath)
+                        deleted_count += 1
+                except Exception as exc:
+                    logger.debug("Failed pruning %s: %s", fpath, exc)
+    if deleted_count > 0:
+        logger.info("Agent 0 storage prune: cleaned %d historical files older than %d days", deleted_count, retention_days)
+    return deleted_count
 
 
 def _database_url() -> str:
@@ -141,12 +179,34 @@ def save_pitch_run(run: Dict[str, Any]) -> Dict[str, Any]:
     )
     cleaned["generated_at"] = run.get("generated_at") or time.time()
     _ensure_dir()
+    
+    # 1. Update active pointer for dashboard
     with open(LATEST_RUN_PATH, "w", encoding="utf-8") as f:
         json.dump(cleaned, f, indent=2, ensure_ascii=False)
-    # dated archive
-    archive = os.path.join(AGENT0_DIR, f"pitch_run_{cleaned['run_date']}.json")
-    with open(archive, "w", encoding="utf-8") as f:
+        
+    # 2. Save dated and timestamped archives into pitches/
+    time_str = datetime.now().strftime("%H%M%S")
+    dated_archive = os.path.join(AGENT0_PITCHES_DIR, f"pitch_run_{cleaned['run_date']}.json")
+    snapshot_archive = os.path.join(AGENT0_PITCHES_DIR, f"pitch_run_{cleaned['run_date']}_{time_str}.json")
+    
+    with open(dated_archive, "w", encoding="utf-8") as f:
         json.dump(cleaned, f, indent=2, ensure_ascii=False)
+    with open(snapshot_archive, "w", encoding="utf-8") as f:
+        json.dump(cleaned, f, indent=2, ensure_ascii=False)
+        
+    # Keep legacy root dated archive for backward compatibility
+    legacy_archive = os.path.join(AGENT0_DIR, f"pitch_run_{cleaned['run_date']}.json")
+    try:
+        with open(legacy_archive, "w", encoding="utf-8") as f:
+            json.dump(cleaned, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+    # Prune historical files older than 7 days
+    try:
+        prune_agent0_history(retention_days=7)
+    except Exception as exc:
+        logger.debug("History prune error: %s", exc)
 
     conn = _pg_conn()
     if conn:
@@ -270,10 +330,19 @@ def load_latest_pitch_run() -> Optional[Dict[str, Any]]:
 
 def save_raw_items(run_date: str, items: List[Dict[str, Any]]) -> None:
     _ensure_dir()
-    path = os.path.join(AGENT0_DIR, f"raw_{run_date}.json")
+    time_str = datetime.now().strftime("%H%M%S")
+    dated_path = os.path.join(AGENT0_RAW_DIR, f"raw_{run_date}.json")
+    snapshot_path = os.path.join(AGENT0_RAW_DIR, f"raw_{run_date}_{time_str}.json")
+    payload = {"run_date": run_date, "count": len(items), "items": items[:300]}
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"run_date": run_date, "count": len(items), "items": items[:300]}, f)
+        with open(dated_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        with open(snapshot_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        # Keep legacy root dated copy for backward compatibility
+        legacy_path = os.path.join(AGENT0_DIR, f"raw_{run_date}.json")
+        with open(legacy_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
     except Exception as exc:
         logger.debug("raw item file save failed: %s", exc)
     conn = _pg_conn()
@@ -372,14 +441,16 @@ def remember_episode_topic(
 
 
 def _load_episode_topics_file() -> Dict[str, Any]:
-    if not os.path.exists(EPISODE_TOPICS_PATH):
-        return {}
-    try:
-        with open(EPISODE_TOPICS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    for path in (EPISODE_TOPICS_PATH, LEGACY_EPISODE_TOPICS_PATH):
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+    return {}
 
 
 def load_prior_topic_embeddings(days: int = 30) -> List[Tuple[str, List[float]]]:

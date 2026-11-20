@@ -10,15 +10,17 @@ from urllib.parse import quote, unquote
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs")
+EPISODES_DIR = os.path.join(OUTPUT_DIR, "episodes")
 # Shared character reference art — outside outputs/ (not episode media).
 CHARACTERS_DIR = os.path.join(PROJECT_ROOT, "characters")
 # Optional reusable intro/outro bumpers for final assembly.
 ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(EPISODES_DIR, exist_ok=True)
 os.makedirs(CHARACTERS_DIR, exist_ok=True)
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
-_RESERVED_DIR_NAMES = {"clean_characters", "characters"}
+_RESERVED_DIR_NAMES = {"clean_characters", "characters", "agent0", "episodes", "logs", "system"}
 
 
 def sanitize_episode_folder_name(title: str) -> str:
@@ -39,7 +41,30 @@ def build_episode_folder_name(episode_id: str, title: str) -> str:
 
 
 def episode_dir(folder_name: str) -> str:
-    path = os.path.join(OUTPUT_DIR, folder_name)
+    """
+    Returns the absolute path to the episode directory, prioritizing outputs/episodes/<folder_name>/.
+    Falls back gracefully to legacy outputs/<folder_name>/ if it already exists there.
+    """
+    if os.path.isabs(folder_name):
+        path = folder_name
+    elif os.path.isdir(os.path.join(EPISODES_DIR, folder_name)):
+        path = os.path.join(EPISODES_DIR, folder_name)
+    elif os.path.isdir(os.path.join(OUTPUT_DIR, folder_name)):
+        path = os.path.join(OUTPUT_DIR, folder_name)
+    else:
+        path = os.path.join(EPISODES_DIR, folder_name)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def episode_video_dir(folder_name: str) -> str:
+    path = os.path.join(episode_dir(folder_name), "video")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def episode_audio_dir(folder_name: str) -> str:
+    path = os.path.join(episode_dir(folder_name), "audio")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -66,7 +91,7 @@ def resolve_episode_folder(
 
 
 def _folder_belongs_to(folder_name: str, episode_id: str) -> bool:
-    folder = os.path.join(OUTPUT_DIR, folder_name)
+    folder = episode_dir(folder_name)
     marker = os.path.join(folder, ".episode_id")
     if os.path.isfile(marker):
         try:
@@ -86,19 +111,38 @@ def write_episode_marker(folder_name: str, episode_id: str) -> None:
 
 
 def scene_relpath(folder_name: str, scene_id: int) -> str:
-    return f"{folder_name}/scene_{int(scene_id)}.mp4"
+    abs_p = scene_abspath(folder_name, scene_id)
+    return os.path.relpath(abs_p, OUTPUT_DIR).replace("\\", "/")
 
 
 def scene_abspath(folder_name: str, scene_id: int) -> str:
-    return os.path.join(episode_dir(folder_name), f"scene_{int(scene_id)}.mp4")
+    ep_dir = episode_dir(folder_name)
+    vid_file = os.path.join(ep_dir, "video", f"scene_{int(scene_id)}.mp4")
+    if os.path.isfile(vid_file):
+        return vid_file
+    flat_file = os.path.join(ep_dir, f"scene_{int(scene_id)}.mp4")
+    if os.path.isfile(flat_file):
+        return flat_file
+    # Default location for new writes
+    os.makedirs(os.path.join(ep_dir, "video"), exist_ok=True)
+    return vid_file
 
 
 def merged_relpath(folder_name: str) -> str:
-    return f"{folder_name}/merged_60s.mp4"
+    abs_p = merged_abspath(folder_name)
+    return os.path.relpath(abs_p, OUTPUT_DIR).replace("\\", "/")
 
 
 def merged_abspath(folder_name: str) -> str:
-    return os.path.join(episode_dir(folder_name), "merged_60s.mp4")
+    ep_dir = episode_dir(folder_name)
+    vid_file = os.path.join(ep_dir, "video", "merged_60s.mp4")
+    if os.path.isfile(vid_file):
+        return vid_file
+    flat_file = os.path.join(ep_dir, "merged_60s.mp4")
+    if os.path.isfile(flat_file):
+        return flat_file
+    os.makedirs(os.path.join(ep_dir, "video"), exist_ok=True)
+    return vid_file
 
 
 def import_relpath(folder_name: str, kind: str = "web_import", ext: str = ".mp4") -> str:
@@ -144,6 +188,16 @@ def scene_file_candidates(
         if legacy_title and legacy_title not in folders:
             folders.append(legacy_title)
     for folder in folders:
+        # Check inside outputs/episodes/<folder>/video/
+        paths.append(os.path.join(EPISODES_DIR, folder, "video", f"scene_{sid}.mp4"))
+        paths.append(os.path.join(EPISODES_DIR, folder, "video", f"scene_{sid}.webm"))
+        # Check inside outputs/episodes/<folder>/
+        paths.append(os.path.join(EPISODES_DIR, folder, f"scene_{sid}.mp4"))
+        paths.append(os.path.join(EPISODES_DIR, folder, f"scene_{sid}.webm"))
+        # Check inside outputs/<folder>/video/
+        paths.append(os.path.join(OUTPUT_DIR, folder, "video", f"scene_{sid}.mp4"))
+        paths.append(os.path.join(OUTPUT_DIR, folder, "video", f"scene_{sid}.webm"))
+        # Check inside outputs/<folder>/
         paths.append(os.path.join(OUTPUT_DIR, folder, f"scene_{sid}.mp4"))
         paths.append(os.path.join(OUTPUT_DIR, folder, f"scene_{sid}.webm"))
     # Legacy: outputs/<episode_id>/scene_N.mp4
@@ -173,6 +227,9 @@ def merged_file_candidates(
         if legacy_title and legacy_title not in folders:
             folders.append(legacy_title)
     for folder in folders:
+        paths.append(os.path.join(EPISODES_DIR, folder, "video", "merged_60s.mp4"))
+        paths.append(os.path.join(EPISODES_DIR, folder, "merged_60s.mp4"))
+        paths.append(os.path.join(OUTPUT_DIR, folder, "video", "merged_60s.mp4"))
         paths.append(os.path.join(OUTPUT_DIR, folder, "merged_60s.mp4"))
     paths.append(os.path.join(OUTPUT_DIR, episode_id, "merged_60s.mp4"))
     paths.append(os.path.join(OUTPUT_DIR, f"{episode_id}_merged_60s.mp4"))
