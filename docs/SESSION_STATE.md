@@ -7,6 +7,55 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-20 — Synchronized Local Branches (`dev`, `users/vikas/login-setup`) with `master`
+
+Completed:
+- **Branch Fast-Forward & Code Alignment**:
+  - Fast-forward merged `master` (commit `4e5831f`) into `dev` and `users/vikas/login-setup`.
+  - Confirmed all branches point to the identical commit hash and codebase state as `master`.
+
+---
+
+### 2026-11-19 — Assigned All Server Episodes & Pipeline Data to Active User (`crashoutv.series@gmail.com`)
+
+Completed:
+- **Active User ID Verification on Production Server (`54.166.201.137`)**:
+  - Confirmed active production user ID for `crashoutv.series@gmail.com` is `2`.
+- **Episodes Data Association**:
+  - Updated all 9 episode records on disk (`episode.json` files in `outputs/`) with `user_id = 2`.
+  - Updated `pipeline_index.json` and in-memory `state_manager` mapping all episodes to user `2`.
+  - Added `user_id` column to PostgreSQL `episodes` table and populated all 9 episodes with `user_id = 2`.
+- **Other Pipeline & System Data Association**:
+  - Updated custom catalog entries in `outputs/custom_catalog.json` with `user_id = 2`.
+  - Assigned all pending/system notification rows in PostgreSQL `notifications` table to `user_id = 2`.
+- **Service Restart & Live Verification**:
+  - Restarted `crashout.service` systemd daemon on the production server.
+  - Verified authenticated live requests with `crashoutv.series@gmail.com` session:
+    - `/episodes` library correctly renders all 4 finished episodes (Episodes 1, 2, 3, 4).
+    - `/queue`, `/tasks`, `/notifications`, and `/orchestrator` show all assigned studio episodes, tasks, and alerts.
+
+---
+
+### 2026-11-19 — Updated Live Production Credentials & Removed Test User
+
+Completed:
+- **Production Admin Account Activated**:
+  - Configured live production database (`admin.crashout.tv` / PostgreSQL) and local database with admin user:
+    - **Email**: `crashoutv.series@gmail.com`
+    - **Password**: `CrashOut2026!Admin` (bcrypt hashed with 12 rounds)
+    - **Display Name**: `Crash Out Admin`
+  - Ensured associated `user_settings` record exists.
+- **Test User Removal**:
+  - Purged `test@gmail.com` (and any related test records) from both live production and local databases.
+- **Live Authentication Verification**:
+  - Executed HTTPS authentication check against `https://admin.crashout.tv/login`:
+    - `crashoutv.series@gmail.com` / `CrashOut2026!Admin`: returns HTTP 303 Redirect to `/` and issues valid 7-day `crashout_jwt` cookie.
+    - `test@gmail.com` / `test123`: rejected with HTTP 400 Bad Request ("Invalid email or password").
+- **UI Template Cleanup (`app/templates/base.html`)**:
+  - Updated user display name fallback from `'Test'` to `'Admin'`.
+
+---
+
 ### 2026-11-19 — Deployed Latest Master Codebase to Production (`admin.crashout.tv`)
 
 Completed:
