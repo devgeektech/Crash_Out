@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
 
 from app.config import config
+from app.db import log_system_incident
 from app.trends.schema import SENSITIVITY_REVIEW, SENSITIVITY_SAFE, normalize_pitch
 
 logger = logging.getLogger(__name__)
@@ -28,26 +30,42 @@ WEIGHTS = {
     "brand_safety": 0.10,
 }
 
-SYSTEM_PROMPT = """You are the editorial scorer for CRASH OUT, a satirical animated series
-about a dysfunctional US suburban family (Gary, Linda, Chris, Chloe).
+SYSTEM_PROMPT = """You are the lead editorial satirist and scorer for CRASH OUT, an adult 2D animated web series (South Park meets Arrested Development in modern US suburbia).
 
-Score each EVENT CLUSTER for "Friction Intersection" — stories where mainstream suburban
-parental anxiety collides with cynical Gen Z / Alpha internet humor.
+Your job: Take breaking US news/social trend clusters and forge them into 5 distinct, highly versatile, explosive episode pitches for the Pearson family.
 
-Return ONLY valid JSON:
+THE CAST:
+- GARY (44): Overleveraged suburban dad. Tries gentle parenting until his stress watch hits 175 BPM, then pivots to MAGA/sovereign-citizen conspiracy logic, tactical DIY over-engineering, or stockpiling weird gear.
+- LINDA (42): Performative Goop-wellness / HOA architectural review committee enforcer. Weaponizes gentle-mom therapy jargon and neighborhood petitions while hiding secret fast-food binges from the Ring doorbell camera.
+- CHRIS (15): Techno-nihilist Gen Z doomer. Monotone, dry existential philosophy. Hacks neighborhood tech, runs absurd arbitrage bots, shorts local businesses on Robinhood.
+- CHLOE (11): Ruthless pre-teen influencer / "momager". Treats her parents' meltdowns as monetizable content. Conducts street interviews with bewildered bystanders, runs live TikTok polls ("Vote: Should Dad get arrested or apologize?"), sells drop-shipped merch mid-crisis.
+
+CRITICAL RULES FOR "crash_out_angle" VERSATILITY:
+- DO NOT default repeatedly to the Pearson kitchen or driveway. Every pitch MUST explore a DIFFERENT suburban arena across modern America:
+  * RETAIL / CONSUMER: Costco bulk aisle standoff, Trader Joe's parking spot territorial battle, Apple Store Genius Bar warranty meltdown, Self-checkout kiosk error accusations, Drive-thru intercom screaming match, Car dealership showroom EV lease negotiation.
+  * SUBURBAN CIVIC & RECREATIONAL: HOA Emergency Board meeting, School Board public microphone spectacle, High school sports bleachers, Pickleball court turf war, Little League dugout brawl, Community pool wristband enforcement raid.
+  * IN-TRANSIT & INFRASTRUCTURE: Stalled in a Cybertruck charging queue, TSA security line status clash, Family road-trip EV battery range anxiety, Urgent Care waiting room triage dispute.
+  * DOMESTIC BEYOND THE KITCHEN: Cul-de-sac property-line dispute with neighbor's robot lawnmower, Open House walkthrough where Linda pretends to buy, Attic prepper stash crisis, Backyard BBQ smoking out the neighbor's wedding.
+- Each pitch MUST have 3-5 vivid sentences establishing:
+  1. Setting: Specific, visual, culturally resonant location.
+  2. Inciting Conflict: How today's news event creates suburban crisis.
+  3. Character Collision: Unique, non-repetitive actions for Gary, Linda, Chris, and Chloe.
+  4. The Crash-Out Climax: Fresh, visual escalation (e.g., local TV news vans arrive, HOA golf-cart chase, store manager calling the police, Chloe's livestream poll deciding Gary's fate, sirens blaring).
+
+Return ONLY valid JSON matching this exact structure:
 {
   "pitches": [
     {
       "cluster_id": "...",
-      "headline": "newsroom-style headline",
+      "headline": "newsroom-style punchy headline",
       "cross_layer_consensus": 1-10,
       "generational_friction": 1-10,
       "absurdity_visual_gag": 1-10,
       "brand_safety": 1-10,
       "sensitivity_flag": "SAFE" | "SENSITIVE_REVIEW",
-      "youth_sentiment_summary": "one sentence Gen Z take",
-      "crash_out_angle": "detailed Pearson-family escalation (3-5 sentences)",
-      "proposed_merch_hook": "short hoodie-ready phrase",
+      "youth_sentiment_summary": "one sentence cynical Gen Z / TikTok takeaway",
+      "crash_out_angle": "detailed, versatile 3-5 sentence narrative escalation",
+      "proposed_merch_hook": "punchy 2-4 word hoodie slogan",
       "sources": {
         "mainstream": ["outlet or trend labels"],
         "youth_social": ["r/sub or meme labels"]
@@ -56,14 +74,8 @@ Return ONLY valid JSON:
   ]
 }
 
-Rules:
-- Prefer clusters present in BOTH mainstream (Layer A) and youth (Layer B).
-- Reject / mark SENSITIVE_REVIEW for mass tragedies, graphic violence, sexual exploitation of minors, or active war atrocities.
-- brand_safety 10 = clearly safe comedy fuel; lower if borderline.
-- Produce at most 5 pitches, ranked by editorial strength (you may omit weak clusters).
-- crash_out_angle MUST be detailed (3–5 sentences): specific setting (kitchen/driveway/Zoom),
-  what Gary/Linda/Chris/Chloe each do, the viral/content beat, and how it escalates into a crash-out.
-  Do not write a single short line — make it production-ready episode fuel.
+- Produce exactly 5 top friction pitches ranked 1 to 5.
+- Reject / mark SENSITIVE_REVIEW for mass violence, tragic loss of life, or explicit atrocities.
 """
 
 
@@ -100,43 +112,93 @@ def _cluster_brief(cluster: Dict[str, Any], index: int) -> str:
 
 def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
     api_key = (config.openai_api_key or "").strip()
-    if not api_key or not clusters:
+    if not api_key:
+        err_msg = "OpenAI API key (OPENAI_API_KEY) is missing. Set OPENAI_API_KEY in .env."
+        logger.error(err_msg)
+        log_system_incident(
+            event_type="AGENT0_CONFIG_ERROR",
+            actor="Agent M Orchestrator",
+            details={
+                "category": "Agent 0 Trend Ingest",
+                "task_name": "OpenAI Configuration Check",
+                "error": err_msg,
+                "can_retry": True,
+            },
+        )
+        raise RuntimeError(err_msg)
+
+    if not clusters:
         return []
+
     model = (config.openai_model or "gpt-6-luna").strip()
     brief = "\n\n".join(_cluster_brief(c, i) for i, c in enumerate(clusters[:18], 1))
     user = (
         "Score these event clusters for CRASH OUT daily pitch cards. "
-        "Return at most 5 strongest friction-intersection pitches.\n\n"
+        "Return at most 5 strongest friction-intersection pitches with maximum narrative and setting versatility.\n\n"
         f"{brief}"
     )
-    try:
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "temperature": 0.55,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user},
-                ],
-            },
-            timeout=90,
-        )
-        if resp.status_code != 200:
-            logger.warning("Friction LLM %s: %s", resp.status_code, resp.text[:200])
-            return []
-        content = (((resp.json() or {}).get("choices") or [{}])[0].get("message") or {}).get(
-            "content"
-        ) or ""
-        return _parse_scored_pitches(content, clusters=clusters, run_date=run_date)
-    except Exception as exc:
-        logger.warning("Friction LLM failed: %s", exc)
-        return []
+    payload: Dict[str, Any] = {
+        "model": model,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ],
+    }
+    # Only set temperature if not a model that rejects non-default values (luna, o1, o3, etc.)
+    if not any(m in model.lower() for m in ("luna", "o1", "o3", "reasoning")):
+        payload["temperature"] = 0.75
+
+    max_retries = 3
+    last_error = ""
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info("Agent M: Scoring clusters via OpenAI (%s) — attempt %d/%d...", model, attempt, max_retries)
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=90,
+            )
+            if resp.status_code == 200:
+                content = (((resp.json() or {}).get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                pitches = _parse_scored_pitches(content, clusters=clusters, run_date=run_date)
+                if pitches and len(pitches) >= 1:
+                    logger.info("Agent M: Successfully scored %d pitches via OpenAI on attempt %d.", len(pitches), attempt)
+                    return pitches
+                else:
+                    last_error = f"OpenAI returned empty or unparseable pitch payload: {content[:150]}"
+            else:
+                last_error = f"HTTP {resp.status_code}: {resp.text[:250]}"
+        except Exception as exc:
+            last_error = f"Request exception: {exc}"
+
+        logger.warning("Agent M: Scoring attempt %d/%d failed: %s", attempt, max_retries, last_error)
+        if attempt < max_retries:
+            time.sleep(2.0 * attempt)
+
+    # All 3 automated retries exhausted — log incident to Agent M and fail explicitly (NO fallback!)
+    incident_msg = f"Agent 0 LLM scoring failed after {max_retries} automated attempts: {last_error}"
+    logger.error("Agent M Alert: %s. Requires manual retry.", incident_msg)
+    log_system_incident(
+        event_type="AGENT0_LLM_FAILURE",
+        actor="Agent M Orchestrator",
+        details={
+            "category": "Agent 0 Trend Ingest",
+            "task_name": "OpenAI Pitch Generation",
+            "error": incident_msg,
+            "retry_count": max_retries,
+            "max_retries": 3,
+            "requires_manual_retry": True,
+            "can_retry": True,
+            "run_date": run_date,
+        },
+    )
+    raise RuntimeError(f"{incident_msg}. Manual retry required via Agent M.")
 
 
 def _parse_scored_pitches(
@@ -291,20 +353,12 @@ def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dic
     from app.trends.cluster import embed_texts, cosine
     from app.trends.store import find_similar_pitches
 
-    scored = score_clusters_with_llm(clusters, run_date=run_date)
-    candidates = list(scored) if len(scored) >= 3 else []
+    candidates = score_clusters_with_llm(clusters, run_date=run_date)
     if not candidates:
-        heuristic = score_clusters_heuristic(clusters, run_date=run_date)
-        candidates = heuristic
-
-    # Fill remaining slots from heuristic if needed
-    if scored and len(candidates) < 10:
-        heuristic = score_clusters_heuristic(clusters, run_date=run_date)
-        seen = {str(p.get("headline") or "").lower() for p in candidates}
-        for p in heuristic:
-            if str(p.get("headline") or "").lower() not in seen:
-                candidates.append(p)
-                seen.add(str(p.get("headline") or "").lower())
+        raise RuntimeError(
+            "Agent 0 LLM scoring returned 0 candidate pitches after automated retries. "
+            "Incident logged in Agent M. Manual retry required via UI."
+        )
 
     # Generate embeddings for candidate pitches for similarity validation
     pitch_texts = [

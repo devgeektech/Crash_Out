@@ -1,6 +1,7 @@
 """
 Turn filtered trends into exactly 3 Gate 1 concept cards.
-Uses OpenAI when OPENAI_API_KEY is set; otherwise heuristic templates.
+Uses OpenAI with a 3-attempt automated retry loop via Agent M.
+No static mock fallbacks.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.config import config
+from app.db import log_system_incident
 from app.trends.filter import summarize_for_prompt
 
 logger = logging.getLogger(__name__)
@@ -20,18 +22,20 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You write episode concepts for CRASH OUT, an adult satirical 2D animated
 web series (South Park meets Arrested Development in modern US suburbia).
 
-Cast (always involve all four unless a beat truly needs fewer):
-- GARY (44): MAGA gentle-parent dad; therapy jargon → Trump rally rant; stress watch.
+Cast:
+- GARY (44): MAGA gentle-parent dad; therapy jargon → Trump rally rant; stress watch spikes.
 - LINDA (42): Goop wellness / HOA optics hypocrite; Stanley tumbler; secret junk food.
-- CHRIS (15): Techno-nihilist doomer; late-stage capitalism monologues.
-- CHLOE (11): Pre-teen momager; livestreams / monetizes family meltdowns.
+- CHRIS (15): Techno-nihilist doomer; late-stage capitalism dry takedowns; algorithmic hacking.
+- CHLOE (11): Pre-teen momager; livestreams / monetizes family meltdowns; runs live viewer polls.
 
 Rules:
+- High versatility: DO NOT limit settings to the kitchen or driveway. Actively rotate across:
+  Costco bulk aisles, Apple Store Genius Bar, fast-food drive-thrus, HOA emergency meetings,
+  pickleball courts, school board microphones, Cybertruck charging queues, airport TSA lines, or open houses.
 - Concepts must be satirical suburban crash-out fuel — NOT generic hard news.
-- Map real trends into Pearson kitchen / driveway / HOA conflict.
-- No real healing; escalate from decorum to crash-out.
-- suggested_merch: short punchy merch phrase (hoodie-ready).
-- script_key: always "hoa_violation" for now.
+- Map real trends into explosive Pearson family conflict and absurd visual comedy.
+- No real healing; escalate from polite suburban decorum to full public crash-out.
+- suggested_merch: short punchy merch phrase (2-4 words, hoodie-ready).
 - Return ONLY valid JSON: {"concepts": [ ... exactly 3 objects ... ]}
 Each object keys:
 id, title, cultural_hook, premise, synopsis, conflict, tone,
@@ -43,10 +47,40 @@ script_key
 def write_concepts(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not trends:
         return []
-    llm_concepts = _write_with_openai(trends)
-    if llm_concepts:
-        return llm_concepts
-    return _write_heuristic(trends)
+    max_retries = 3
+    last_error = ""
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info("Agent M: Generating episode concepts via OpenAI — attempt %d/%d...", attempt, max_retries)
+            concepts = _write_with_openai(trends)
+            if concepts and len(concepts) == 3:
+                return concepts
+            last_error = f"OpenAI returned {len(concepts) if concepts else 0} concepts instead of 3"
+        except Exception as exc:
+            last_error = str(exc)
+
+        logger.warning("Agent M: Concept attempt %d/%d failed: %s", attempt, max_retries, last_error)
+        if attempt < max_retries:
+            time.sleep(2.0 * attempt)
+
+    # All retries exhausted: Log incident to Agent M and fail explicitly
+    incident_msg = f"Agent 0 concept generation failed after {max_retries} attempts: {last_error}"
+    logger.error("Agent M Alert: %s. Requires manual retry.", incident_msg)
+    log_system_incident(
+        event_type="AGENT0_CONCEPT_FAILURE",
+        actor="Agent M Orchestrator",
+        details={
+            "category": "Agent 0 Trend Ingest",
+            "task_name": "OpenAI Episode Concept Writer",
+            "error": incident_msg,
+            "retry_count": max_retries,
+            "max_retries": 3,
+            "requires_manual_retry": True,
+            "can_retry": True,
+        },
+    )
+    raise RuntimeError(f"{incident_msg}. Manual retry required via Agent M.")
 
 
 def _write_with_openai(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -60,6 +94,17 @@ def _write_with_openai(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         "the list in each card.\n\n"
         f"{summarize_for_prompt(trends)}\n"
     )
+    payload: Dict[str, Any] = {
+        "model": model,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ],
+    }
+    if not any(m in model.lower() for m in ("luna", "o1", "o3", "reasoning")):
+        payload["temperature"] = 0.85
+
     try:
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -67,15 +112,7 @@ def _write_with_openai(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": model,
-                "temperature": 0.85,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user},
-                ],
-            },
+            json=payload,
             timeout=60,
         )
         if resp.status_code != 200:

@@ -9,8 +9,9 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
-OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "outputs"))
-DOCS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docs"))
+from app.paths import OUTPUT_DIR, PROJECT_ROOT
+
+DOCS_DIR = os.path.join(PROJECT_ROOT, "docs")
 CUSTOM_CATALOG_FILE = os.path.join(OUTPUT_DIR, "custom_catalog.json")
 
 PROMPT_FILES = [

@@ -18,7 +18,8 @@ from app.config import config
 
 logger = logging.getLogger(__name__)
 
-SIMILARITY_THRESHOLD = 0.82
+SIMILARITY_THRESHOLD = 0.58
+JACCARD_THRESHOLD = 0.25
 
 
 def _text_of(item: Dict[str, Any]) -> str:
@@ -56,22 +57,29 @@ def embed_texts(texts: List[str]) -> Optional[List[List[float]]]:
     if not api_key or not texts:
         return None
     model = (getattr(config, "openai_embed_model", None) or "text-embedding-3-small").strip()
+    
+    # Batch embeddings in chunks of 100 to avoid request payload limits
+    batch_size = 100
+    all_embeddings: List[List[float]] = []
     try:
-        resp = requests.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={"model": model, "input": [t[:6000] for t in texts]},
-            timeout=60,
-        )
-        if resp.status_code != 200:
-            logger.warning("Embedding API %s: %s", resp.status_code, resp.text[:180])
-            return None
-        data = (resp.json() or {}).get("data") or []
-        data = sorted(data, key=lambda row: int(row.get("index") or 0))
-        return [list(row.get("embedding") or []) for row in data]
+        for offset in range(0, len(texts), batch_size):
+            chunk = [t[:4000] for t in texts[offset : offset + batch_size]]
+            resp = requests.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": model, "input": chunk},
+                timeout=60,
+            )
+            if resp.status_code != 200:
+                logger.warning("Embedding API %s: %s", resp.status_code, resp.text[:180])
+                return None
+            data = (resp.json() or {}).get("data") or []
+            data = sorted(data, key=lambda row: int(row.get("index") or 0))
+            all_embeddings.extend([list(row.get("embedding") or []) for row in data])
+        return all_embeddings
     except Exception as exc:
         logger.warning("Embedding request failed: %s", exc)
         return None
@@ -115,9 +123,11 @@ def cluster_items(
         for j in range(i + 1, len(items)):
             if use_vectors:
                 sim = cosine(vectors[i], vectors[j])
+                is_match = sim >= threshold
             else:
                 sim = jaccard(texts[i], texts[j])
-            if sim >= threshold:
+                is_match = sim >= JACCARD_THRESHOLD
+            if is_match:
                 union(i, j)
 
     groups: Dict[int, List[int]] = defaultdict(list)
@@ -161,12 +171,14 @@ def cluster_items(
             for prior_label, prior_vec in prior_embeddings:
                 if prior_vec:
                     continue
-                if jaccard(label, prior_label) >= threshold:
+                if jaccard(label, prior_label) >= JACCARD_THRESHOLD:
                     # skip duplicate topic
                     rep = None  # marker
                     break
             if rep is None:
                 continue
+
+        is_cross = len(layers) >= 2
 
         clusters.append(
             {
@@ -177,7 +189,7 @@ def cluster_items(
                 "outlets": outlets[:8],
                 "characters": characters,
                 "layer_hits": layer_hits,
-                "cross_layer": layer_hits["A"] > 0 and layer_hits["B"] > 0,
+                "cross_layer": is_cross,
                 "representative": rep,
                 "embedding": emb,
                 "member_count": len(member_items),
@@ -189,6 +201,7 @@ def cluster_items(
     clusters.sort(
         key=lambda c: (
             1 if c.get("cross_layer") else 0,
+            len(c.get("layers", [])),
             c.get("member_count") or 0,
             c.get("score_hint") or 0,
         ),

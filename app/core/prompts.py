@@ -15,6 +15,7 @@ from app.core.personas import (
     VIDU_PROMPT_MAX_CHARS,
     characters_in_scene,
 )
+from app.studio.characters import get_character
 
 
 def _truncate(text: str, limit: int, *, collapse: bool = True) -> str:
@@ -54,15 +55,17 @@ def build_reference_bindings(cast: Sequence[str]) -> Tuple[str, List[str]]:
     """
     Map cast order to Vidu [@reference_image_n] tags.
     Returns (binding_line, cast_ids_in_order).
+    Pulls dynamic character overrides from characters/library.json.
     """
     parts = []
     ordered: List[str] = []
     for idx, cid in enumerate(cast, start=1):
-        c = CHARACTERS.get(cid)
-        if not c:
+        char_data = get_character(cid)
+        c_name = char_data.get("name") or (CHARACTERS.get(cid) or {}).get("name")
+        if not c_name:
             continue
         ordered.append(cid)
-        parts.append(f"[@reference_image_{idx}]={c['name']}")
+        parts.append(f"[@reference_image_{idx}]={c_name}")
     if not parts:
         return "", []
     return (
@@ -122,8 +125,8 @@ def build_scene_prompt(
     dialogue_lines: List[str] = []
     for line in dialogue:
         cid = str(line.get("character", "gary")).lower()
-        c = CHARACTERS.get(cid, CHARACTERS["gary"])
-        name = c["name"]
+        char_data = get_character(cid)
+        name = char_data.get("name") or (CHARACTERS.get(cid) or {}).get("name") or cid.capitalize()
         text = str(line.get("text", "")).strip()
         if not text:
             continue

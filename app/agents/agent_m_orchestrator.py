@@ -1280,6 +1280,29 @@ class AgentMOrchestrator:
         elif incident_id.startswith("audit_"):
             audit_id = incident_id[6:]
             try:
+                # Check what type of audit incident this was
+                audit_logs = list_system_audit_logs(limit=20)
+                matching = next((lg for lg in audit_logs if str(lg.get("id")) == str(audit_id)), None)
+                evt_type = str(matching.get("event_type") or "") if matching else ""
+                details = matching.get("details") or {} if matching else {}
+                cat = str(details.get("category") or "")
+
+                # If Agent 0 trend ingestion failed, re-run Agent 0 pipeline
+                if "AGENT0" in evt_type or "Agent 0" in cat:
+                    from app.trends.pipeline import fetch_daily_pitch_run
+                    run = fetch_daily_pitch_run(force_refresh=True)
+                    log_system_incident(
+                        event_type="INCIDENT_RESOLVED",
+                        actor=actor,
+                        details={
+                            "audit_id": audit_id,
+                            "incident_id": incident_id,
+                            "action": "Agent 0 Trend Ingest pipeline re-run succeeded",
+                            "pitches_generated": len(run.get("pitches") or []),
+                        },
+                    )
+                    return True, f"Agent 0 Trend Ingestion re-executed successfully ({len(run.get('pitches') or [])} pitches generated)!"
+
                 log_system_incident(
                     event_type="INCIDENT_RESOLVED",
                     actor=actor,
@@ -1291,6 +1314,7 @@ class AgentMOrchestrator:
                 )
                 return True, f"Task {incident_id} re-enqueued and successfully resolved."
             except Exception as exc:
+                logger.exception("Audit incident retry failed: %s", exc)
                 return False, f"Incident retry failed: {exc}"
 
         return False, f"Incident {incident_id} cannot be retried automatically."

@@ -451,6 +451,16 @@ def apply_user_credentials_to_config(user_id: int) -> None:
     if key_openai:
         config.openai_api_key = key_openai
         os.environ["OPENAI_API_KEY"] = key_openai
+    else:
+        env_key = os.getenv("OPENAI_API_KEY", "")
+        if env_key:
+            config.openai_api_key = env_key
+            os.environ["OPENAI_API_KEY"] = env_key
+
     if settings.openai_model:
         config.openai_model = settings.openai_model
         os.environ["OPENAI_MODEL"] = settings.openai_model
+    else:
+        env_model = os.getenv("OPENAI_MODEL", "gpt-6-luna")
+        config.openai_model = env_model
+        os.environ["OPENAI_MODEL"] = env_model
