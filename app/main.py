@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, List, Tuple
 from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -192,6 +192,14 @@ app.include_router(ui_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/characters", StaticFiles(directory=CHARACTERS_DIR), name="characters")
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    fav_path = os.path.join(STATIC_DIR, "favicon.ico")
+    if os.path.isfile(fav_path):
+        return FileResponse(fav_path, media_type="image/x-icon")
+    return HTMLResponse(status_code=404)
 
 
 @app.exception_handler(Exception)
