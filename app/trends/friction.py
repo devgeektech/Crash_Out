@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -74,7 +75,7 @@ Return ONLY valid JSON matching this exact structure:
   ]
 }
 
-- Produce exactly 5 top friction pitches ranked 1 to 5.
+- Produce 8 to 10 top friction pitches ranked 1 to 10 (the downstream selector will pick the top 5 most original, non-duplicate concepts).
 - Reject / mark SENSITIVE_REVIEW for mass violence, tragic loss of life, or explicit atrocities.
 """
 
@@ -130,12 +131,41 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
     if not clusters:
         return []
 
+    from app.trends.store import load_recent_pitches_for_dedup
+
+    # Collect prior pitch history from the last 14 days to inoculate the LLM against duplicates
+    recent_history = load_recent_pitches_for_dedup(days=14)
+    exclusion_text = ""
+    if recent_history:
+        seen_headlines = set()
+        exclusion_lines = []
+        for item in recent_history:
+            hl = (item.get("headline") or "").strip()
+            if hl and hl.lower() not in seen_headlines:
+                seen_headlines.add(hl.lower())
+                angle_snip = (item.get("crash_out_angle") or "")[:110].replace("\n", " ").strip()
+                r_day = item.get("run_date") or "recent"
+                exclusion_lines.append(f'- "{hl}" ({r_day}): {angle_snip}...')
+            if len(exclusion_lines) >= 16:
+                break
+        if exclusion_lines:
+            exclusion_text = (
+                "\n\nCRITICAL DEDUPLICATION RULE — DO NOT REPEAT RECENT TOPICS:\n"
+                "The studio has ALREADY produced pitches on these topics in the last 14 days:\n"
+                + "\n".join(exclusion_lines)
+                + "\n\nSTRICT REQUIREMENT:\n"
+                "- Do NOT generate pitches covering these same news events, companies, controversy angles, or suburban situations.\n"
+                "- Every candidate pitch MUST explore fresh real-world news friction with novel settings and unique collision dynamics.\n"
+            )
+
     model = (config.openai_model or "gpt-6-luna").strip()
     brief = "\n\n".join(_cluster_brief(c, i) for i, c in enumerate(clusters[:18], 1))
     user = (
-        "Score these event clusters for CRASH OUT daily pitch cards. "
-        "Return at most 5 strongest friction-intersection pitches with maximum narrative and setting versatility.\n\n"
-        f"{brief}"
+        "Score these event clusters for CRASH OUT daily pitch cards.\n"
+        "Generate 8 to 10 top candidate pitches ranked by friction consensus and originality.\n"
+        "Ensure maximum narrative, thematic, and suburban setting versatility.\n"
+        f"{exclusion_text}\n"
+        f"EVENT CLUSTERS TO SCORE:\n\n{brief}"
     )
     payload: Dict[str, Any] = {
         "model": model,
@@ -178,8 +208,10 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
             last_error = f"Request exception: {exc}"
 
         logger.warning("Agent M: Scoring attempt %d/%d failed: %s", attempt, max_retries, last_error)
+        retry_delay_sec = int(os.getenv("AGENT_RETRY_INTERVAL_SECONDS", "60"))
         if attempt < max_retries:
-            time.sleep(2.0 * attempt)
+            logger.info("Agent 0: Waiting %ds (1 min) before retry attempt %d/%d...", retry_delay_sec, attempt + 1, max_retries)
+            time.sleep(retry_delay_sec)
 
     # All 3 automated retries exhausted — log incident to Agent M and fail explicitly (NO fallback!)
     incident_msg = f"Agent 0 LLM scoring failed after {max_retries} automated attempts: {last_error}"
@@ -350,8 +382,8 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
 
 
 def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
-    from app.trends.cluster import embed_texts, cosine
-    from app.trends.store import find_similar_pitches
+    from app.trends.cluster import embed_texts, cosine, jaccard
+    from app.trends.store import find_similar_pitches, load_recent_pitches_for_dedup
 
     candidates = score_clusters_with_llm(clusters, run_date=run_date)
     if not candidates:
@@ -359,6 +391,9 @@ def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dic
             "Agent 0 LLM scoring returned 0 candidate pitches after automated retries. "
             "Incident logged in Agent M. Manual retry required via UI."
         )
+
+    # Load 14-day history for multi-layered duplicate elimination
+    recent_history = load_recent_pitches_for_dedup(days=14)
 
     # Generate embeddings for candidate pitches for similarity validation
     pitch_texts = [
@@ -372,57 +407,104 @@ def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dic
 
     for i, p in enumerate(candidates):
         emb = embeddings[i] if (embeddings and i < len(embeddings)) else None
+        p_text = pitch_texts[i]
         is_duplicate = False
 
         if emb and len(emb) == 1536:
             # 1. Intra-batch uniqueness check against already accepted pitches in this run
             for prev_emb in accepted_embeddings:
                 sim = cosine(emb, prev_emb)
-                if sim >= 0.82:
+                if sim >= 0.75:
                     logger.info("Skipping candidate pitch '%s' - too similar to current batch (%.2f)", p.get("headline"), sim)
                     is_duplicate = True
                     break
 
-            # 2. Historical database check via pgvector
+            # 2. Historical database check via pgvector cosine similarity (14-day window, threshold=0.68)
             if not is_duplicate:
-                similar_hist = find_similar_pitches(emb, threshold=0.82, limit=1)
+                similar_hist = find_similar_pitches(emb, threshold=0.68, limit=3, days=14)
                 if similar_hist:
                     matched = similar_hist[0]
                     logger.info(
-                        "Skipping candidate pitch '%s' - matches historical pitch '%s' (similarity: %s)",
+                        "Skipping candidate pitch '%s' - matches historical pitch from %s '%s' (similarity: %s)",
                         p.get("headline"),
+                        matched.get("run_date"),
                         matched.get("headline"),
                         matched.get("similarity"),
                     )
                     is_duplicate = True
+                elif recent_history:
+                    # In-memory cosine check fallback when pgvector extension is unavailable
+                    for hist in recent_history:
+                        h_emb = hist.get("embedding")
+                        if h_emb and len(h_emb) == 1536:
+                            h_sim = cosine(emb, h_emb)
+                            if h_sim >= 0.68:
+                                logger.info(
+                                    "Skipping candidate pitch '%s' - matches historical pitch '%s' via vector cosine (%.2f)",
+                                    p.get("headline"),
+                                    hist.get("headline"),
+                                    h_sim,
+                                )
+                                is_duplicate = True
+                                break
+
+            # 3. Text lexical & keyword overlap check against recent history
+            if not is_duplicate and recent_history:
+                for hist in recent_history:
+                    h_text = f"{hist.get('headline') or ''}. {hist.get('crash_out_angle') or ''}"
+                    jc = jaccard(p_text, h_text)
+                    if jc >= 0.35:
+                        logger.info(
+                            "Skipping candidate pitch '%s' - high lexical overlap (%.2f) with historical pitch '%s'",
+                            p.get("headline"),
+                            jc,
+                            hist.get("headline"),
+                        )
+                        is_duplicate = True
+                        break
 
             if not is_duplicate:
                 p["embedding"] = emb
                 accepted_embeddings.append(emb)
         else:
             # Fallback when embeddings are not available: Jaccard text comparison
-            from app.trends.cluster import jaccard
-            p_text = pitch_texts[i]
             for prev_p in valid_pitches:
                 prev_text = f"{prev_p.get('headline') or ''}. {prev_p.get('crash_out_angle') or ''}"
-                if jaccard(p_text, prev_text) >= 0.65:
+                if jaccard(p_text, prev_text) >= 0.50:
                     is_duplicate = True
                     break
+
+            if not is_duplicate and recent_history:
+                for hist in recent_history:
+                    h_text = f"{hist.get('headline') or ''}. {hist.get('crash_out_angle') or ''}"
+                    if jaccard(p_text, h_text) >= 0.45:
+                        is_duplicate = True
+                        break
 
         if not is_duplicate:
             valid_pitches.append(p)
             if len(valid_pitches) >= 5:
                 break
 
-    # If strict filtering left us with fewer than 5, backfill from remaining candidates to keep system resilient
+    # If strict filtering left us with fewer than 5, backfill from remaining candidates
+    # while ensuring they do NOT have high similarity (>= 0.78) to historical pitches
     if len(valid_pitches) < 5:
         existing_ids = {p.get("cluster_id") or p.get("headline") for p in valid_pitches}
-        for p in candidates:
+        for idx, p in enumerate(candidates):
             ident = p.get("cluster_id") or p.get("headline")
-            if ident not in existing_ids:
-                valid_pitches.append(p)
-                if len(valid_pitches) >= 5:
-                    break
+            if ident in existing_ids:
+                continue
+            cand_emb = embeddings[idx] if (embeddings and idx < len(embeddings)) else None
+            # Check if this fallback candidate is too close to historical pitches
+            if cand_emb and len(cand_emb) == 1536:
+                too_close = find_similar_pitches(cand_emb, threshold=0.78, limit=1, days=14)
+                if too_close:
+                    continue
+                p["embedding"] = cand_emb
+            valid_pitches.append(p)
+            existing_ids.add(ident)
+            if len(valid_pitches) >= 5:
+                break
 
     for i, p in enumerate(valid_pitches[:5], 1):
         p["rank"] = i

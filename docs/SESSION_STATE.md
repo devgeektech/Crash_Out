@@ -7,6 +7,71 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-23 — Agent M Retry Validation (3 Retries with 1-Min Gap) & Incident Test Suite
+
+Completed:
+- **Enforced 3 Automated Retries with 1-Minute Gap (`friction.py`, `agent_1_scriptwriter.py`)**:
+  - Configured automated retry interval `AGENT_RETRY_INTERVAL_SECONDS` (defaults to 60s / 1 min in production).
+  - Both Agent 0 (Trend Ingest) and Agent 1 (Scriptwriter) execute 3 attempts with 60-second backoff pauses before exhausting attempts.
+- **Agent M Log Board & Incident Recognition (`app/agents/agent_m_orchestrator.py`)**:
+  - Fixed incident detection filter in `get_system_incidents()` so `AGENT0_*` and `AGENT1_*` failure logs are surfaced on the Log Board.
+  - Set severity to `"CRITICAL"` when retries reach 3.
+  - Implemented one-click recovery in `orchestrator.retry_task()` for Agent 1 (`AGENT1_SCRIPT_FAILURE`), re-executing `scriptwriter_agent.generate_script()`, attaching the script to the episode, and marking the incident resolved.
+- **Temporal Activity Retry Policy (`app/infra/temporal.py`)**:
+  - Added `AGENT_RETRY_POLICY` with `maximum_attempts=3` and `initial_interval=timedelta(minutes=1)` to Temporal activities for Agent 0 and Agent 1.
+- **Comprehensive Test Suite (`tests/test_agent_m_retry.py`)**:
+  - Implemented 6 unit and integration test cases covering:
+    1. Agent 0: 3 attempts, 60s gap, incident logging.
+    2. Agent 1: 3 attempts, 60s gap, incident logging.
+    3. Agent M Log Board: Surfacing Agent 0 and Agent 1 failures with CRITICAL severity.
+    4. One-Click Retry for Agent 0: Re-running trend pipeline and resolving incident.
+    5. One-Click Retry for Agent 1: Re-running scriptwriter and updating episode state.
+    6. Exclusion of resolved incidents from active incident board.
+  - All 6 tests passing (`Ran 6 tests in 0.225s, OK`).
+
+---
+
+### 2026-11-23 — Active Script Clip Tab Border Styling Update
+
+Completed:
+- **Active Scene Tab Border Color (`app/static/css/app.css`)**:
+  - Replaced legacy cyan/blueish border styling (`#5eead4`) on `.scene-tab.active` with brand pink `var(--brand, #ff2d8a)`.
+  - Updated both `border-color` and inset `box-shadow` to produce a clean, unified pink highlight around the currently selected script clip tab.
+
+---
+
+### 2026-11-23 — Medium Pacing Dialogue, Omnipresent Merch Hook & Dynamic Cast Optimization
+
+Completed:
+- **Balanced Medium Dialogue Pacing (`app/agents/agent_1_scriptwriter.py`)**:
+  - Re-calibrated dialogue density from frantic rapid-fire (4–6 turns, 35–45 words) to an engaging, natural **medium spot**: 3 to 4 well-paced turns per 15s scene (approx 20–30 spoken words total, ~6–10 words per line, natural conversational speed).
+  - Scene 4 (11–13s) targets 2 to 4 turns (15–25 spoken words).
+  - Gives actors and animated characters breathing room for physical expressions, camera cuts, and sound triggers without awkward dead air.
+- **Flexible Merch Punchline Placement in Any Scene (`agent_1_scriptwriter.py`, `agent_m_orchestrator.py`)**:
+  - Removed the restriction forcing the merch punchline solely into Scene 4.
+  - Instructed OpenAI to place the exact `proposed_merch_hook` in whichever scene (Scene 1, 2, 3, or 4) naturally maximizes comedic impact.
+  - `_flatten_scenes()` dynamically detects which scene delivered the punchline to populate `merch_context`.
+- **Dynamic Character Library Synchronization (`agent_1_scriptwriter.py`, `agent_m_orchestrator.py`)**:
+  - Completely decoupled system and user prompts from hardcoded character names. All roster definitions, speaker tags, valid ID validation, and default character fallbacks pull directly from the active backend Character Library (`characters/library.json`).
+  - Added characters or removed characters are immediately reflected across script generation.
+- **Scene Durations & QA Thresholds (`agent_1_scriptwriter.py`, `agent_m_orchestrator.py`)**:
+  - Scene 1: 15s, Scene 2: 15s, Scene 3: 15s, Scene 4: 11–13s (targeting ~12–13s, strictly totaling 56–58s).
+  - Updated Orchestrator QA check threshold to $\ge 10$ dialogue lines across the episode to support the new balanced pacing.
+
+---
+
+### 2026-11-23 — Top Busy Loading Indicator on Refresh Buttons & Dashboard Controls
+
+Completed:
+- **Global Busy Indicator Integration (`app/templates/agent_m.html`, `app/templates/tasks_schedule.html`)**:
+  - Wired `hx-indicator="#busy"` to the **"Refresh Telemetry"** button on the Agent M Supervisor page (`/agent-m`).
+  - Wired `hx-indicator="#busy"` to the **"Refresh Tasks"** button on the Task & Schedule page (`/tasks-schedule`).
+  - When either button is clicked, HTMX targets `#busy` (`.busy-bar`), activating the moving thin pink gradient progress bar (`var(--brand, #ff2d8a)`) across the top of the viewport.
+- **Extended Feedback across Pagination & Agent Filter Tabs (`partials/agent_m_tasks_section.html`, `partials/agent_m_hitl_section.html`, `partials/agent_m_incidents_section.html`)**:
+  - Added `hx-indicator="#busy"` to agent filter pills and pagination controls (Prev, Next, numbered pages) across task schedules, HITL assignments, and system error log boards.
+
+---
+
 ### 2026-11-20 — Implemented Agent 1: Scriptwriter Agent (Dynamic OpenAI JSON Script, Dynamic Merch Embedding & Vidu Q4 Prompts)
 
 Completed:

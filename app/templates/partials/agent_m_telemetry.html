@@ -90,11 +90,11 @@
             </div>
         </div>
 
-        {% if overview.temporal.active_workflows and overview.temporal.active_workflows|length > 0 %}
         <div style="margin-top: 1.25rem;">
             <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.65rem;">
                 Active Workflow Executions
             </div>
+            {% if overview.temporal.active_workflows and overview.temporal.active_workflows|length > 0 %}
             <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
                     <thead>
@@ -111,14 +111,23 @@
                             <td style="padding: 0.65rem 0.95rem; font-family: var(--font-mono, monospace); font-weight: 600;">{{ wf.id }}</td>
                             <td style="padding: 0.65rem 0.95rem;">{{ wf.workflow_type }}</td>
                             <td style="padding: 0.65rem 0.95rem; font-family: var(--font-mono, monospace); color: var(--muted);">{{ wf.run_id }}</td>
-                            <td style="padding: 0.65rem 0.95rem; color: #10b981; font-weight: 600;">{{ wf.status }}</td>
+                            <td style="padding: 0.65rem 0.95rem;">
+                                <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.74rem; font-weight: 700; color: #166534; background: #e7f2ec; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid #bbf7d0;">
+                                    <span>●</span> {{ wf.status }}
+                                </span>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% else %}
+            <div style="padding: 0.85rem 1rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 0.82rem; color: var(--muted); display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #10b981; font-weight: 700;">●</span>
+                <span>No active runs currently in progress. 1 daily schedule registered (next execution: <strong style="color: var(--text);">{{ overview.temporal.schedule.next_run or "Daily at 06:00 AM EST" }}</strong>).</span>
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 
     <!-- SECTION 4: Per-Agent Supervision & Transparency Roster -->

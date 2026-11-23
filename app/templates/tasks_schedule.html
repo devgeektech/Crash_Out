@@ -30,6 +30,7 @@
                     hx-get="/ui/agent-m/agent-tasks?agent_id={{ agent_tasks.selected_agent }}&page={{ agent_tasks.pagination.page }}" 
                     hx-target="#agent-tasks-section" 
                     hx-swap="outerHTML"
+                    hx-indicator="#busy"
                     class="btn btn-outline" 
                     style="background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); color: #fff; font-size: 0.84rem; padding: 0.45rem 0.9rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;">
                     <span style="font-size: 0.9rem;">↻</span> Refresh Tasks

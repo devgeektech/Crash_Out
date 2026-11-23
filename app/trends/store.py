@@ -68,6 +68,28 @@ def _database_url() -> str:
     return (os.getenv("DATABASE_URL") or "").strip()
 
 
+def _parse_vector(raw: Any) -> List[float]:
+    """Safely convert pgvector string or list representation to a List[float]."""
+    if not raw:
+        return []
+    if isinstance(raw, (list, tuple)):
+        try:
+            return [float(x) for x in raw]
+        except (ValueError, TypeError):
+            return []
+    if isinstance(raw, str):
+        cleaned = raw.strip()
+        if cleaned.startswith("[") and cleaned.endswith("]"):
+            cleaned = cleaned[1:-1]
+        if not cleaned:
+            return []
+        try:
+            return [float(x.strip()) for x in cleaned.split(",") if x.strip()]
+        except (ValueError, TypeError):
+            return []
+    return []
+
+
 def _pg_conn():
     url = _database_url()
     if not url:
@@ -216,10 +238,31 @@ def save_pitch_run(run: Dict[str, Any]) -> Dict[str, Any]:
                     "INSERT INTO agent0_pitch_runs (run_date, payload) VALUES (%s, %s)",
                     (cleaned["run_date"], json.dumps(cleaned)),
                 )
-                # Also store individual pitches into generated_pitches
-                for p in cleaned.get("pitches") or []:
+                # Compute embeddings if any are missing before persisting to generated_pitches
+                pitches_list = cleaned.get("pitches") or []
+                missing_indices = [
+                    i for i, p in enumerate(pitches_list)
+                    if not (isinstance(p.get("embedding"), list) and len(p.get("embedding")) == 1536)
+                ]
+                if missing_indices:
+                    try:
+                        from app.trends.cluster import embed_texts
+                        texts_to_embed = [
+                            f"{pitches_list[idx].get('headline') or ''}. {pitches_list[idx].get('youth_sentiment_summary') or ''} {pitches_list[idx].get('crash_out_angle') or ''}"
+                            for idx in missing_indices
+                        ]
+                        computed = embed_texts(texts_to_embed)
+                        if computed and len(computed) == len(missing_indices):
+                            for idx, emb_val in zip(missing_indices, computed):
+                                pitches_list[idx]["embedding"] = emb_val
+                    except Exception as emb_err:
+                        logger.debug("Automatic pitch embedding generation note: %s", emb_err)
+
+                # Store individual pitches into generated_pitches
+                for p in pitches_list:
                     emb = p.get("embedding")
-                    vec = emb if (isinstance(emb, list) and len(emb) == 1536) else None
+                    vec = _parse_vector(emb)
+                    vec_str = f"[{','.join(str(x) for x in vec)}]" if len(vec) == 1536 else None
                     cur.execute(
                         """
                         INSERT INTO generated_pitches 
@@ -238,7 +281,7 @@ def save_pitch_run(run: Dict[str, Any]) -> Dict[str, Any]:
                             p.get("consensus_score") or 0.0,
                             json.dumps(p.get("sources") or {}),
                             json.dumps(p.get("score_breakdown") or {}),
-                            vec,
+                            vec_str,
                         ),
                     )
         except Exception as exc:
@@ -249,22 +292,24 @@ def save_pitch_run(run: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def find_similar_pitches(
-    embedding: List[float],
+    embedding: Any,
     *,
-    threshold: float = 0.82,
+    threshold: float = 0.68,
     limit: int = 5,
-    days: int = 60,
+    days: int = 14,
 ) -> List[Dict[str, Any]]:
     """
     Search historical pitches using pgvector cosine similarity (<=> operator).
     Returns pitches with similarity (1 - distance) >= threshold.
     """
-    if not embedding or len(embedding) != 1536:
+    vec = _parse_vector(embedding)
+    if not vec or len(vec) != 1536:
         return []
     conn = _pg_conn()
     if not conn:
         return []
     similar: List[Dict[str, Any]] = []
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
     try:
         with conn, conn.cursor() as cur:
             # Note: 1 - (embedding <=> vec) is cosine similarity
@@ -280,7 +325,7 @@ def find_similar_pitches(
                 ORDER BY embedding <=> %s::vector ASC
                 LIMIT %s;
                 """,
-                (embedding, str(int(days)), embedding, threshold, embedding, limit),
+                (vec_str, str(int(days)), vec_str, threshold, vec_str, limit),
             )
             for row in cur.fetchall() or []:
                 similar.append({
@@ -295,6 +340,63 @@ def find_similar_pitches(
     finally:
         conn.close()
     return similar
+
+
+def load_recent_pitches_for_dedup(days: int = 14) -> List[Dict[str, Any]]:
+    """
+    Load recent pitches from the last `days` days (from Postgres generated_pitches
+    and local pitch run JSON archives) to supply historical context for LLM prompt
+    exclusion and deduplication.
+    """
+    recent: List[Dict[str, Any]] = []
+    conn = _pg_conn()
+    if conn:
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, headline, crash_out_angle, youth_sentiment_summary, run_date, embedding
+                    FROM generated_pitches
+                    WHERE created_at >= NOW() - (%s || ' days')::interval
+                    ORDER BY created_at DESC;
+                    """,
+                    (str(int(days)),),
+                )
+                for row in cur.fetchall() or []:
+                    vec = _parse_vector(row[5])
+                    recent.append({
+                        "id": str(row[0]),
+                        "headline": row[1] or "",
+                        "crash_out_angle": row[2] or "",
+                        "youth_sentiment_summary": row[3] or "",
+                        "run_date": row[4] or "",
+                        "embedding": vec,
+                    })
+        except Exception as exc:
+            logger.debug("Failed to load recent pitches from Postgres: %s", exc)
+        finally:
+            conn.close()
+
+    if not recent:
+        from app.paths import AGENT0_PITCHES_DIR
+        if os.path.isdir(AGENT0_PITCHES_DIR):
+            for fname in sorted(os.listdir(AGENT0_PITCHES_DIR), reverse=True)[:days]:
+                if fname.endswith(".json"):
+                    fpath = os.path.join(AGENT0_PITCHES_DIR, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as fh:
+                            data = json.load(fh)
+                            for p in data.get("pitches") or []:
+                                recent.append({
+                                    "headline": p.get("headline") or "",
+                                    "crash_out_angle": p.get("crash_out_angle") or "",
+                                    "youth_sentiment_summary": p.get("youth_sentiment_summary") or "",
+                                    "run_date": data.get("run_date") or "",
+                                    "embedding": _parse_vector(p.get("embedding")),
+                                })
+                    except Exception:
+                        pass
+    return recent
 
 
 def load_latest_pitch_run() -> Optional[Dict[str, Any]]:
