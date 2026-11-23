@@ -122,28 +122,33 @@ class AgentMOrchestrator:
             return False, "Script data is empty."
 
         lines = script_data.get("dialogue_lines", [])
-        if len(lines) < 3:
-            return False, f"Script QA Failed: Expected at least 3 dialogue lines, got {len(lines)}."
+        if len(lines) < 10:
+            return False, (
+                f"Script QA Failed: Low dialogue density. Expected at least 10 dialogue lines across the episode "
+                f"(2–4 well-paced turns per scene), got only {len(lines)}."
+            )
 
         scenes = script_data.get("scenes", []) or []
         if len(scenes) != 4:
             return False, f"Script QA Failed: Expected exactly 4 scenes, got {len(scenes)}."
 
         est_duration = script_data.get("estimated_duration_sec", 0)
-        if est_duration < 40 or est_duration > 60:
+        if est_duration < 55 or est_duration > 60:
             return False, (
-                f"Script QA Failed: Duration {est_duration}s out of target 40–60s bounds."
+                f"Script QA Failed: Duration {est_duration}s out of target 56–58s bounds."
             )
 
         merch_trigger = script_data.get("merch_punchline_trigger")
         if not merch_trigger or len(merch_trigger.strip()) < 5:
             return False, "Script QA Failed: Missing or invalid 'merch_punchline_trigger'."
 
-        valid_characters = {"gary", "linda", "chris", "chloe"}
+        from app.studio.characters import list_characters
+        registered = {c["id"].lower() for c in list_characters()} if list_characters() else set()
+        valid_characters = registered or {"gary", "linda", "chris", "chloe"}
         for idx, line in enumerate(lines):
             char = line.get("character", "").lower()
             if char not in valid_characters:
-                return False, f"Script QA Failed: Unknown character '{char}' at line {idx+1}."
+                return False, f"Script QA Failed: Unknown character '{char}' at line {idx+1}. Valid roster: {sorted(valid_characters)}"
             if not line.get("text"):
                 return False, f"Script QA Failed: Empty dialogue text at line {idx+1}."
 
@@ -457,7 +462,13 @@ class AgentMOrchestrator:
 
             for log in audit_logs:
                 evt = str(log.get("event_type") or "")
-                if evt.startswith(("ERROR", "FAIL", "INCIDENT")) and evt != "INCIDENT_RESOLVED" and evt != "INCIDENT_RETRIED":
+                is_incident = (
+                    evt.startswith(("ERROR", "FAIL", "INCIDENT"))
+                    or "FAILURE" in evt
+                    or "ERROR" in evt
+                    or evt.startswith("AGENT")
+                )
+                if is_incident and evt not in ("INCIDENT_RESOLVED", "INCIDENT_RETRIED", "AGENT_0_MANUAL_TRIGGER", "AGENT_M_LOG"):
                     log_id_str = str(log["id"])
                     if log_id_str in resolved_ids:
                         continue
@@ -471,6 +482,9 @@ class AgentMOrchestrator:
                     ts_val = log.get("created_at")
                     ts_str = str(ts_val)[:19] if ts_val else time.strftime("%Y-%m-%d %H:%M:%S")
 
+                    retry_cnt = int(details.get("retry_count", 0) or 0)
+                    severity = "CRITICAL" if retry_cnt >= 3 or "CRITICAL" in evt else (details.get("severity") or "ERROR")
+
                     incidents.append({
                         "incident_id": inc_id,
                         "job_id": details.get("job_id"),
@@ -480,10 +494,10 @@ class AgentMOrchestrator:
                         "task_name": details.get("task_name", evt),
                         "category": details.get("category", "System Core"),
                         "error_message": details.get("error") or details.get("message") or "System execution error",
-                        "retry_count": details.get("retry_count", 0),
+                        "retry_count": retry_cnt,
                         "max_retries": 3,
                         "status": "FAILED",
-                        "severity": "WARNING",
+                        "severity": severity,
                         "timestamp": time.time(),
                         "timestamp_str": ts_str,
                         "can_retry": True,
@@ -503,15 +517,23 @@ class AgentMOrchestrator:
             TEMPORAL_TASK_QUEUE,
         )
 
+        display_host = os.getenv("TEMPORAL_DISPLAY_HOST", "").strip()
+        if not display_host:
+            if TEMPORAL_HOST in ("localhost:7233", "127.0.0.1:7233"):
+                display_host = "admin.crashout.tv (Port 7233)"
+            else:
+                display_host = TEMPORAL_HOST
+
         telemetry = {
-            "host": TEMPORAL_HOST,
+            "host": display_host,
+            "raw_host": TEMPORAL_HOST,
             "namespace": TEMPORAL_NAMESPACE,
             "task_queue": TEMPORAL_TASK_QUEUE,
             "connected": False,
             "mode": "Temporal Distributed Cluster",
             "schedule": {
                 "id": "agent0-daily-6am-est",
-                "cron": "0 6 * * * (Daily 06:00 EST)",
+                "cron": "Daily at 06:00 AM EST (America/New_York)",
                 "active": False,
                 "paused": False,
                 "workflow": "DailyAgent0Workflow",
@@ -535,22 +557,43 @@ class AgentMOrchestrator:
                     telemetry["schedule"]["total_runs"] = getattr(getattr(desc, "info", None), "num_actions", 0)
                     next_times = getattr(getattr(desc, "info", None), "next_action_times", [])
                     if next_times:
-                        telemetry["schedule"]["next_run"] = next_times[0].strftime("%Y-%m-%d %H:%M UTC")
+                        dt = next_times[0]
+                        try:
+                            from zoneinfo import ZoneInfo
+                            dt_est = dt.astimezone(ZoneInfo("America/New_York"))
+                            telemetry["schedule"]["next_run"] = dt_est.strftime("%Y-%m-%d %I:%M %p EST")
+                        except Exception:
+                            telemetry["schedule"]["next_run"] = dt.strftime("%Y-%m-%d %H:%M UTC")
                     else:
-                        telemetry["schedule"]["next_run"] = "Daily 06:00 EST"
+                        telemetry["schedule"]["next_run"] = "Daily at 06:00 AM EST"
                 except Exception as sched_err:
                     logger.debug("Temporal schedule lookup notice: %s", sched_err)
                     telemetry["schedule"]["active"] = False
 
                 # Query active workflow executions
+                STATUS_LABEL_MAP = {
+                    1: "Running",
+                    2: "Completed",
+                    3: "Failed",
+                    4: "Canceled",
+                    5: "Terminated",
+                    6: "Continued As New",
+                    7: "Timed Out",
+                }
                 count = 0
                 try:
                     async for wf in client.list_workflows('ExecutionStatus="Running"'):
+                        raw_status = getattr(wf, "status", 1)
+                        try:
+                            status_val = int(raw_status)
+                        except (TypeError, ValueError):
+                            status_val = 1
+                        status_str = STATUS_LABEL_MAP.get(status_val, str(raw_status))
                         telemetry["active_workflows"].append({
                             "id": wf.id,
                             "run_id": wf.run_id[:8] if wf.run_id else "",
                             "workflow_type": wf.workflow_type,
-                            "status": str(wf.status),
+                            "status": status_str,
                             "start_time": str(wf.start_time)[:19] if wf.start_time else "",
                         })
                         count += 1
@@ -1302,6 +1345,42 @@ class AgentMOrchestrator:
                         },
                     )
                     return True, f"Agent 0 Trend Ingestion re-executed successfully ({len(run.get('pitches') or [])} pitches generated)!"
+
+                # If Agent 1 scriptwriter failed, re-run Agent 1 script generation
+                elif "AGENT1" in evt_type or "Agent 1" in cat:
+                    from app.agents.agent_1_scriptwriter import scriptwriter_agent
+                    ep_id = details.get("episode_id")
+                    target_ep = state_manager.episodes.get(ep_id) if ep_id else None
+                    concept = target_ep.selected_concept if target_ep else None
+                    if not concept and ep_id:
+                        for e in state_manager.episodes.values():
+                            if e.id == ep_id and e.selected_concept:
+                                concept = e.selected_concept
+                                target_ep = e
+                                break
+                    if not concept:
+                        concept = {
+                            "id": ep_id or "ep_retry",
+                            "title": details.get("episode_title") or "Episode Script Retry",
+                            "headline": details.get("episode_title") or "Episode Script Retry",
+                            "crash_out_angle": "Suburban crisis retry",
+                            "proposed_merch_hook": "Prompted This",
+                        }
+                    new_script = scriptwriter_agent.generate_script(concept, episode_id=ep_id)
+                    if target_ep:
+                        target_ep.script = new_script
+                        state_manager.save()
+                    log_system_incident(
+                        event_type="INCIDENT_RESOLVED",
+                        actor=actor,
+                        details={
+                            "audit_id": audit_id,
+                            "incident_id": incident_id,
+                            "action": f"Agent 1 Scriptwriter re-run succeeded for episode {ep_id or 'new'}",
+                            "scenes_generated": len(new_script.get("scenes") or []),
+                        },
+                    )
+                    return True, f"Agent 1 Scriptwriter re-executed successfully for episode {ep_id or 'new'}!"
 
                 log_system_incident(
                     event_type="INCIDENT_RESOLVED",

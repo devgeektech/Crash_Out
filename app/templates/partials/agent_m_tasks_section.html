@@ -49,6 +49,7 @@
             hx-target="#agent-tasks-section"
             hx-swap="outerHTML"
             hx-push-url="/tasks?agent_id={{ tab.id }}"
+            hx-indicator="#busy"
             class="btn"
             style="font-size: 0.82rem; padding: 0.45rem 0.95rem; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; transition: all 0.15s ease; {% if agent_tasks.selected_agent == tab.id %}background: var(--brand, #ff2d8a); color: #ffffff; border: 1.5px solid var(--brand, #ff2d8a); font-weight: 700; box-shadow: 0 2px 8px rgba(255, 45, 138, 0.3);{% else %}background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 500;{% endif %}">
             <span>{{ tab.icon }}</span>
@@ -155,6 +156,7 @@
                     hx-target="#agent-tasks-section"
                     hx-swap="outerHTML"
                     hx-push-url="/tasks?agent_id={{ agent_tasks.selected_agent }}&page={{ agent_tasks.pagination.prev_page }}"
+                    hx-indicator="#busy"
                     class="btn"
                     style="font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer;">
                     « Prev
@@ -172,6 +174,7 @@
                     hx-target="#agent-tasks-section"
                     hx-swap="outerHTML"
                     hx-push-url="/tasks?agent_id={{ agent_tasks.selected_agent }}&page={{ p }}"
+                    hx-indicator="#busy"
                     class="btn"
                     style="font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 6px; cursor: pointer; min-width: 30px; text-align: center; {% if p == agent_tasks.pagination.page %}background: var(--brand, #ff2d8a); color: #fff; border: 1px solid var(--brand, #ff2d8a); font-weight: 700;{% else %}background: var(--surface); border: 1px solid var(--border); color: var(--text); font-weight: 500;{% endif %}">
                     {{ p }}
@@ -185,6 +188,7 @@
                     hx-target="#agent-tasks-section"
                     hx-swap="outerHTML"
                     hx-push-url="/tasks?agent_id={{ agent_tasks.selected_agent }}&page={{ agent_tasks.pagination.next_page }}"
+                    hx-indicator="#busy"
                     class="btn"
                     style="font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer;">
                     Next »

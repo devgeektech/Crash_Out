@@ -1280,8 +1280,8 @@ a {
 
 .scene-tab.active {
     background: var(--brand-soft);
-    border-color: #5eead4;
-    box-shadow: inset 0 0 0 1px #5eead4;
+    border-color: var(--brand, #ff2d8a);
+    box-shadow: inset 0 0 0 1px var(--brand, #ff2d8a);
 }
 
 .scene-tab.active .scene-tab-num {

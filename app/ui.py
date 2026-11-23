@@ -429,8 +429,12 @@ def _script_scene_bundle(ep: Episode, script_scene: Optional[int]) -> Dict[str, 
     if ids and active not in ids:
         active = ids[0]
     active_scene = next((sc for sc in scenes if int(sc.get("scene_id", 0)) == active), None)
-    if active_scene is not None and not active_scene.get("source_prompt"):
-        active_scene["source_prompt"] = active_scene.get("vidu_prompt") or ""
+    if active_scene is not None:
+        from app.core.prompts import format_vidu_prompt
+        raw_p = (active_scene.get("source_prompt") or active_scene.get("vidu_prompt") or "").strip()
+        if raw_p:
+            active_scene["source_prompt"] = format_vidu_prompt(raw_p)
+            active_scene["vidu_prompt"] = active_scene["source_prompt"]
     scene_lines = [ln for ln in lines if int(ln.get("scene_id", 0)) == active]
     clip_ready = False
     for sv in ep.scene_videos or []:
@@ -652,18 +656,33 @@ def _catalog_cards(user_id: Optional[int] = None) -> list:
             if latest and (latest.title or "").strip()
             else str(item.get("title") or "Untitled")
         )
+        # Determine the true episode ID/number (never overwrite with enumerate index)
+        import re
+        card_id_num = None
+        if latest and getattr(latest, "episode_number", None):
+            card_id_num = int(latest.episode_number)
+        elif item.get("episode_number"):
+            card_id_num = int(item["episode_number"])
+        else:
+            m = re.search(r'\bEP-(\d+)\b', display_title, re.IGNORECASE)
+            if m:
+                card_id_num = int(m.group(1))
+            else:
+                card_id_num = index
+
         cards.append(
             {
                 **item,
                 "title": display_title,
-                "list_number": index,
+                "list_number": card_id_num,
+                "id_num": card_id_num,
                 "episode": latest,
                 "concepts": (latest.available_concepts if latest and latest.available_concepts else None) or concepts_for_catalog(item.get("id")),
                 "episode_status": _format_queue_status(latest),
                 "gateway": latest.current_gateway if latest else None,
             }
         )
-    # Newer catalog entries first (highest number on top).
+    # Newer catalog entries first (highest ID on top).
     cards.sort(key=lambda c: int(c.get("list_number") or 0), reverse=True)
     return cards
 
@@ -695,13 +714,19 @@ def _studio_queue_cards(user_id: Optional[int] = None) -> list:
         if ep.id in seen_ep_ids or _published(ep):
             continue
         prod = normalize_production_status(getattr(ep, "production_status", None))
+        ep_num = int(ep.episode_number or 0)
+        if not ep_num:
+            import re
+            m = re.search(r'\bEP-(\d+)\b', ep.title or "", re.IGNORECASE)
+            ep_num = int(m.group(1)) if m else 0
         extras.append(
             {
                 "id": ep.catalog_id or ep.id,
                 "title": ep.title,
                 "subtitle": "In studio",
                 "duration_label": "—",
-                "list_number": int(ep.episode_number or 0),
+                "list_number": ep_num,
+                "id_num": ep_num,
                 "episode": ep,
                 "concepts": ep.available_concepts or (concepts_for_catalog(ep.catalog_id) if ep.catalog_id else []),
                 "episode_status": _format_queue_status(ep),
@@ -1966,7 +1991,7 @@ def ui_save_script_scene(
     scene_id: int,
     source_prompt: str = Form(""),
 ):
-    """Persist editable scene prompt (autosave or Save). Full prompt is stored as written."""
+    """Persist editable scene prompt (autosave or Save). Parses and synchronizes dialogue and directions."""
     user = get_current_user(request)
     user_id = user.id if user else None
     ep = _ensure_episode(user_id=user_id)
@@ -1975,8 +2000,67 @@ def ui_save_script_scene(
     if not scene:
         return HTMLResponse('<span class="badge badge-warn">Scene not found</span>', status_code=404)
 
-    scene["source_prompt"] = source_prompt
-    scene["vidu_prompt"] = source_prompt
+    from app.core.prompts import format_vidu_prompt
+    clean_prompt = format_vidu_prompt(source_prompt.strip())
+    scene["source_prompt"] = clean_prompt
+    scene["vidu_prompt"] = clean_prompt
+    scene["vidu_prompt_chars"] = len(clean_prompt)
+
+    # Bidirectional sync: Parse dialogue, action, camera, and sfx from prompt text
+    import re
+    diag_match = re.search(r'Dialogue:\s*(.*?)(?=(?:\n\s*|(?<!\[)\s+)SFX\s*:|$)', clean_prompt, re.DOTALL | re.IGNORECASE)
+    if diag_match:
+        pattern = re.compile(
+            r'(?:\[(?:Camera|Shot|Angle)?\s*:?\s*(?P<camera>[^\]]+)\]\s*)?'
+            r'(?P<character>[A-Za-z0-9_-]+)\s*:\s*'
+            r'(?:\((?P<staging>[^)]+)\)\s*)?'
+            r'["\u201c](?P<text>[^"\u201d]+)["\u201d]'
+            r'(?:\s*\[(?:SFX|Sound)\s*:\s*(?P<sfx>[^\]]+)\])?',
+            re.DOTALL | re.IGNORECASE
+        )
+        matches = list(pattern.finditer(diag_match.group(1)))
+        if matches:
+            old_dialogue = scene.get("dialogue") or []
+            new_dialogue = []
+            for idx, m in enumerate(matches):
+                p_char = m.group("character").strip()
+                if p_char.lower() in ("dialogue", "camera", "action", "sfx", "native", "scene"):
+                    continue
+                p_text = (m.group("text") or "").strip()
+                p_cam = (m.group("camera") or "").strip()
+                p_staging = (m.group("staging") or "").strip()
+                p_sfx = (m.group("sfx") or "").strip()
+
+                existing = old_dialogue[idx] if idx < len(old_dialogue) else {}
+                entry = dict(existing)
+                entry["character"] = p_char.lower()
+                entry["text"] = p_text
+                if p_cam:
+                    entry["camera_cue"] = p_cam
+                if p_sfx:
+                    entry["sfx"] = p_sfx
+                if p_staging:
+                    parts = [p.strip() for p in p_staging.split(",") if p.strip()]
+                    if len(parts) >= 2:
+                        entry["voice_tag"] = parts[0]
+                        entry["action"] = ", ".join(parts[1:])
+                    else:
+                        entry["action"] = parts[0]
+                new_dialogue.append(entry)
+            if new_dialogue:
+                scene["dialogue"] = new_dialogue
+
+    act_match = re.search(r'Action:\s*(.*?)(?=\n\s*Camera:|\s+Camera:|\n\s*Native|\s+Native|\n\s*Dialogue:|\s+Dialogue:|$)', clean_prompt, re.DOTALL | re.IGNORECASE)
+    if act_match:
+        scene["scene_action"] = act_match.group(1).strip()
+
+    cam_match = re.search(r'Camera:\s*(.*?)(?=\n\s*Native|\s+Native|\n\s*Dialogue:|\s+Dialogue:|$)', clean_prompt, re.DOTALL | re.IGNORECASE)
+    if cam_match:
+        scene["camera_cue"] = cam_match.group(1).strip()
+
+    sfx_match = re.search(r'SFX:\s*(.*?)$', clean_prompt, re.DOTALL | re.IGNORECASE)
+    if sfx_match:
+        scene["sfx"] = sfx_match.group(1).strip()
 
     fname = scene.get("source_prompt_file")
     if fname:
@@ -1984,18 +2068,17 @@ def ui_save_script_scene(
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(source_prompt)
+                fh.write(clean_prompt)
             refresh_hoa_q4_prompt_episode()
         except OSError:
             pass
 
     if ep.catalog_id and str(ep.catalog_id).startswith("custom_"):
-        update_custom_scene_prompt(str(ep.catalog_id), scene_id, source_prompt)
+        update_custom_scene_prompt(str(ep.catalog_id), scene_id, clean_prompt)
 
     state_manager.save()
-    orchestrator.log(ep.id, f"Script scene {scene_id} prompt updated ({len(source_prompt)} chars).")
+    orchestrator.log(ep.id, f"Script scene {scene_id} prompt updated ({len(clean_prompt)} chars).")
 
-    # Autosave targets status chip only — char badge updates live in the browser.
     hx_target = (request.headers.get("hx-target") or "").lstrip("#")
     if hx_target == "script-save-status":
         return HTMLResponse("Saved")
@@ -2005,7 +2088,7 @@ def ui_save_script_scene(
         "partials/script_scene_block.html",
         viewing_stage=2,
         script_scene=scene_id,
-        toast="Scene saved",
+        toast="Scene saved & synchronized",
         toast_kind="ok",
     )
 
@@ -3111,6 +3194,10 @@ def ui_script_line_save(
     time_start: float = Form(0),
     time_end: float = Form(0),
     character: str = Form("gary"),
+    voice_tag: str = Form(""),
+    camera_cue: str = Form(""),
+    action: str = Form(""),
+    sfx: str = Form(""),
 ):
     user = get_current_user(request)
     user_id = user.id if user else None
@@ -3122,18 +3209,32 @@ def ui_script_line_save(
     lines = list(scene.get("dialogue") or [])
     if line_index < 0 or line_index >= len(lines):
         return render(request, "partials/htmx_workspace.html", viewing_stage=2, error="Line not found")
-    lines[line_index]["text"] = text
-    lines[line_index]["time_start"] = float(time_start)
-    lines[line_index]["time_end"] = float(time_end)
-    lines[line_index]["character"] = (character or "gary").lower()
+    lines[line_index]["text"] = text.strip()
+    if voice_tag:
+        lines[line_index]["voice_tag"] = voice_tag.strip()
+    if camera_cue:
+        lines[line_index]["camera_cue"] = camera_cue.strip()
+    if action:
+        lines[line_index]["action"] = action.strip()
+    if sfx:
+        lines[line_index]["sfx"] = sfx.strip()
+    lines[line_index]["character"] = (character or "gary").lower().strip()
     scene["dialogue"] = lines
+
+    # Synchronize Vidu prompt text automatically
+    from app.core.prompts import build_scene_prompt, prompt_char_count
+    new_prompt = build_scene_prompt(scene)
+    scene["source_prompt"] = new_prompt
+    scene["vidu_prompt"] = new_prompt
+    scene["vidu_prompt_chars"] = prompt_char_count(new_prompt)
+
     state_manager.save()
     return render(
         request,
         "partials/script_scene_block.html",
         viewing_stage=2,
         script_scene=scene_id,
-        toast="Dialogue saved",
+        toast="Dialogue line updated & prompt synced",
         toast_kind="ok",
     )
 
