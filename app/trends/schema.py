@@ -41,7 +41,7 @@ def normalize_pitch(raw: Dict[str, Any], *, rank: int, run_date: str) -> Dict[st
     angle = str(raw.get("crash_out_angle") or raw.get("premise") or "").strip()
     merch = str(raw.get("proposed_merch_hook") or raw.get("suggested_merch") or "Capitalism broke my dad").strip()
     youth_summary = str(raw.get("youth_sentiment_summary") or raw.get("cultural_hook") or "").strip()
-    return {
+    out = {
         "rank": int(raw.get("rank") or rank),
         "headline": headline,
         "consensus_score": round(score, 1),
@@ -59,6 +59,9 @@ def normalize_pitch(raw: Dict[str, Any], *, rank: int, run_date: str) -> Dict[st
         "cluster_id": raw.get("cluster_id"),
         "layer_hits": raw.get("layer_hits") if isinstance(raw.get("layer_hits"), dict) else {},
     }
+    if "embedding" in raw and isinstance(raw["embedding"], (list, tuple)) and len(raw["embedding"]) == 1536:
+        out["embedding"] = list(raw["embedding"])
+    return out
 
 
 def normalize_pitch_run(
@@ -120,10 +123,14 @@ def pitch_to_concept(pitch: Dict[str, Any], *, run_date: Optional[str] = None) -
     }
 
 
-def pitches_to_concepts(run: Dict[str, Any]) -> List[Dict[str, Any]]:
-    day = str(run.get("run_date") or today_run_date())
-    pitches = run.get("pitches") if isinstance(run, dict) else []
-    if not isinstance(pitches, list):
+def pitches_to_concepts(run_or_pitches: Any) -> List[Dict[str, Any]]:
+    if isinstance(run_or_pitches, dict):
+        day = str(run_or_pitches.get("run_date") or today_run_date())
+        pitches = run_or_pitches.get("pitches") or []
+    elif isinstance(run_or_pitches, list):
+        day = today_run_date()
+        pitches = run_or_pitches
+    else:
         return []
     return [pitch_to_concept(p, run_date=day) for p in pitches[:5] if isinstance(p, dict)]
 

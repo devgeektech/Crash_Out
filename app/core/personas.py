@@ -379,19 +379,31 @@ EPISODE_HOA_VIOLATION: Dict[str, Any] = {
 }
 
 
+def is_known_character(char_id: str) -> bool:
+    cid = (char_id or "").lower().strip()
+    if cid in CHARACTERS:
+        return True
+    try:
+        from app.studio.characters import load_library
+        chars = load_library().get("characters") or {}
+        return cid in chars
+    except Exception:
+        return False
+
+
 def characters_in_scene(scene: Dict[str, Any]) -> List[str]:
-    """Ordered unique cast for a scene (primary first)."""
+    """Ordered unique cast for a scene (primary first). Supports dynamic character library."""
     ordered: List[str] = []
-    primary = str(scene.get("primary_character", "")).lower()
-    if primary in CHARACTERS:
+    primary = str(scene.get("primary_character", "")).lower().strip()
+    if primary and is_known_character(primary):
         ordered.append(primary)
     for cid in scene.get("characters", []) or []:
-        c = str(cid).lower()
-        if c in CHARACTERS and c not in ordered:
+        c = str(cid).lower().strip()
+        if c and is_known_character(c) and c not in ordered:
             ordered.append(c)
     for line in scene.get("dialogue", []) or []:
-        c = str(line.get("character", "")).lower()
-        if c in CHARACTERS and c not in ordered:
+        c = str(line.get("character", "")).lower().strip()
+        if c and is_known_character(c) and c not in ordered:
             ordered.append(c)
     return ordered or ["gary"]
 

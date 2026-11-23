@@ -120,6 +120,7 @@
                 hx-get="/ui/agent-m/incidents?page={{ overview.incidents_pagination.prev_page }}&hitl_page={{ overview.hitl_pagination.page }}" 
                 hx-target="#system-log-board" 
                 hx-swap="outerHTML"
+                hx-indicator="#busy"
                 class="btn btn-outline" 
                 style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; cursor: pointer;">
                 « Prev
@@ -137,6 +138,7 @@
                 hx-get="/ui/agent-m/incidents?page={{ p }}&hitl_page={{ overview.hitl_pagination.page }}" 
                 hx-target="#system-log-board" 
                 hx-swap="outerHTML"
+                hx-indicator="#busy"
                 class="btn" 
                 style="font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 6px; min-width: 30px; text-align: center; cursor: pointer; {% if p == overview.incidents_pagination.page %}background: var(--brand, #ff2d8a); color: #fff; font-weight: 700; border: 1px solid var(--brand); box-shadow: 0 1px 4px rgba(255,45,138,0.3);{% else %}background: var(--surface); color: var(--text); border: 1px solid var(--border);{% endif %}">
                 {{ p }}
@@ -150,6 +152,7 @@
                 hx-get="/ui/agent-m/incidents?page={{ overview.incidents_pagination.next_page }}&hitl_page={{ overview.hitl_pagination.page }}" 
                 hx-target="#system-log-board" 
                 hx-swap="outerHTML"
+                hx-indicator="#busy"
                 class="btn btn-outline" 
                 style="font-size: 0.78rem; padding: 0.3rem 0.75rem; border-radius: 6px; cursor: pointer;">
                 Next »

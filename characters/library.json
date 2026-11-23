@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": 1795076976.0212758,
+  "updated_at": 1795416161.4527981,
   "characters": {
     "gary": {
       "id": "gary",
@@ -80,6 +80,7 @@
     }
   },
   "deleted_ids": [
-    "ff"
+    "ff",
+    "karen"
   ]
 }

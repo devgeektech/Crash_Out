@@ -129,11 +129,13 @@ async def _lifespan(_app: FastAPI):
     start_worker()
     start_agent0_scheduler()
 
-    # Optional background check/connection for Temporal & 6am EST schedule registration
+    # Background connection for Temporal: register daily 06:00 EST schedule & run worker
     async def _init_temporal_background():
         client = await get_temporal_client()
         if client:
             await schedule_daily_agent0_cron()
+            from app.infra.temporal import run_temporal_worker
+            asyncio.create_task(run_temporal_worker())
 
     asyncio.create_task(_init_temporal_background())
 

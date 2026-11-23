@@ -44,6 +44,14 @@ async def get_temporal_client():
 # Import temporalio decorators safely
 try:
     from temporalio import activity, workflow
+    from temporalio.common import RetryPolicy
+
+    # Agent M Retry Policy: 3 attempts with 1-minute gap
+    AGENT_RETRY_POLICY = RetryPolicy(
+        initial_interval=timedelta(minutes=1),
+        backoff_coefficient=1.0,
+        maximum_attempts=3,
+    )
 
     @activity.defn
     async def run_trend_ingest_activity() -> Dict[str, Any]:
@@ -151,6 +159,8 @@ try:
             result = await workflow.execute_activity(
                 run_trend_ingest_activity,
                 start_to_close_timeout=timedelta(minutes=8),
+                schedule_to_close_timeout=timedelta(minutes=15),
+                retry_policy=AGENT_RETRY_POLICY,
             )
             return result
 
@@ -175,6 +185,7 @@ try:
             trend_res = await workflow.execute_activity(
                 run_trend_ingest_activity,
                 start_to_close_timeout=timedelta(minutes=5),
+                retry_policy=AGENT_RETRY_POLICY,
             )
 
             # Wait for Gateway 1 Human Approval
@@ -185,6 +196,7 @@ try:
                 run_scriptwriter_activity,
                 args=[trend_res["concepts"][0] if trend_res.get("concepts") else {}],
                 start_to_close_timeout=timedelta(minutes=3),
+                retry_policy=AGENT_RETRY_POLICY,
             )
 
             # Wait for Gateway 2 Human Approval
@@ -287,26 +299,30 @@ async def schedule_daily_agent0_cron():
 
 async def run_temporal_worker():
     """Start standalone worker listening on task queue."""
-    from temporalio.worker import Worker
+    from temporalio.worker import Worker, UnsandboxedWorkflowRunner
 
-    client = await get_temporal_client()
-    if not client:
-        logger.info("Temporal client not connected; worker will not start.")
-        return
+    try:
+        client = await get_temporal_client()
+        if not client:
+            logger.info("Temporal client not connected; worker will not start.")
+            return
 
-    worker = Worker(
-        client,
-        task_queue=TEMPORAL_TASK_QUEUE,
-        workflows=[CrashOutProductionWorkflow, DailyAgent0Workflow],
-        activities=[
-            run_trend_ingest_activity,
-            run_scriptwriter_activity,
-            render_vidu_scene_activity,
-            merge_episode_video_activity,
-            sync_episode_videos_to_s3_activity,
-            run_publisher_activity,
-            run_seeder_activity,
-        ],
-    )
-    logger.info("Starting Temporal Worker on queue: %s", TEMPORAL_TASK_QUEUE)
-    await worker.run()
+        worker = Worker(
+            client,
+            task_queue=TEMPORAL_TASK_QUEUE,
+            workflows=[CrashOutProductionWorkflow, DailyAgent0Workflow],
+            activities=[
+                run_trend_ingest_activity,
+                run_scriptwriter_activity,
+                render_vidu_scene_activity,
+                merge_episode_video_activity,
+                sync_episode_videos_to_s3_activity,
+                run_publisher_activity,
+                run_seeder_activity,
+            ],
+            workflow_runner=UnsandboxedWorkflowRunner(),
+        )
+        logger.info("Starting Temporal Worker on queue: %s", TEMPORAL_TASK_QUEUE)
+        await worker.run()
+    except Exception as exc:
+        logger.warning("Temporal worker encountered note: %s", exc)

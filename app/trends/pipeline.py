@@ -28,12 +28,13 @@ from app.trends.store import (
 logger = logging.getLogger(__name__)
 
 
-def fetch_daily_pitch_run(*, force_refresh: bool = True) -> Dict[str, Any]:
+def fetch_daily_pitch_run(*, force_refresh: bool = True, run_date: Optional[str] = None) -> Dict[str, Any]:
     """
     Full Agent 0 run → Top 5 pitch cards (client schema).
     No static mock fallbacks. Automated 3-retry handling via Agent M with manual retry requirement.
     """
-    run_date = today_run_date()
+    if not run_date:
+        run_date = today_run_date()
     meta: Dict[str, Any] = {
         "mode": "unknown",
         "raw_count": 0,
