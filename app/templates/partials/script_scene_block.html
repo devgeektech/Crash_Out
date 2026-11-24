@@ -34,9 +34,68 @@
                 hx-target="#script-save-status"
                 hx-swap="innerHTML"
             >
+                <!-- Vidu Q4 Video Prompt & Character References (Moved Above) -->
+                <div id="vidu-prompt-card" class="vidu-prompt-card" style="margin-bottom: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); transition: all 0.2s ease;">
+                    <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm) var(--radius-sm) 0 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                        <span style="font-size: 0.9rem; font-weight: 700; color: var(--text);">⚡ Vidu Q4 Video Prompt & Character References</span>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span
+                                class="badge badge-info"
+                                id="prompt-char-badge"
+                                data-prompt-chars
+                            >{{ (active_script_scene.source_prompt or active_script_scene.vidu_prompt or '')|length }} chars</span>
+                            <span id="script-save-status" class="badge badge-info" style="font-weight: 500;" aria-live="polite">Autosaved</span>
+                            <button
+                                type="button"
+                                id="prompt-fullscreen-btn"
+                                class="btn btn-outline btn-sm prompt-fs-btn"
+                                onclick="togglePromptFullscreen()"
+                                style="font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.35rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-weight: 600; transition: all 0.15s ease;"
+                                title="Toggle Fullscreen Prompt Editor (Esc to exit)"
+                            >
+                                <span id="prompt-fullscreen-icon" style="font-size: 0.95rem; line-height: 1;">⛶</span>
+                                <span id="prompt-fullscreen-text">Fullscreen</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="vidu-prompt-body" style="padding: 0.85rem; display: flex; flex-direction: column;">
+                        <textarea
+                            id="scene-prompt-textarea"
+                            class="script-prompt-editor"
+                            name="source_prompt"
+                            placeholder="Enter full scene script, visual action, camera cues, and character dialogue..."
+                            data-live-char-count="#prompt-char-badge"
+                            hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
+                            hx-trigger="keyup changed delay:500ms"
+                            hx-target="#script-save-status"
+                            hx-swap="innerHTML"
+                            hx-include="closest form"
+                            oninput="autoResizePrompt(this)"
+                            style="width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 0.86rem; line-height: 1.55; padding: 0.85rem; overflow-y: hidden; field-sizing: content; box-sizing: border-box;"
+                        >{{ active_script_scene.source_prompt or active_script_scene.vidu_prompt or '' }}</textarea>
+                        
+                        <div style="margin-top: 0.65rem; display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <span class="muted" style="font-size: 0.78rem;">Editing prompt text updates dialogue, action, camera & SFX below</span>
+                            <button
+                                type="button"
+                                class="btn btn-primary btn-sm"
+                                hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
+                                hx-target="#script-scene-block"
+                                hx-swap="outerHTML"
+                                hx-include="closest form"
+                                style="font-size: 0.82rem; padding: 0.35rem 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;"
+                                title="Update screenplay dialogues & camera directions below from prompt text"
+                            >
+                                <span>🔄 Sync Screenplay</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clip Section: Heading, Scene Action & Screenplay Dialogues (Moved Below) -->
                 <div class="script-scene-meta script-edit-meta" style="margin-bottom: 0.85rem;">
                     <div class="script-edit-heading">
-                        <h2 class="script-scene-title" style="font-size: 1.25rem; font-weight: 700; margin: 0;">Clip {{ active_script_scene.scene_id }}:</h2>
+                        <h2 class="script-scene-title" style="font-size: 1.25rem; font-weight: 700; margin: 0;">Dialogue Review</h2>
                     </div>
                     {% if clip_ready and ep.current_gateway and ep.current_gateway|int >= 3 %}
                     <div class="script-save-status">
@@ -127,51 +186,6 @@
                     {% endfor %}
                 </div>
                 {% endif %}
-
-                <div class="vidu-prompt-card" style="margin-bottom: 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);">
-                    <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-sm) var(--radius-sm) 0 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-                        <span style="font-size: 0.9rem; font-weight: 700; color: var(--text);">⚡ Vidu Q4 Video Prompt & Character References</span>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span
-                                class="badge badge-info"
-                                id="prompt-char-badge"
-                                data-prompt-chars
-                            >{{ (active_script_scene.source_prompt or active_script_scene.vidu_prompt or '')|length }} chars</span>
-                            <span id="script-save-status" class="badge badge-info" style="font-weight: 500;" aria-live="polite">Autosaved</span>
-                        </div>
-                    </div>
-                    <div style="padding: 0.85rem;">
-                        <textarea
-                            class="script-prompt-editor"
-                            name="source_prompt"
-                            rows="9"
-                            placeholder="Enter full scene script, visual action, camera cues, and character dialogue..."
-                            data-live-char-count="#prompt-char-badge"
-                            hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
-                            hx-trigger="keyup changed delay:500ms"
-                            hx-target="#script-save-status"
-                            hx-swap="innerHTML"
-                            hx-include="closest form"
-                            style="width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 0.86rem; line-height: 1.5; padding: 0.75rem;"
-                        >{{ active_script_scene.source_prompt or active_script_scene.vidu_prompt or '' }}</textarea>
-                        
-                        <div style="margin-top: 0.65rem; display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                            <span class="muted" style="font-size: 0.78rem;">Editing prompt text updates dialogue, action, camera & SFX above</span>
-                            <button
-                                type="button"
-                                class="btn btn-primary btn-sm"
-                                hx-post="/ui/script/scene/{{ active_script_scene.scene_id }}/save"
-                                hx-target="#script-scene-block"
-                                hx-swap="outerHTML"
-                                hx-include="closest form"
-                                style="font-size: 0.82rem; padding: 0.35rem 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;"
-                                title="Update upper screenplay dialogues & camera directions from prompt text"
-                            >
-                                <span>🔄 Sync Screenplay</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
                 <div class="script-edit-actions">
                     {% if clip_ready and ep.current_gateway and ep.current_gateway|int >= 3 %}
                     <button
@@ -191,4 +205,100 @@
         <div class="empty-state">Scene not found in the script package.</div>
         {% endif %}
     </div>
+
+    <style>
+    .vidu-prompt-card.is-fullscreen {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: var(--surface) !important;
+        box-shadow: 0 0 50px rgba(0,0,0,0.5) !important;
+    }
+    .vidu-prompt-card.is-fullscreen .vidu-prompt-body {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        padding: 1rem 1.5rem !important;
+    }
+    .vidu-prompt-card.is-fullscreen textarea.script-prompt-editor {
+        flex: 1 !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        font-size: 0.95rem !important;
+        line-height: 1.6 !important;
+    }
+    </style>
+
+    <script>
+    function autoResizePrompt(el) {
+        if (!el) return;
+        var card = document.getElementById('vidu-prompt-card');
+        if (card && card.classList.contains('is-fullscreen')) {
+            el.style.height = '';
+            return;
+        }
+        el.style.height = 'auto';
+        el.style.height = Math.max(380, el.scrollHeight + 12) + 'px';
+    }
+
+    function togglePromptFullscreen() {
+        var card = document.getElementById('vidu-prompt-card');
+        var btnText = document.getElementById('prompt-fullscreen-text');
+        var btnIcon = document.getElementById('prompt-fullscreen-icon');
+        var textarea = document.getElementById('scene-prompt-textarea');
+        if (!card) return;
+        
+        var isFull = card.classList.toggle('is-fullscreen');
+        if (isFull) {
+            document.body.style.overflow = 'hidden';
+            if (btnText) btnText.textContent = 'Exit Fullscreen';
+            if (btnIcon) btnIcon.textContent = '✕';
+            if (textarea) {
+                textarea.style.height = '';
+                textarea.style.overflowY = 'auto';
+                textarea.focus();
+            }
+        } else {
+            document.body.style.overflow = '';
+            if (btnText) btnText.textContent = 'Fullscreen';
+            if (btnIcon) btnIcon.textContent = '⛶';
+            if (textarea) {
+                textarea.style.overflowY = 'hidden';
+                autoResizePrompt(textarea);
+            }
+        }
+    }
+
+    // Exit fullscreen on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var card = document.getElementById('vidu-prompt-card');
+            if (card && card.classList.contains('is-fullscreen')) {
+                togglePromptFullscreen();
+            }
+        }
+    });
+
+    // Auto-expand prompt textarea on initial load
+    (function initPromptAutoResize() {
+        var ta = document.getElementById('scene-prompt-textarea');
+        if (ta) {
+            autoResizePrompt(ta);
+            setTimeout(function() { autoResizePrompt(ta); }, 50);
+            setTimeout(function() { autoResizePrompt(ta); }, 200);
+        }
+    })();
+    </script>
 </div>

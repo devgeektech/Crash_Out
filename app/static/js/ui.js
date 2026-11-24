@@ -26,6 +26,60 @@
         (root || document).querySelectorAll("textarea.concept-inline").forEach(autosizeConceptField);
     }
 
+    function autosizePromptField(el) {
+        if (!el || !el.matches || !el.matches("textarea.script-prompt-editor, #scene-prompt-textarea")) return;
+        const card = document.getElementById("vidu-prompt-card");
+        if (card && card.classList.contains("is-fullscreen")) {
+            el.style.height = "";
+            return;
+        }
+        el.style.height = "auto";
+        el.style.height = `${Math.max(el.scrollHeight, 120)}px`;
+    }
+
+    function autosizeAllPromptFields(root) {
+        (root || document).querySelectorAll("textarea.script-prompt-editor, #scene-prompt-textarea").forEach(autosizePromptField);
+    }
+
+    window.autoResizePrompt = autosizePromptField;
+
+    window.togglePromptFullscreen = function() {
+        const card = document.getElementById("vidu-prompt-card");
+        const btnText = document.getElementById("prompt-fullscreen-text");
+        const btnIcon = document.getElementById("prompt-fullscreen-icon");
+        const textarea = document.getElementById("scene-prompt-textarea");
+        if (!card) return;
+        
+        const isFull = card.classList.toggle("is-fullscreen");
+        if (isFull) {
+            document.body.style.overflow = "hidden";
+            if (btnText) btnText.textContent = "Exit Fullscreen";
+            if (btnIcon) btnIcon.textContent = "✕";
+            if (textarea) {
+                textarea.style.height = "";
+                textarea.style.overflowY = "auto";
+                textarea.focus();
+            }
+        } else {
+            document.body.style.overflow = "";
+            if (btnText) btnText.textContent = "Fullscreen";
+            if (btnIcon) btnIcon.textContent = "⛶";
+            if (textarea) {
+                textarea.style.overflowY = "hidden";
+                autosizePromptField(textarea);
+            }
+        }
+    };
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            const card = document.getElementById("vidu-prompt-card");
+            if (card && card.classList.contains("is-fullscreen")) {
+                window.togglePromptFullscreen();
+            }
+        }
+    });
+
     document.addEventListener("input", (event) => {
         const el = event.target;
         if (el && el.matches && el.matches("textarea[data-live-char-count]")) {
@@ -36,16 +90,28 @@
         if (el && el.matches && el.matches("textarea.concept-inline")) {
             autosizeConceptField(el);
         }
+        if (el && el.matches && el.matches("textarea.script-prompt-editor, #scene-prompt-textarea")) {
+            autosizePromptField(el);
+        }
     });
 
     document.body.addEventListener("htmx:afterSwap", () => {
         autosizeAllConceptFields(document);
+        autosizeAllPromptFields(document);
+    });
+
+    window.addEventListener("resize", () => {
+        autosizeAllPromptFields(document);
     });
 
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => autosizeAllConceptFields(document));
+        document.addEventListener("DOMContentLoaded", () => {
+            autosizeAllConceptFields(document);
+            autosizeAllPromptFields(document);
+        });
     } else {
         autosizeAllConceptFields(document);
+        autosizeAllPromptFields(document);
     }
 
     let pendingDeleteUrl = null;
