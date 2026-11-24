@@ -7,6 +7,39 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-24 — Studio Scriptwriter: Prompt Scroll Removal & Fullscreen Editor Mode
+
+Completed:
+- **Removed Vertical Scrollbar from Prompt Editor (`app/static/css/app.css`, `app/templates/partials/script_scene_block.html`)**:
+  - Eliminated inner vertical scrolling on `.script-prompt-editor` in standard view (`overflow-y: hidden`, `resize: none`, `field-sizing: content`).
+  - Added dynamic JS auto-resizing (`scrollHeight`) in [app/static/js/ui.js](file:///c:/Users/vikas.DESKTOP-61LEE8B/Projects/Crash_Out/app/static/js/ui.js) so the textarea automatically expands to fit 100% of the prompt content on initial load, HTMX swaps (`htmx:afterSwap`), typing, and window resizing.
+- **Added Fullscreen Prompt Editor (`app/templates/partials/script_scene_block.html`, `app/static/js/ui.js`, `app/static/css/app.css`)**:
+  - Added a dedicated `⛶ Fullscreen` toggle button in the prompt card header with keyboard shortcut support (`Esc` key to exit).
+  - Designed `.vidu-prompt-card.is-fullscreen` fixed full-viewport overlay (`position: fixed; inset: 0; z-index: 99999; width: 100vw; height: 100vh;`) with smooth scrolling and responsive text editing for distraction-free script review.
+- **Renamed Section Heading (`app/templates/partials/script_scene_block.html`)**:
+  - Changed the heading of the lower screenplay details section from `Clip X:` to **`Dialogue Review`**.
+- **Reordered Scriptwriter Clip Panel (`app/templates/partials/script_scene_block.html`)**:
+  - Moved the **`⚡ Vidu Q4 Video Prompt & Character References`** card (`.vidu-prompt-card`) to the top of the scene panel, immediately below the scene tabs.
+  - Placed the **`Dialogue Review` section** (heading, scene action & blocking, master camera, scene SFX & ambience, and screenplay dialogue cards) below the prompt card.
+  - Updated helper and button tooltip texts (`"Editing prompt text updates dialogue, action, camera & SFX below"`) to reflect the new vertical orientation.
+
+---
+
+### 2026-11-23 — Live Production Server Fast-Forward to Master (`c0223e7`) & Verification
+
+Completed:
+- **Master Branch Verification**:
+  - Validated that `users/vikas/Agent0` commit `53bc72e` was fully merged into `dev` (`40232a4`) and subsequently merged into `master` (`c0223e7`).
+  - Verified `origin/master` and local `master` are identical and clean.
+- **Production Deployment to AWS EC2 (`54.166.201.137`)**:
+  - Connected via OpenSSH using `crashout.pem` to `ubuntu@54.166.201.137`.
+  - Stashed temporary server working tree state and pulled `origin/master` (`Updating 61df528..c0223e7`, fast-forward across 26 files).
+  - Executed `sudo systemctl daemon-reload` and restarted `crashout.service`.
+  - Ran the test suite directly on the live server: all 6 tests in `tests/test_agent_m_retry.py` passed (`Ran 6 tests in 0.210s, OK`).
+  - Verified live service status: `Active: active (running)`, Uvicorn running on port 8000, Temporal worker connected on `crash-out-production-queue`, and HTTP 200 OK verified on `/login`.
+
+---
+
 ### 2026-11-23 — Agent M Retry Validation (3 Retries with 1-Min Gap) & Incident Test Suite
 
 Completed:

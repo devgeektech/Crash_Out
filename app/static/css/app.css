@@ -1089,7 +1089,7 @@ a {
 
 .script-prompt-editor {
     width: 100%;
-    min-height: min(55vh, 520px);
+    min-height: 320px;
     margin: 0;
     padding: 1rem 1.05rem;
     border: 1px solid var(--border);
@@ -1097,15 +1097,54 @@ a {
     background: #fafbfc;
     color: var(--text);
     font-family: var(--mono);
-    font-size: 0.78rem;
+    font-size: 0.86rem;
     line-height: 1.55;
-    resize: vertical;
+    resize: none;
+    overflow-y: hidden;
+    field-sizing: content;
     box-sizing: border-box;
 }
 
 .script-prompt-editor:focus {
-    outline: 2px solid color-mix(in srgb, var(--brand, #2f5d50) 35%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--brand, #ff2d8a) 35%, transparent);
     outline-offset: 1px;
+}
+
+/* Fullscreen Prompt Editor */
+.vidu-prompt-card.is-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 99999 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--surface) !important;
+    box-shadow: 0 0 50px rgba(0,0,0,0.5) !important;
+}
+
+.vidu-prompt-card.is-fullscreen .vidu-prompt-body {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 1rem 1.5rem !important;
+}
+
+.vidu-prompt-card.is-fullscreen textarea.script-prompt-editor {
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+    resize: none !important;
 }
 
 .script-edit-actions {
