@@ -291,12 +291,14 @@
         function closeSidebar() {
             sidebar.classList.remove("sidebar-open");
             if (backdrop) backdrop.classList.remove("show");
+            document.body.classList.remove("sidebar-drawer-open");
             toggleBtn.setAttribute("aria-expanded", "false");
         }
 
         function openSidebar() {
             sidebar.classList.add("sidebar-open");
             if (backdrop) backdrop.classList.add("show");
+            document.body.classList.add("sidebar-drawer-open");
             toggleBtn.setAttribute("aria-expanded", "true");
         }
 
@@ -320,19 +322,40 @@
         });
 
         // Close menu when clicking nav links on narrow screens
-        sidebar.querySelectorAll(".nav-link").forEach((link) => {
+        sidebar.querySelectorAll(".nav-link, .sidebar-credits-panel").forEach((link) => {
             link.addEventListener("click", () => {
                 if (window.innerWidth <= 980) {
                     closeSidebar();
                 }
             });
         });
+
+        window.addEventListener("resize", () => {
+            if (window.innerWidth > 980) {
+                closeSidebar();
+            }
+        });
+    }
+
+    function setupAgent0Tabs() {
+        const nav = document.querySelector("[data-agent0-tabs]");
+        if (!nav) return;
+        nav.querySelectorAll(".agent0-tab").forEach((tab) => {
+            tab.addEventListener("click", () => {
+                nav.querySelectorAll(".agent0-tab").forEach((t) => t.classList.remove("active"));
+                tab.classList.add("active");
+            });
+        });
     }
 
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", setupSidebarToggle);
+        document.addEventListener("DOMContentLoaded", () => {
+            setupSidebarToggle();
+            setupAgent0Tabs();
+        });
     } else {
         setupSidebarToggle();
+        setupAgent0Tabs();
     }
 
     document.body.addEventListener("htmx:responseError", () => {

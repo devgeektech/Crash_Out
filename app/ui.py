@@ -651,11 +651,15 @@ def _catalog_cards(user_id: Optional[int] = None) -> list:
         latest = _pick_best_related_episode(related)
         if latest:
             _attach_local_renders(latest)
-        display_title = (
-            latest.title
-            if latest and (latest.title or "").strip()
-            else str(item.get("title") or "Untitled")
-        )
+        from app.studio.naming import display_studio_title, normalize_episode_title
+
+        if latest and (latest.title or "").strip():
+            display_title = display_studio_title(latest)
+            if display_title != (latest.title or "").strip():
+                latest.title = display_title
+                state_manager.save()
+        else:
+            display_title = normalize_episode_title(str(item.get("title") or "Untitled"))
         # Determine the true episode ID/number (never overwrite with enumerate index)
         import re
         card_id_num = None
@@ -714,15 +718,21 @@ def _studio_queue_cards(user_id: Optional[int] = None) -> list:
         if ep.id in seen_ep_ids or _published(ep):
             continue
         prod = normalize_production_status(getattr(ep, "production_status", None))
+        from app.studio.naming import display_studio_title
+
         ep_num = int(ep.episode_number or 0)
         if not ep_num:
             import re
             m = re.search(r'\bEP-(\d+)\b', ep.title or "", re.IGNORECASE)
             ep_num = int(m.group(1)) if m else 0
+        display_title = display_studio_title(ep)
+        if display_title != (ep.title or "").strip():
+            ep.title = display_title
+            state_manager.save()
         extras.append(
             {
                 "id": ep.catalog_id or ep.id,
-                "title": ep.title,
+                "title": display_title,
                 "subtitle": "In studio",
                 "duration_label": "—",
                 "list_number": ep_num,
@@ -759,6 +769,24 @@ def _studio_queue_cards(user_id: Optional[int] = None) -> list:
 
 
 
+def _resolve_a0_view(raw: Optional[str] = None) -> str:
+    view = (raw or "queue").strip().lower()
+    return view if view in {"queue", "research", "pitches"} else "queue"
+
+
+def _agent0_studio_payload() -> Dict[str, Any]:
+    """Latest scrape + pitch run for Studio A0 sub-views."""
+    from app.trends.schema import enrich_pitch_run_for_ui
+    from app.trends.store import categorize_raw_scrape, load_latest_pitch_run, load_latest_raw_scrape
+
+    scrape = load_latest_raw_scrape()
+    research = categorize_raw_scrape(scrape)
+    pitch_run = enrich_pitch_run_for_ui(
+        load_latest_pitch_run() or {"run_date": research.get("run_date"), "pitches": [], "meta": {}}
+    )
+    return {"trend_research": research, "pitch_run": pitch_run}
+
+
 def build_context(
     request: Request,
     viewing_stage: Optional[int] = None,
@@ -768,6 +796,7 @@ def build_context(
     char_id: str = "gary",
     script_scene: Optional[int] = None,
     error: Optional[str] = None,
+    a0_view: Optional[str] = None,
 ) -> Dict[str, Any]:
     user = get_current_user(request)
     user_id = user.id if user else None
@@ -789,6 +818,10 @@ def build_context(
     char_id = (char_id or "gary").lower()
     if char_id not in CHARACTERS:
         char_id = "gary"
+
+    if a0_view is None and request is not None:
+        a0_view = request.query_params.get("a0")
+    active_a0 = _resolve_a0_view(a0_view)
 
     ctx = {
         "request": request,
@@ -828,6 +861,9 @@ def build_context(
         "notifications": list_notifications(unread_only=True),
         "qa_scene": ensure_qa(ep, script_scene or 1),
         "continuity_frames": ep.continuity_frames or {},
+        "a0_view": active_a0,
+        "trend_research": {"layers": [], "layer_counts": {}, "count": 0, "run_date": None},
+        "pitch_run": {"run_date": None, "pitches": [], "meta": {}},
         # Always define Gate 2 tab vars before bundle merge (avoids Jinja UndefinedError)
         "script_scene": 1,
         "script_scene_ids": [],
@@ -835,6 +871,8 @@ def build_context(
         "active_script_lines": [],
         "active_script_clip_ready": False,
     }
+    if stage == 0:
+        ctx.update(_agent0_studio_payload())
     ctx.update(_script_scene_bundle(ep, script_scene))
     return ctx
 
@@ -853,6 +891,7 @@ def render(
     push_templates = {
         "partials/htmx_workspace.html",
         "partials/script_scene_block.html",
+        "partials/stages/stage_0.html",
     }
     if viewing_stage is not None and template_name in push_templates:
         scene = kwargs.get("script_scene")
@@ -860,7 +899,12 @@ def render(
             scene = ctx.get("script_scene")
         ep_obj = ctx.get("ep")
         ep_id = getattr(ep_obj, "id", None) if ep_obj else None
-        response.headers["HX-Push-Url"] = _studio_push_url(int(viewing_stage), scene, ep_id=ep_id)
+        response.headers["HX-Push-Url"] = _studio_push_url(
+            int(viewing_stage),
+            scene,
+            ep_id=ep_id,
+            a0_view=ctx.get("a0_view"),
+        )
     return response
 
 
@@ -960,12 +1004,21 @@ def _remember_studio_ui(
         state_manager.save()
 
 
-def _studio_push_url(stage: int, scene: Optional[int] = None, ep_id: Optional[str] = None) -> str:
+def _studio_push_url(
+    stage: int,
+    scene: Optional[int] = None,
+    ep_id: Optional[str] = None,
+    a0_view: Optional[str] = None,
+) -> str:
     url = f"/studio?stage={int(stage)}"
     if int(stage) == 2 and scene is not None:
         url += f"&scene={int(scene)}"
     if ep_id and int(stage) == 0:
         url += f"&episode={ep_id}"
+    if int(stage) == 0:
+        view = _resolve_a0_view(a0_view)
+        if view != "queue":
+            url += f"&a0={view}"
     return url
 
 
@@ -1008,6 +1061,144 @@ def ui_credits_page(request: Request):
             episode_breakdown=breakdown,
         ),
     )
+
+
+def _a0_view_from_tab(tab: Optional[str]) -> str:
+    """Map legacy Agent 0 tab names onto Studio A0 sub-views."""
+    raw = (tab or "").strip().lower()
+    if raw in {"research", "pitches"}:
+        return raw
+    if raw in {"queue", "approve"}:
+        return "queue"
+    return "queue"
+
+
+@router.get("/agent-0", response_class=HTMLResponse)
+@router.get("/agent0", response_class=HTMLResponse)
+def ui_agent_0_page(request: Request, tab: str = "queue", a0: Optional[str] = None):
+    """Legacy URL — Agent 0 lives inside Studio A0 (no separate sidebar page)."""
+    view = _resolve_a0_view(a0 or _a0_view_from_tab(tab))
+    target = "/studio?stage=0" if view == "queue" else f"/studio?stage=0&a0={view}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+def _render_studio_a0(request: Request, active: str) -> HTMLResponse:
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/studio?stage=0", status_code=303)
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=0,
+        a0_view=_resolve_a0_view(active),
+    )
+
+
+@router.get("/ui/studio/a0/{view}", response_class=HTMLResponse)
+def ui_studio_a0_view(request: Request, view: str):
+    """HTMX: swap Studio A0 sub-view (queue / research / pitches)."""
+    return _render_studio_a0(request, view)
+
+
+@router.get("/ui/agent-0/tab/{tab}", response_class=HTMLResponse)
+def ui_agent_0_tab_legacy(request: Request, tab: str):
+    """Legacy HTMX tab URL → Studio A0 sub-view."""
+    return _render_studio_a0(request, _a0_view_from_tab(tab))
+
+
+@router.post("/agent-0/refresh", response_class=HTMLResponse)
+@router.post("/ui/studio/a0/refresh", response_class=HTMLResponse)
+def ui_agent_0_refresh(request: Request, tab: str = "research", a0: Optional[str] = None):
+    """Force a live Agent 0 ingest and stay on Studio A0."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/studio?stage=0", status_code=303)
+    active = _resolve_a0_view(a0 or _a0_view_from_tab(tab) or "research")
+    toast = "Agent 0 ingest complete."
+    toast_kind = "ok"
+    try:
+        run = trend_ingest_agent.fetch_daily_pitches(force_refresh=True)
+        pitch_n = len(run.get("pitches") or [])
+        raw_n = (run.get("meta") or {}).get("raw_count")
+        toast = f"Agent 0 ingest complete · {raw_n or '?'} raw items · {pitch_n} pitches."
+    except Exception as exc:
+        logger.exception("Agent 0 refresh failed: %s", exc)
+        toast = f"Agent 0 ingest failed: {exc}"
+        toast_kind = "error"
+    if request.headers.get("hx-request"):
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=0,
+            a0_view=active,
+            toast=toast,
+            toast_kind=toast_kind,
+        )
+    target = "/studio?stage=0" if active == "queue" else f"/studio?stage=0&a0={active}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+@router.post("/agent-0/send-to-studio", response_class=HTMLResponse)
+@router.post("/ui/studio/a0/send-to-studio", response_class=HTMLResponse)
+def ui_agent_0_send_to_studio(request: Request):
+    """Attach latest Top-5 pitches to a new Studio queue episode."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/studio?stage=0", status_code=303)
+    from app.studio.generation import next_episode_number
+    from app.studio.naming import make_studio_episode_name
+    from app.trends.schema import pitches_to_concepts
+    from app.trends.store import load_latest_pitch_run
+
+    try:
+        run = load_latest_pitch_run() or trend_ingest_agent.fetch_daily_pitches(force_refresh=False)
+        pitches = run.get("pitches") or []
+        if not pitches:
+            run = trend_ingest_agent.fetch_daily_pitches(force_refresh=True)
+            pitches = run.get("pitches") or []
+        concepts = pitches_to_concepts(run)
+        if not concepts:
+            return render(
+                request,
+                "partials/htmx_workspace.html",
+                viewing_stage=0,
+                a0_view="pitches",
+                toast="No pitches available to send.",
+                toast_kind="error",
+            )
+
+        headline = pitches[0].get("headline") if pitches else "Agent 0 Pitch Pack"
+        merch = pitches[0].get("proposed_merch_hook") if pitches else "Capitalism broke my dad"
+        item = add_manual_catalog_video(
+            title=headline,
+            subtitle=f"Agent 0 Pitch Approval · {run.get('run_date')}",
+            merch=merch or "Capitalism broke my dad",
+            user_id=user.id,
+        )
+        target_num = next_episode_number()
+        ep = state_manager.create_episode(
+            title=make_studio_episode_name(serial_number=target_num),
+            engine="vidu",
+            catalog_id=str(item["id"]),
+            script_key=str(item.get("script_key") or item["id"]),
+            episode_number=target_num,
+            user_id=user.id,
+        )
+        ep.available_concepts = concepts
+        ep.selected_concept = None
+        state_manager.save()
+        orchestrator.log(ep.id, f"Agent 0 Pitch Approval sent {len(concepts)} pitches to Studio.")
+        return RedirectResponse(url=f"/studio?stage=1&episode={ep.id}", status_code=303)
+    except Exception as exc:
+        logger.exception("Agent 0 send-to-studio failed: %s", exc)
+        return render(
+            request,
+            "partials/htmx_workspace.html",
+            viewing_stage=0,
+            a0_view="pitches",
+            toast=f"Could not send pitches to Studio: {exc}",
+            toast_kind="error",
+        )
 
 
 @router.get("/agent-m", response_class=HTMLResponse)
@@ -1439,13 +1630,14 @@ def ui_studio(
     scene: Optional[int] = None,
     episode: Optional[str] = None,
     catalog: Optional[str] = None,
+    a0: Optional[str] = None,
 ):
     """HITL production studio.
 
     Bare ``/studio`` (nav / other pages) always opens Queue with the top video
     selected. Pass ``stage=`` to keep a pipeline tab on hard refresh.
     ``episode`` / ``catalog`` selects that queue item (still Queue unless
-    ``stage`` is also provided).
+    ``stage`` is also provided). ``a0=`` selects A0 sub-view (queue/research/pitches).
     """
     queue_select = False
     if episode:
@@ -1481,7 +1673,13 @@ def ui_studio(
     if ep:
         _remember_studio_ui(ep, stage, scene if stage == 2 else None)
 
-    return render(request, "studio.html", viewing_stage=stage, script_scene=scene)
+    return render(
+        request,
+        "studio.html",
+        viewing_stage=stage,
+        script_scene=scene,
+        a0_view=_resolve_a0_view(a0) if stage == 0 else "queue",
+    )
 
 
 @router.get("/queue", response_class=HTMLResponse)

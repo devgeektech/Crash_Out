@@ -11,6 +11,34 @@ from typing import Any, Dict, List, Optional
 SENSITIVITY_SAFE = "SAFE"
 SENSITIVITY_REVIEW = "SENSITIVE_REVIEW"
 
+# Friction score dimensions (must stay aligned with app.trends.friction.WEIGHTS)
+SCORE_DIMENSIONS = (
+    (
+        "cross_layer_consensus",
+        "Cross-layer consensus",
+        0.35,
+        "Same story hitting Layer A (news) + B (youth) and/or C (niche).",
+    ),
+    (
+        "generational_friction",
+        "Generational friction",
+        0.30,
+        "Parent panic / HOA energy vs Gen Z meme & content culture.",
+    ),
+    (
+        "absurdity_visual_gag",
+        "Absurdity & visual gag",
+        0.25,
+        "How vividly the crash-out can play as 9:16 animation.",
+    ),
+    (
+        "brand_safety",
+        "Brand safety",
+        0.10,
+        "SAFE vs SENSITIVE_REVIEW (violence / tragedy risk).",
+    ),
+)
+
 
 def today_run_date() -> str:
     return date.today().isoformat()
@@ -155,3 +183,128 @@ def _str_list(value: Any) -> List[str]:
         if text:
             out.append(text)
     return out
+
+
+def _pretty_source_label(label: str) -> str:
+    text = (label or "").strip()
+    if not text:
+        return text
+    try:
+        from app.trends.store import _pretty_outlet_name
+
+        return _pretty_outlet_name(text)
+    except Exception:
+        return text
+
+
+def enrich_pitch_for_ui(pitch: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add display helpers for Top Pitch cards:
+    source chips, score dimension rows, layer hits, and a short ranking rationale.
+    """
+    if not isinstance(pitch, dict):
+        return {}
+    out = dict(pitch)
+    sources = out.get("sources") if isinstance(out.get("sources"), dict) else {}
+    mainstream = [_pretty_source_label(x) for x in _str_list(sources.get("mainstream"))]
+    youth = [_pretty_source_label(x) for x in _str_list(sources.get("youth_social"))]
+    niche = [_pretty_source_label(x) for x in _str_list(sources.get("character_niche") or sources.get("niche"))]
+    out["sources"] = {
+        "mainstream": mainstream,
+        "youth_social": youth,
+        "character_niche": niche,
+    }
+    out["source_groups"] = [
+        {"id": "A", "label": "Layer A · Mainstream", "entries": mainstream},
+        {"id": "B", "label": "Layer B · Youth / social", "entries": youth},
+        {"id": "C", "label": "Layer C · Character niche", "entries": niche},
+    ]
+
+    hits = out.get("layer_hits") if isinstance(out.get("layer_hits"), dict) else {}
+    out["layer_hit_rows"] = [
+        {"id": "A", "label": "Mainstream", "count": int(hits.get("A") or 0)},
+        {"id": "B", "label": "Youth / social", "count": int(hits.get("B") or 0)},
+        {"id": "C", "label": "Character niche", "count": int(hits.get("C") or 0)},
+    ]
+    layers_present = [row["id"] for row in out["layer_hit_rows"] if row["count"] > 0]
+    out["layers_present"] = layers_present or (
+        (["A"] if mainstream else []) + (["B"] if youth else []) + (["C"] if niche else [])
+    )
+
+    breakdown = out.get("score_breakdown") if isinstance(out.get("score_breakdown"), dict) else {}
+    dim_rows: List[Dict[str, Any]] = []
+    for key, label, weight, hint in SCORE_DIMENSIONS:
+        try:
+            score = float(breakdown.get(key) or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+        score = max(0.0, min(10.0, score))
+        contribution = round(score * weight, 2)
+        dim_rows.append(
+            {
+                "key": key,
+                "label": label,
+                "weight_pct": int(round(weight * 100)),
+                "score": round(score, 1),
+                "contribution": contribution,
+                "hint": hint,
+                "bar_pct": int(round(score * 10)),
+            }
+        )
+    dim_rows.sort(key=lambda d: float(d.get("contribution") or 0), reverse=True)
+    out["score_dimensions"] = dim_rows
+
+    rank = int(out.get("rank") or 0)
+    try:
+        consensus = float(out.get("consensus_score") or 0)
+    except (TypeError, ValueError):
+        consensus = 0.0
+    top = dim_rows[:2] if dim_rows else []
+    if top:
+        why_bits = [
+            f"{row['label']} {row['score']}/10 ({row['weight_pct']}% weight → +{row['contribution']})"
+            for row in top
+        ]
+        layer_bit = (
+            f"Sources span Layer {'+'.join(out['layers_present'])}."
+            if len(out.get("layers_present") or []) >= 2
+            else (
+                f"Primary signal from Layer {(out.get('layers_present') or ['—'])[0]}."
+                if out.get("layers_present")
+                else "Layer mix was thin on this cluster."
+            )
+        )
+        out["ranking_rationale"] = (
+            f"#{rank} because consensus is {consensus:.1f}/10. "
+            f"Strongest drivers: {'; '.join(why_bits)}. {layer_bit}"
+        )
+    else:
+        out["ranking_rationale"] = (
+            f"#{rank} by consensus score {consensus:.1f}/10 "
+            "(dimension breakdown unavailable for this cached run)."
+        )
+    return out
+
+
+def enrich_pitch_run_for_ui(run: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    payload = dict(run or {})
+    pitches = [enrich_pitch_for_ui(p) for p in (payload.get("pitches") or []) if isinstance(p, dict)]
+    payload["pitches"] = pitches
+    payload["ranking_legend"] = [
+        {
+            "key": key,
+            "label": label,
+            "weight_pct": int(round(weight * 100)),
+            "hint": hint,
+        }
+        for key, label, weight, hint in SCORE_DIMENSIONS
+    ]
+    meta = dict(payload.get("meta") or {})
+    meta.setdefault(
+        "ranking_blurb",
+        "Top cards are sorted by weighted consensus (1–10): "
+        "Cross-layer 35% + Generational friction 30% + Absurdity/visual gag 25% + Brand safety 10%. "
+        "Near-duplicate pitches are dropped via embedding similarity against the current batch and the last 14 days.",
+    )
+    payload["meta"] = meta
+    return payload

@@ -1,0 +1,230 @@
+{% set research = trend_research or {} %}
+{% set layers = research.layers or [] %}
+{% set active_layer = a0_layer|default('A')|upper %}
+{% if active_layer not in ['A', 'B', 'C'] %}
+{% set active_layer = 'A' %}
+{% endif %}
+
+<div class="agent0-research">
+    <div class="agent0-summary">
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Run date</span>
+            <strong class="dash-kpi-value" style="font-size:1.15rem;">{{ research.run_date or '—' }}</strong>
+            <span class="muted">latest scrape</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Total items</span>
+            <strong class="dash-kpi-value">{{ research.count or 0 }}</strong>
+            <span class="muted">after dedupe</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Layer A</span>
+            <strong class="dash-kpi-value">{{ research.layer_counts.A|default(0) }}</strong>
+            <span class="muted">mainstream</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Layer B</span>
+            <strong class="dash-kpi-value">{{ research.layer_counts.B|default(0) }}</strong>
+            <span class="muted">youth / social</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Layer C</span>
+            <strong class="dash-kpi-value">{{ research.layer_counts.C|default(0) }}</strong>
+            <span class="muted">character niche</span>
+        </article>
+    </div>
+
+    {% if not research.count %}
+    <div class="panel agent0-empty">
+        <h2>No scrape data yet</h2>
+        <p class="muted">Run Agent 0 ingest to pull Layer A/B/C feeds (RSS, Reddit, YouTube, Google Trends, niche character sources).</p>
+    </div>
+    {% else %}
+
+    <div class="panel agent0-layer-panel" data-agent0-layers>
+        <nav class="agent0-layer-tabs" aria-label="Research layers">
+            {% for layer in layers %}
+            <button
+                type="button"
+                class="agent0-layer-tab {% if layer.id == active_layer %}active{% endif %}"
+                data-layer-tab="{{ layer.id }}"
+                aria-selected="{{ 'true' if layer.id == active_layer else 'false' }}"
+            >
+                <span class="agent0-layer-badge">{{ layer.id }}</span>
+                <span class="agent0-layer-tab-copy">
+                    <strong>{{ layer.label }}</strong>
+                    <span class="muted">{{ layer.count }} items · {{ layer.sources|length }} sources</span>
+                </span>
+            </button>
+            {% endfor %}
+        </nav>
+
+        {% for layer in layers %}
+        <div
+            class="agent0-layer-pane {% if layer.id == active_layer %}is-active{% endif %}"
+            data-layer-pane="{{ layer.id }}"
+            data-agent0-sources
+            {% if layer.id != active_layer %}hidden{% endif %}
+        >
+            {% if not layer.sources %}
+            <p class="muted agent0-layer-empty">No items collected for this layer in the latest run.</p>
+            {% else %}
+            <nav class="agent0-source-tabs" aria-label="Layer {{ layer.id }} sources">
+                {% for source in layer.sources %}
+                <button
+                    type="button"
+                    class="agent0-source-tab {% if loop.first %}active{% endif %}"
+                    data-source-tab="{{ layer.id }}::{{ source.id }}"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}"
+                >
+                    <strong>{{ source.label }}</strong>
+                    <span class="badge">{{ source.count }}</span>
+                </button>
+                {% endfor %}
+            </nav>
+
+            {% for source in layer.sources %}
+            <div
+                class="agent0-source-pane {% if loop.first %}is-active{% endif %}"
+                data-source-pane="{{ layer.id }}::{{ source.id }}"
+                data-agent0-outlets
+                {% if not loop.first %}hidden{% endif %}
+            >
+                <div class="agent0-source-pane-head">
+                    <div>
+                        <strong>{{ source.label }}</strong>
+                        <span class="muted mono">{{ source.id }}</span>
+                    </div>
+                    <span class="muted">{{ source.count }} items</span>
+                </div>
+
+                <nav class="agent0-outlet-tabs" aria-label="{{ source.label }} outlets">
+                    <button
+                        type="button"
+                        class="agent0-outlet-tab active"
+                        data-outlet-tab="__all__"
+                        aria-selected="true"
+                    >All · {{ source.count }}</button>
+                    {% for outlet in source.outlet_list %}
+                    <button
+                        type="button"
+                        class="agent0-outlet-tab"
+                        data-outlet-tab="{{ outlet.name }}"
+                        aria-selected="false"
+                    >{{ outlet.name }} · {{ outlet.count }}</button>
+                    {% endfor %}
+                </nav>
+
+                <div class="agent0-item-list">
+                    {% for item in source.entries %}
+                    <article class="agent0-item" data-outlet="{{ item.outlet }}">
+                        <div class="agent0-item-top">
+                            {% if item.url %}
+                            <a class="agent0-item-title" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                            {% else %}
+                            <span class="agent0-item-title">{{ item.title }}</span>
+                            {% endif %}
+                            <span class="muted agent0-item-score">{{ '%.0f'|format(item.score|default(0)) }}</span>
+                        </div>
+                        <div class="agent0-item-meta muted">
+                            <span>{{ item.outlet }}</span>
+                            {% if item.url %}
+                            <span class="meta-sep">·</span>
+                            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open source</a>
+                            {% endif %}
+                        </div>
+                        {% if item.snippet %}
+                        <p class="agent0-item-snippet">{{ item.snippet }}</p>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+                <p class="muted agent0-outlet-empty" data-outlet-empty hidden>No items for this outlet.</p>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+    (function () {
+        function setActiveGroup(tabs, panes, keyAttr, paneAttr, activeKey) {
+            tabs.forEach(function (t) {
+                var on = t.getAttribute(keyAttr) === activeKey;
+                t.classList.toggle('active', on);
+                t.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            panes.forEach(function (pane) {
+                var on = pane.getAttribute(paneAttr) === activeKey;
+                pane.classList.toggle('is-active', on);
+                if (on) pane.removeAttribute('hidden');
+                else pane.setAttribute('hidden', '');
+            });
+        }
+
+        function bindOutletTabs(root) {
+            if (!root || root.getAttribute('data-outlet-bound') === '1') return;
+            root.setAttribute('data-outlet-bound', '1');
+            var tabs = Array.from(root.querySelectorAll('[data-outlet-tab]'));
+            var items = Array.from(root.querySelectorAll('.agent0-item[data-outlet]'));
+            var empty = root.querySelector('[data-outlet-empty]');
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    var key = tab.getAttribute('data-outlet-tab') || '__all__';
+                    tabs.forEach(function (t) {
+                        var on = t === tab;
+                        t.classList.toggle('active', on);
+                        t.setAttribute('aria-selected', on ? 'true' : 'false');
+                    });
+                    var visible = 0;
+                    items.forEach(function (item) {
+                        var show = key === '__all__' || item.getAttribute('data-outlet') === key;
+                        item.hidden = !show;
+                        if (show) visible += 1;
+                    });
+                    if (empty) {
+                        if (visible === 0) empty.removeAttribute('hidden');
+                        else empty.setAttribute('hidden', '');
+                    }
+                });
+            });
+        }
+
+        function bindSourceTabs(layerPane) {
+            if (!layerPane || layerPane.getAttribute('data-source-bound') === '1') return;
+            layerPane.setAttribute('data-source-bound', '1');
+            var tabs = Array.from(layerPane.querySelectorAll(':scope > .agent0-source-tabs [data-source-tab]'));
+            var panes = Array.from(layerPane.querySelectorAll(':scope > [data-source-pane]'));
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    setActiveGroup(tabs, panes, 'data-source-tab', 'data-source-pane', tab.getAttribute('data-source-tab'));
+                });
+            });
+            panes.forEach(bindOutletTabs);
+        }
+
+        function bindAgent0LayerTabs(root) {
+            if (!root || root.getAttribute('data-bound') === '1') return;
+            root.setAttribute('data-bound', '1');
+            var tabs = Array.from(root.querySelectorAll(':scope > .agent0-layer-tabs [data-layer-tab]'));
+            var panes = Array.from(root.querySelectorAll(':scope > [data-layer-pane]'));
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    setActiveGroup(tabs, panes, 'data-layer-tab', 'data-layer-pane', tab.getAttribute('data-layer-tab'));
+                });
+            });
+            panes.forEach(bindSourceTabs);
+        }
+
+        function bindAll() {
+            document.querySelectorAll('[data-agent0-layers]').forEach(bindAgent0LayerTabs);
+        }
+        bindAll();
+        if (typeof htmx !== 'undefined') {
+            document.body.addEventListener('htmx:afterSwap', bindAll);
+        }
+    })();
+    </script>
+    {% endif %}
+</div>

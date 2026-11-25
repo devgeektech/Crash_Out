@@ -27,9 +27,9 @@
             <!-- Header Action Controls & Live Status Pill -->
             <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255, 255, 255, 0.08); padding: 0.4rem 0.85rem; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.12);">
-                    <span style="position: relative; display: flex; height: 10px; width: 10px;">
-                        <span style="position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: {{ overview.status_color }}; opacity: 0.75; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
-                        <span style="position: relative; display: inline-flex; border-radius: 50%; height: 10px; width: 10px; background-color: {{ overview.status_color }};"></span>
+                    <span class="agent-m-status-orb" aria-hidden="true">
+                        <span class="agent-m-status-ping agent-m-status--{{ overview.status|lower }}"></span>
+                        <span class="agent-m-status-dot agent-m-status--{{ overview.status|lower }}"></span>
                     </span>
                     <span style="font-size: 0.8rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em;">
                         {{ overview.status }}
@@ -55,7 +55,7 @@
         </div>
 
         <!-- Supervisor KPI Badges Bar -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin-top: 1.35rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 1rem; margin-top: 1.35rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem;">
             <!-- Health & Mode -->
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">Supervisor State</div>
@@ -68,7 +68,7 @@
             <!-- Pending HITL Gates -->
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">Pending Approvals (HITL)</div>
-                <div style="font-size: 1.25rem; font-weight: 700; color: {% if overview.pending_hitl_count > 0 %}#ff548e{% else %}#10b981{% endif %}; margin-top: 0.15rem;">
+                <div class="agent-m-kpi-value {% if overview.pending_hitl_count > 0 %}is-hot{% else %}is-ok{% endif %}">
                     {{ overview.pending_hitl_count }} Gates Waiting
                 </div>
                 <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">Across 5 Creative Gateways</div>
@@ -80,7 +80,7 @@
                 <div style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin-top: 0.15rem;">
                     {% if overview.temporal.connected %}Online (Cluster){% else %}Async Local Fallback{% endif %}
                 </div>
-                <div style="font-size: 0.78rem; color: {% if overview.temporal.schedule.active %}#a7f3d0{% else %}#fed7aa{% endif %}; margin-top: 0.1rem;">
+                <div class="agent-m-kpi-sub {% if overview.temporal.schedule.active %}is-ok{% else %}is-warn{% endif %}">
                     {% if overview.temporal.schedule.active %}Daily Cron 06:00 EST Active{% else %}Schedule Inactive / Paused{% endif %}
                 </div>
             </div>
@@ -88,7 +88,7 @@
             <!-- Incident Counter -->
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a89bb0;">System Errors & Retries</div>
-                <div style="font-size: 1.25rem; font-weight: 700; color: {% if overview.total_incidents > 0 %}#f87171{% else %}#34d399{% endif %}; margin-top: 0.15rem;">
+                <div class="agent-m-kpi-value {% if overview.total_incidents > 0 %}is-danger{% else %}is-ok{% endif %}">
                     {{ overview.total_incidents }} Incidents
                 </div>
                 <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">With 1-Click Task Recovery</div>
@@ -101,12 +101,12 @@
         <a href="#hitl-assignments" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
             <span>✋</span>
             <span style="font-weight: 600;">HITL Assignments</span>
-            <span style="font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: {% if overview.pending_hitl_count > 0 %}#fff1f2{% else %}#e7f2ec{% endif %}; color: {% if overview.pending_hitl_count > 0 %}#be123c{% else %}#166534{% endif %}; border: 1px solid {% if overview.pending_hitl_count > 0 %}#fecdd3{% else %}#bbf7d0{% endif %};">{{ overview.pending_hitl_count }}</span>
+            <span class="agent-m-nav-count {% if overview.pending_hitl_count > 0 %}is-hot{% else %}is-ok{% endif %}">{{ overview.pending_hitl_count }}</span>
         </a>
         <a href="#system-log-board" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
             <span>🚨</span>
             <span style="font-weight: 600;">Log Board — Errors Monitoring</span>
-            <span style="font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: {% if overview.total_incidents > 0 %}#fff1f2{% else %}#e7f2ec{% endif %}; color: {% if overview.total_incidents > 0 %}#be123c{% else %}#166534{% endif %}; border: 1px solid {% if overview.total_incidents > 0 %}#fecdd3{% else %}#bbf7d0{% endif %};">{{ overview.total_incidents }}</span>
+            <span class="agent-m-nav-count {% if overview.total_incidents > 0 %}is-hot{% else %}is-ok{% endif %}">{{ overview.total_incidents }}</span>
         </a>
         <a href="#temporal-telemetry" class="btn" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 999px; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; background: var(--surface); border: 1.5px solid var(--border); color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
             <span>⚙️</span>

@@ -140,42 +140,42 @@
         </aside>
 
         <div class="app-main">
-            <header class="app-topbar" style="background: var(--surface, #ffffff); border-bottom: 1px solid var(--border, #e8d5e0); padding: 0.75rem 1.75rem; display: flex; align-items: center; justify-content: flex-end; box-shadow: 0 1px 3px rgba(40, 8, 28, 0.04); min-height: 58px;">
-                <div class="app-topbar-right" style="display: flex; align-items: center; gap: 1.15rem;">
+            <header class="app-topbar">
+                <div class="app-topbar-right">
                     {% set unread_notifs = get_unread_notifications_count(user.id if user else None) %}
-                    <a class="topbar-bell-btn {% if page == 'notifications' %}active{% endif %}" href="/notifications" title="Notifications & Push Alerts" aria-label="Notifications" style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: var(--radius-sm, 8px); color: {% if page == 'notifications' %}var(--brand, #ff2d8a){% else %}var(--muted, #6b5a66){% endif %}; background: {% if page == 'notifications' %}var(--brand-soft, #ffe4f1){% else %}var(--surface-2, #fbf7fa){% endif %}; border: 1px solid {% if page == 'notifications' %}#fed7ea{% else %}var(--border, #e8d5e0){% endif %}; text-decoration: none; transition: all 0.15s ease;">
+                    <a class="topbar-bell-btn {% if page == 'notifications' %}active{% endif %}" href="/notifications" title="Notifications & Push Alerts" aria-label="Notifications">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                             <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                         </svg>
                         {% if unread_notifs > 0 %}
-                        <span class="topbar-bell-badge" style="position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; font-size: 0.68rem; font-weight: 700; color: #ffffff; background: var(--brand, #ff2d8a); border-radius: 999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(255, 45, 138, 0.4); line-height: 1; border: 2px solid var(--surface, #ffffff);">
+                        <span class="topbar-bell-badge">
                             {{ unread_notifs if unread_notifs < 100 else '99+' }}
                         </span>
                         {% endif %}
                     </a>
-                    <div style="height: 1.25rem; width: 1px; background: var(--border, #e8d5e0);"></div>
+                    <div class="app-topbar-divider" aria-hidden="true"></div>
                     {% if user %}
-                    <div class="app-topbar-user" style="display: flex; align-items: center; gap: 0.65rem;">
-                        <div style="width: 2rem; height: 2rem; border-radius: 50%; background: var(--brand-soft, #ffe4f1); color: var(--brand, #ff2d8a); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 1px solid #fed7ea; flex-shrink: 0;">
+                    <div class="app-topbar-user">
+                        <div class="app-topbar-avatar" aria-hidden="true">
                             {{ (user.name or user.email or 'U')[:1]|upper }}
                         </div>
-                        <div style="display: flex; flex-direction: column; line-height: 1.2;">
-                            <span style="font-weight: 700; font-size: 0.86rem; color: var(--text, #1a1220);">{{ user.name or 'Admin' }}</span>
-                            <span style="font-size: 0.76rem; color: var(--muted, #6b5a66);">{{ user.email }}</span>
+                        <div class="app-topbar-user-meta">
+                            <span class="app-topbar-user-name">{{ user.name or 'Admin' }}</span>
+                            <span class="app-topbar-user-email">{{ user.email }}</span>
                         </div>
                     </div>
-                    <div style="height: 1.25rem; width: 1px; background: var(--border, #e8d5e0);"></div>
-                    <a class="app-topbar-logout" href="/logout" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.84rem; font-weight: 600; color: var(--muted, #6b5a66); text-decoration: none; padding: 0.35rem 0.65rem; border-radius: var(--radius-sm, 8px); transition: all 0.15s ease; background: var(--surface-2, #fbf7fa); border: 1px solid var(--border, #e8d5e0);">
-                        <span aria-hidden="true" style="font-size: 0.95rem;">⎋</span>
+                    <div class="app-topbar-divider" aria-hidden="true"></div>
+                    <a class="app-topbar-logout" href="/logout">
+                        <span aria-hidden="true">⎋</span>
                         <span>Sign out</span>
                     </a>
                     {% else %}
-                    <span style="font-size: 0.84rem; color: var(--muted, #6b5a66);">Crash Out Studio</span>
+                    <span class="app-topbar-guest">Crash Out Studio</span>
                     {% endif %}
                 </div>
             </header>
-            <div class="app-content-body" style="padding: 1.5rem 1.75rem 2.5rem;">
+            <div class="app-content-body">
                 {% block content %}{% endblock %}
             </div>
         </div>

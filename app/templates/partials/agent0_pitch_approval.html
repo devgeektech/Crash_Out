@@ -1,0 +1,156 @@
+{% set run = pitch_run or {} %}
+{% set pitches = run.pitches or [] %}
+{% set meta = run.meta or {} %}
+{% set legend = run.ranking_legend or [] %}
+
+<div class="agent0-pitches">
+    <div class="agent0-summary">
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Pitch run</span>
+            <strong class="dash-kpi-value" style="font-size:1.15rem;">{{ run.run_date or '—' }}</strong>
+            <span class="muted">{{ meta.mode or 'cached' }}</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Top pitches</span>
+            <strong class="dash-kpi-value">{{ pitches|length }}</strong>
+            <span class="muted">Gate 1 candidates</span>
+        </article>
+        <article class="dash-kpi">
+            <span class="dash-kpi-label">Raw → clusters</span>
+            <strong class="dash-kpi-value" style="font-size:1.15rem;">{{ meta.raw_count|default('—') }} / {{ meta.cluster_count|default('—') }}</strong>
+            <span class="muted">pipeline volume</span>
+        </article>
+    </div>
+
+    <div class="panel agent0-rank-legend">
+        <div class="agent0-rank-legend-head">
+            <h2>How Top Pitches are ranked</h2>
+            <p class="muted">{{ meta.ranking_blurb or 'Weighted consensus score, then dedupe.' }}</p>
+        </div>
+        {% if legend %}
+        <div class="agent0-rank-legend-grid">
+            {% for row in legend %}
+            <article class="agent0-rank-legend-item">
+                <div class="agent0-rank-legend-top">
+                    <strong>{{ row.label }}</strong>
+                    <span class="badge">{{ row.weight_pct }}%</span>
+                </div>
+                <p class="muted">{{ row.hint }}</p>
+            </article>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="panel-header agent0-pitch-actions">
+        <div>
+            <h2>Top friction pitches</h2>
+            <p class="muted">Each card shows source layers, score drivers, and why it landed in the Top 5.</p>
+        </div>
+        <div class="panel-actions">
+            <button
+                class="btn btn-ghost btn-sm"
+                type="button"
+                hx-post="/ui/studio/a0/refresh?a0=pitches"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Refresh pitches</button>
+            <button
+                class="btn btn-primary btn-sm"
+                type="button"
+                {% if not pitches %}disabled{% endif %}
+                hx-post="/ui/studio/a0/send-to-studio"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+            >Send to Studio queue</button>
+        </div>
+    </div>
+
+    {% if not pitches %}
+    <div class="panel agent0-empty">
+        <h2>No pitches yet</h2>
+        <p class="muted">Run Agent 0 ingest to score Layer A/B/C intersections into Top-5 pitch cards.</p>
+    </div>
+    {% else %}
+    <div class="agent0-pitch-detail-grid">
+        {% for pitch in pitches %}
+        {% set flag = (pitch.sensitivity_flag or 'SAFE')|upper %}
+        <article class="concept-card agent0-pitch-detail {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %}">
+            <div class="concept-top">
+                <div class="concept-top-left">
+                    <span class="badge">#{{ pitch.rank or loop.index }}</span>
+                    {% if pitch.consensus_score %}
+                    <span class="badge badge-ok">{{ '%.1f'|format(pitch.consensus_score|float) }}/10 consensus</span>
+                    {% endif %}
+                    <span class="badge {% if flag == 'SENSITIVE_REVIEW' %}badge-warn{% endif %}">{{ flag }}</span>
+                    {% for lid in pitch.layers_present or [] %}
+                    <span class="badge">Layer {{ lid }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <h3>{{ pitch.headline or 'Untitled pitch' }}</h3>
+
+            <div class="agent0-why-box">
+                <span class="agent0-why-label">Why this rank</span>
+                <p>{{ pitch.ranking_rationale or 'Ranked by weighted consensus score.' }}</p>
+            </div>
+
+            <div class="agent0-pitch-section">
+                <span class="agent0-pitch-section-label">Selected from sources</span>
+                {% set ns = namespace(has_sources=false) %}
+                {% for group in pitch.source_groups or [] %}
+                    {% if group.entries %}
+                    {% set ns.has_sources = true %}
+                    <div class="agent0-source-group">
+                        <span class="muted">{{ group.label }}</span>
+                        <div class="agent0-source-chips">
+                            {% for src in group.entries %}
+                            <span class="badge">{{ src }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                {% if not ns.has_sources %}
+                <p class="muted">No outlet labels stored on this pitch.</p>
+                {% endif %}
+
+                {% if pitch.layer_hit_rows %}
+                <div class="agent0-layer-hits">
+                    {% for hit in pitch.layer_hit_rows %}
+                    <span class="badge {% if hit.count %}badge-ok{% endif %}">{{ hit.id }} · {{ hit.count }} hit{{ '' if hit.count == 1 else 's' }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            {% if pitch.score_dimensions %}
+            <div class="agent0-pitch-section">
+                <span class="agent0-pitch-section-label">Score breakdown</span>
+                <div class="agent0-score-rows">
+                    {% for dim in pitch.score_dimensions %}
+                    <div class="agent0-score-row" title="{{ dim.hint }}">
+                        <div class="agent0-score-row-top">
+                            <strong>{{ dim.label }}</strong>
+                            <span class="muted">{{ dim.weight_pct }}% · {{ '%.1f'|format(dim.score) }}/10 · +{{ '%.2f'|format(dim.contribution) }}</span>
+                        </div>
+                        <div class="agent0-score-bar" aria-hidden="true">
+                            <progress class="agent0-score-progress" max="100" value="{{ dim.bar_pct|int }}"></progress>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <p class="concept-hook"><strong>Youth take:</strong> {{ pitch.youth_sentiment_summary or '—' }}</p>
+            <p class="concept-premise"><strong>Crash-Out angle:</strong> {{ pitch.crash_out_angle or '—' }}</p>
+            <p class="concept-synopsis"><strong>Merch:</strong> {{ pitch.proposed_merch_hook or '—' }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>

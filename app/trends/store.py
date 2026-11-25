@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -469,6 +470,305 @@ def save_raw_items(run_date: str, items: List[Dict[str, Any]]) -> None:
         logger.debug("raw item pg save failed: %s", exc)
     finally:
         conn.close()
+
+
+LAYER_LABELS = {
+    "A": "Layer A — Mainstream US News",
+    "B": "Layer B — Youth / Social / Memes",
+    "C": "Layer C — Character Niche Feeds",
+}
+
+SOURCE_LABELS = {
+    "mainstream_rss": "Mainstream RSS",
+    "briefing_rss": "Briefing RSS",
+    "google_trends": "Google Trends",
+    "youtube_trending": "YouTube Trending",
+    "youth_social": "Youth Social",
+    "character_rss": "Character Niche RSS",
+    "knowyourmeme": "Know Your Meme",
+    "web_search": "Web Search Fill",
+    "newsapi": "NewsAPI",
+    "gnews": "GNews",
+    "serpapi": "SerpAPI",
+}
+
+
+def _source_label(source: str) -> str:
+    key = (source or "").strip()
+    if not key:
+        return "Unknown source"
+    if key in SOURCE_LABELS:
+        return SOURCE_LABELS[key]
+    if key.startswith("reddit/"):
+        return f"Reddit · r/{key.split('/', 1)[1]}"
+    return key.replace("_", " ").title()
+
+
+_YT_CAT_OUTLET_RE = re.compile(
+    r"(?i)^(?:youtube\s+)?(?:us\s+)?cat(?:egory)?\s*[:#-]?\s*(\d+)\s*$"
+)
+
+
+def _pretty_outlet_name(outlet: str, *, raw: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Turn scrape outlet codes into readable labels.
+    e.g. 'YouTube US cat 25' → 'News & Politics (cat 25)'.
+    """
+    name = (outlet or "").strip() or "General"
+    raw = raw if isinstance(raw, dict) else {}
+
+    # Prefer explicit category id from raw payload when present.
+    cat_raw = raw.get("category")
+    if cat_raw is not None and (
+        "cat" in name.lower()
+        or str(name).strip().isdigit()
+        or "youtube" in name.lower()
+    ):
+        try:
+            from app.trends.sources_b import youtube_category_outlet
+
+            return youtube_category_outlet(cat_raw)
+        except Exception:
+            pass
+
+    m = _YT_CAT_OUTLET_RE.match(name) or re.match(
+        r"(?i)^youtube\s+us\s+cat\s+(\d+)$", name
+    )
+    if m:
+        try:
+            from app.trends.sources_b import youtube_category_outlet
+
+            return youtube_category_outlet(m.group(1))
+        except Exception:
+            return f"Category {m.group(1)} (cat {m.group(1)})"
+    return name
+
+
+def _candidate_raw_paths(run_date: Optional[str] = None) -> List[str]:
+    """Prefer newest dated raw scrape (raw/ then legacy root)."""
+    paths: List[str] = []
+    day = (run_date or "").strip()
+    if day:
+        paths.extend(
+            [
+                os.path.join(AGENT0_RAW_DIR, f"raw_{day}.json"),
+                os.path.join(AGENT0_DIR, f"raw_{day}.json"),
+            ]
+        )
+    # Newest files in raw/ then root
+    for folder in (AGENT0_RAW_DIR, AGENT0_DIR):
+        if not os.path.isdir(folder):
+            continue
+        dated = []
+        for fname in os.listdir(folder):
+            if not (fname.startswith("raw_") and fname.endswith(".json")):
+                continue
+            # Prefer non-timestamp snapshot first later; collect all
+            dated.append(os.path.join(folder, fname))
+        dated.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        paths.extend(dated)
+    # de-dupe preserve order
+    seen = set()
+    unique: List[str] = []
+    for p in paths:
+        if p in seen:
+            continue
+        seen.add(p)
+        unique.append(p)
+    return unique
+
+
+def load_latest_raw_scrape(run_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load the most recent Agent 0 raw scrape payload.
+    Returns {run_date, count, items, path}.
+    """
+    _ensure_dir()
+    empty = {"run_date": run_date or today_run_date(), "count": 0, "items": [], "path": ""}
+
+    # Postgres fallback: latest rows for a run_date
+    conn = _pg_conn()
+    if conn:
+        try:
+            with conn, conn.cursor() as cur:
+                if run_date:
+                    cur.execute(
+                        """
+                        SELECT run_date, payload FROM agent0_raw_items
+                        WHERE run_date = %s
+                        ORDER BY id DESC LIMIT 400
+                        """,
+                        (run_date,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT run_date FROM agent0_raw_items
+                        ORDER BY created_at DESC LIMIT 1
+                        """
+                    )
+                    row = cur.fetchone()
+                    day = row[0] if row else None
+                    if day:
+                        cur.execute(
+                            """
+                            SELECT run_date, payload FROM agent0_raw_items
+                            WHERE run_date = %s
+                            ORDER BY id DESC LIMIT 400
+                            """,
+                            (day,),
+                        )
+                    else:
+                        cur.execute("SELECT run_date, payload FROM agent0_raw_items ORDER BY id DESC LIMIT 0")
+                rows = cur.fetchall() or []
+                items: List[Dict[str, Any]] = []
+                day_out = run_date or today_run_date()
+                for r in rows:
+                    day_out = str(r[0] or day_out)
+                    payload = r[1]
+                    if isinstance(payload, str):
+                        try:
+                            payload = json.loads(payload)
+                        except Exception:
+                            payload = {}
+                    if isinstance(payload, dict) and payload.get("title"):
+                        items.append(payload)
+                if items:
+                    return {
+                        "run_date": day_out,
+                        "count": len(items),
+                        "items": items,
+                        "path": "postgres:agent0_raw_items",
+                    }
+        except Exception as exc:
+            logger.debug("Postgres raw scrape read failed: %s", exc)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    for path in _candidate_raw_paths(run_date):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                items = [x for x in data if isinstance(x, dict)]
+                return {
+                    "run_date": run_date or today_run_date(),
+                    "count": len(items),
+                    "items": items,
+                    "path": path,
+                }
+            if isinstance(data, dict):
+                items = list(data.get("items") or [])
+                items = [x for x in items if isinstance(x, dict)]
+                return {
+                    "run_date": str(data.get("run_date") or run_date or today_run_date()),
+                    "count": int(data.get("count") or len(items)),
+                    "items": items,
+                    "path": path,
+                }
+        except Exception as exc:
+            logger.debug("Failed reading raw scrape %s: %s", path, exc)
+            continue
+    return empty
+
+
+def categorize_raw_scrape(scrape: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Group raw scrape items into Layer → Source → items for the Trend Research UI.
+    """
+    payload = scrape if isinstance(scrape, dict) else load_latest_raw_scrape()
+    items = [x for x in (payload.get("items") or []) if isinstance(x, dict)]
+
+    layers: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        layer_key = str(item.get("layer") or "A").strip().upper() or "A"
+        if layer_key not in ("A", "B", "C"):
+            layer_key = "A"
+        source_key = str(item.get("source") or "unknown").strip() or "unknown"
+        bucket = layers.setdefault(
+            layer_key,
+            {
+                "id": layer_key,
+                "label": LAYER_LABELS.get(layer_key, f"Layer {layer_key}"),
+                "count": 0,
+                "sources": {},
+            },
+        )
+        src = bucket["sources"].setdefault(
+            source_key,
+            {
+                "id": source_key,
+                "label": _source_label(source_key),
+                "count": 0,
+                "outlets": {},
+                "entries": [],
+            },
+        )
+        raw_meta = item.get("raw") if isinstance(item.get("raw"), dict) else {}
+        outlet = _pretty_outlet_name(
+            str(item.get("outlet") or "").strip() or "General",
+            raw=raw_meta,
+        )
+        src["outlets"][outlet] = int(src["outlets"].get(outlet) or 0) + 1
+        src["entries"].append(
+            {
+                "title": str(item.get("title") or "").strip() or "Untitled",
+                "url": str(item.get("url") or "").strip(),
+                "snippet": str(item.get("snippet") or "").strip(),
+                "score": float(item.get("score") or 0),
+                "outlet": outlet,
+                "source": source_key,
+                "layer": layer_key,
+                "fetched_at": item.get("fetched_at"),
+            }
+        )
+        src["count"] += 1
+        bucket["count"] += 1
+
+    # Sort entries by score desc; sources by count desc; layers A→B→C
+    ordered_layers: List[Dict[str, Any]] = []
+    for key in ("A", "B", "C"):
+        if key not in layers:
+            continue
+        layer = layers[key]
+        source_list = list(layer["sources"].values())
+        for src in source_list:
+            src["entries"].sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+            src["outlet_list"] = [
+                {"name": name, "count": count}
+                for name, count in sorted(src["outlets"].items(), key=lambda kv: (-kv[1], kv[0].lower()))
+            ]
+        source_list.sort(key=lambda s: (-int(s.get("count") or 0), str(s.get("label") or "").lower()))
+        layer["sources"] = source_list
+        ordered_layers.append(layer)
+
+    # Include empty layer shells so UI still shows taxonomy when scrape is thin
+    present = {L["id"] for L in ordered_layers}
+    for key in ("A", "B", "C"):
+        if key in present:
+            continue
+        ordered_layers.append(
+            {
+                "id": key,
+                "label": LAYER_LABELS[key],
+                "count": 0,
+                "sources": [],
+            }
+        )
+    ordered_layers.sort(key=lambda L: {"A": 0, "B": 1, "C": 2}.get(L["id"], 9))
+
+    return {
+        "run_date": payload.get("run_date") or today_run_date(),
+        "count": len(items),
+        "path": payload.get("path") or "",
+        "layers": ordered_layers,
+        "layer_counts": {L["id"]: L["count"] for L in ordered_layers},
+    }
 
 
 def remember_episode_topic(

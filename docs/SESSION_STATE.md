@@ -7,6 +7,77 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-25 — Clear template CSS/JS diagnostics (pitch, queue, tasks)
+
+Completed:
+- Pitch score bars: Jinja `width:` → native `<progress>` (no style Jinja).
+- Queue delete button: Jinja-in-`onclick` → `data-delete-url` / `data-delete-title`.
+- Tasks schedule KPI colors → CSS classes (`tasks-kpi-value`).
+- Added standard `line-clamp` beside `-webkit-line-clamp` in `app.css`.
+
+### 2026-11-25 — Fix Agent M CSS diagnostics (Jinja in style attrs)
+
+Completed:
+- Removed Jinja expressions from `style=""` in `agent_m.html` (status ping, KPI colors, nav badges).
+- Moved dynamic colors to CSS classes in `app.css` (`agent-m-status--*`, `agent-m-kpi-value`, `agent-m-nav-count`).
+
+### 2026-11-25 — Top Pitch cards: sources + ranking detail
+
+Completed:
+- Top Pitches cards now show **source chips by layer**, **layer hit counts**, **score breakdown bars**, and a **Why this rank** rationale.
+- Added ranking legend (weights: Cross-layer 35%, Generational friction 30%, Absurdity 25%, Brand safety 10% + embedding dedupe).
+- UI enrichment via `enrich_pitch_run_for_ui()` in `app/trends/schema.py`.
+
+### 2026-11-25 — Episode title format EP_YYYY-MM-DD
+
+Completed:
+- Queue titles now use **`EP_2026-11-23`** (was `EP-18-20261123`). Serial stays on the ID column / `episode_number`.
+- After pitch confirm: `EP_2026-11-23 - {pitch title}`.
+- Legacy stamps auto-normalize in Studio queue display and on create (`app/studio/naming.py`).
+
+### 2026-11-25 — A0 sub-tab order + Daily Trend research rename
+
+Completed:
+- Reordered Studio A0 tabs to **Daily Trend research → Top Pitches → Approve Pitch**.
+- Renamed **Trend Research** → **Daily Trend research**.
+
+### 2026-11-25 — YouTube outlets: real category names + (cat N)
+
+Completed:
+- Renamed scrape outlets like `YouTube US cat 25` → **`News & Politics (cat 25)`** (also Gaming / Entertainment for 20 / 24).
+- New scrapes write the pretty label; existing raw JSON is remapped in `categorize_raw_scrape()` for the UI.
+
+### 2026-11-25 — Studio A0 Trend Research: navigable source + outlet tabs
+
+Completed:
+- Within each Layer A/B/C pane: **source tabs** (e.g. Mainstream RSS, Character Niche RSS) sit above the feed for quick section jumps.
+- Within each source: former chips (**CNN · 15**, **ABC News · 10**, …) are **clickable outlet tabs** plus **All** — filter the item list instantly.
+- Same pattern for Layers A, B, and C; client-side only (HTMX-safe rebind).
+
+### 2026-11-25 — Studio A0 Trend Research: Layer A/B/C tabs
+
+Completed:
+- Replaced stacked Layer A/B/C `<details>` accordion with **Layer A | Layer B | Layer C** tabs at the former “Layer A — Mainstream US News” header level.
+- Active pane shows that layer’s sources/outlets/items; client-side tab switch (HTMX-safe rebind).
+
+### 2026-11-25 — Agent 0 folded into Studio A0 (no sidebar entry)
+
+Completed:
+- **Removed** sidebar **Agent 0 — Trends** link. Agent 0 lives only under **AI Production Studio → A0**.
+- **A0 sub-views** inside existing queue stage (`stage_0.html`):
+  - **Approve Pitch** (default) — pipeline queue table matching Studio mock (ID / Title / Pitch / Status / Actions).
+  - **Trend Research** — Layer A/B/C scrape browse.
+  - **Top Pitches** — Top-5 friction cards + Send to Studio queue.
+- Legacy `/agent-0` redirects to `/studio?stage=0` (`&a0=research|pitches` when needed).
+- HTMX routes: `/ui/studio/a0/{view}`, `/ui/studio/a0/refresh`, `/ui/studio/a0/send-to-studio`.
+- Store helpers unchanged: `load_latest_raw_scrape()`, `categorize_raw_scrape()`.
+
+Also in recent session work (same day / prior turns):
+- App-wide responsive shell/topbar/grid overflow fixes.
+- Concept → Pitch user-facing rename in stepper/toasts.
+
+---
+
 ### 2026-11-24 — Studio Scriptwriter: Prompt Scroll Removal & Fullscreen Editor Mode
 
 Completed:

@@ -40,7 +40,35 @@ YOUTH_CULTURE_FEEDS = [
 
 KYM_RSS = "https://knowyourmeme.com/newsfeed.rss"
 
-YOUTUBE_CATEGORIES = [20, 24, 25]  # Gaming, Entertainment, News
+# Official YouTube videoCategoryId → display name (US chart).
+YOUTUBE_CATEGORY_NAMES: Dict[int, str] = {
+    1: "Film & Animation",
+    2: "Autos & Vehicles",
+    10: "Music",
+    15: "Pets & Animals",
+    17: "Sports",
+    19: "Travel & Events",
+    20: "Gaming",
+    22: "People & Blogs",
+    23: "Comedy",
+    24: "Entertainment",
+    25: "News & Politics",
+    26: "Howto & Style",
+    27: "Education",
+    28: "Science & Technology",
+    29: "Nonprofits & Activism",
+}
+YOUTUBE_CATEGORIES = [20, 24, 25]  # Gaming, Entertainment, News & Politics
+
+
+def youtube_category_outlet(cat: int | str) -> str:
+    """Human label for a YouTube category, e.g. 'News & Politics (cat 25)'."""
+    try:
+        cat_id = int(cat)
+    except (TypeError, ValueError):
+        return f"YouTube category ({cat})"
+    name = YOUTUBE_CATEGORY_NAMES.get(cat_id) or f"Category {cat_id}"
+    return f"{name} (cat {cat_id})"
 
 
 def _clean_html_text(raw: str) -> str:
@@ -337,8 +365,8 @@ def fetch_youtube_trending() -> List[Dict[str, Any]]:
                         url=f"https://www.youtube.com/watch?v={item.get('id')}",
                         score=min(200.0, views / 50000.0) + (10 - i),
                         snippet=(snip.get("description") or "")[:240],
-                        outlet=f"YouTube US cat {cat}",
-                        raw={"category": cat, "views": views},
+                        outlet=youtube_category_outlet(cat),
+                        raw={"category": cat, "category_name": YOUTUBE_CATEGORY_NAMES.get(int(cat), ""), "views": views},
                     )
                 )
         except Exception as exc:

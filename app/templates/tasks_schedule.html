@@ -47,7 +47,7 @@
         </div>
 
         <!-- Metric Badges Row -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1.35rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 1rem; margin-top: 1.35rem; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem;">
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a99cb3;">Total Tasks (24h)</div>
                 <div style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin-top: 0.15rem;">
@@ -66,7 +66,7 @@
 
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a99cb3;">Retrying / In-Flight</div>
-                <div style="font-size: 1.25rem; font-weight: 700; color: {% if agent_tasks.retrying_count > 0 %}#fcd34d{% else %}#10b981{% endif %}; margin-top: 0.15rem;">
+                <div class="tasks-kpi-value {% if agent_tasks.retrying_count > 0 %}is-warn{% else %}is-ok{% endif %}">
                     {{ agent_tasks.retrying_count }} Retrying
                 </div>
                 <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">Automated Task Recovery</div>
@@ -74,7 +74,7 @@
 
             <div>
                 <div style="font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a99cb3;">Critical Failures</div>
-                <div style="font-size: 1.25rem; font-weight: 700; color: {% if agent_tasks.failed_count > 0 %}#f87171{% else %}#34d399{% endif %}; margin-top: 0.15rem;">
+                <div class="tasks-kpi-value {% if agent_tasks.failed_count > 0 %}is-danger{% else %}is-ok{% endif %}">
                     {{ agent_tasks.failed_count }} Failed
                 </div>
                 <div style="font-size: 0.78rem; color: #d1c5d6; margin-top: 0.1rem;">Exhausted Retry Limit</div>

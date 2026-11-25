@@ -1,0 +1,7 @@
+{# Deprecated: Agent 0 lives in Studio A0 (`/studio?stage=0`). Kept as redirect safety. #}
+{% extends "base.html" %}
+{% block title %}Redirecting…{% endblock %}
+{% block content %}
+<meta http-equiv="refresh" content="0;url=/studio?stage=0">
+<p class="muted">Agent 0 is inside <a href="/studio?stage=0">AI Production Studio → A0</a>.</p>
+{% endblock %}
