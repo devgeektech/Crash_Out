@@ -1,0 +1,260 @@
+{% set R = research or {} %}
+{% set active = R.active_signal %}
+<section id="research-root" class="research-layout" data-research-root>
+    <div class="research-list-card">
+        <div class="research-list-head">
+            <div>
+                <h2 class="research-list-title">Today's strongest signals</h2>
+                <p class="research-list-meta muted">{{ R.day_label or 'Today' }} · {{ R.total_count or 0 }} topics · {{ R.raw_item_count or R.total_count or 0 }} raw hits</p>
+            </div>
+            <div class="research-list-tools">
+                <form
+                    class="research-search"
+                    hx-get="/ui/agent0/research"
+                    hx-target="#research-root"
+                    hx-swap="outerHTML"
+                    hx-indicator="#busy"
+                >
+                    <input type="hidden" name="research" value="today">
+                    <input type="hidden" name="filter" value="{{ R.filter_bucket or 'all' }}">
+                    <input type="hidden" name="partial" value="1">
+                    <input
+                        class="input"
+                        type="search"
+                        name="q"
+                        value="{{ R.query or '' }}"
+                        placeholder="Search today's trends"
+                        aria-label="Search today's trends"
+                    >
+                </form>
+                <button
+                    id="research-mockup-btn"
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    hx-post="/ui/queue/mockup?research=today"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-indicator="#busy"
+                    hx-disabled-elt="this"
+                    onclick="this.disabled=true; this.style.opacity='0.5'; this.style.pointerEvents='none'; this.innerText='Searching...'; if(window.showInAppToast){window.showInAppToast('Searching for Trending Topics...', 'info', 6000);}"
+                    title="Run the 06:00 EST Agent 0 scheduler now: scrape layers A/B/C and refresh today's signals"
+                >Mockup</button>
+            </div>
+        </div>
+
+        <div class="research-filters" role="tablist" aria-label="Signal filters">
+            <a
+                class="research-filter {% if (R.filter_bucket or 'all') == 'all' %}is-active{% endif %}"
+                href="/studio?stage=0&research=today&filter=all"
+                hx-get="/ui/agent0/research?research=today&filter=all&partial=1"
+                hx-vals='{"q": {{ (R.query or "")|tojson }} }'
+                hx-target="#research-root"
+                hx-swap="outerHTML"
+                hx-push-url="/studio?stage=0&research=today&filter=all"
+                hx-indicator="#busy"
+            >All signals ({{ R.total_count or 0 }})</a>
+            <a
+                class="research-filter {% if R.filter_bucket == 'mainstream' %}is-active{% endif %}"
+                href="/studio?stage=0&research=today&filter=mainstream"
+                hx-get="/ui/agent0/research?research=today&filter=mainstream&partial=1"
+                hx-vals='{"q": {{ (R.query or "")|tojson }} }'
+                hx-target="#research-root"
+                hx-swap="outerHTML"
+                hx-push-url="/studio?stage=0&research=today&filter=mainstream"
+                hx-indicator="#busy"
+            >Mainstream (A) ({{ R.mainstream_count or 0 }})</a>
+            <a
+                class="research-filter {% if R.filter_bucket == 'social' %}is-active{% endif %}"
+                href="/studio?stage=0&research=today&filter=social"
+                hx-get="/ui/agent0/research?research=today&filter=social&partial=1"
+                hx-vals='{"q": {{ (R.query or "")|tojson }} }'
+                hx-target="#research-root"
+                hx-swap="outerHTML"
+                hx-push-url="/studio?stage=0&research=today&filter=social"
+                hx-indicator="#busy"
+            >Social Proof (B) ({{ R.social_count or 0 }})</a>
+            <a
+                class="research-filter {% if R.filter_bucket == 'character' %}is-active{% endif %}"
+                href="/studio?stage=0&research=today&filter=character"
+                hx-get="/ui/agent0/research?research=today&filter=character&partial=1"
+                hx-vals='{"q": {{ (R.query or "")|tojson }} }'
+                hx-target="#research-root"
+                hx-swap="outerHTML"
+                hx-push-url="/studio?stage=0&research=today&filter=character"
+                hx-indicator="#busy"
+            >Character Niche (C) ({{ R.character_count or 0 }})</a>
+        </div>
+
+        <div class="research-select-bar" id="research-select-bar" data-selected-count="{{ R.selected_count or 0 }}" data-max-selected="{{ R.max_selected or 5 }}">
+            <span class="muted">Select exactly {{ R.max_selected or 5 }} topics to generate pitches</span>
+            <strong id="research-selected-count">{{ R.selected_count or 0 }}/{{ R.max_selected or 5 }} selected</strong>
+        </div>
+
+        <div class="research-signal-list" role="list">
+            {% if R.signals %}
+                {% for signal in R.signals %}
+                <article
+                    class="research-signal {% if signal.active %}is-active{% endif %} {% if signal.selected %}is-selected{% endif %}"
+                    role="listitem"
+                    data-signal-id="{{ signal.id }}"
+                >
+                    <button
+                        type="button"
+                        class="research-signal-main"
+                        hx-post="/ui/agent0/signals/{{ signal.id }}/open"
+                        hx-target="#research-root"
+                        hx-swap="outerHTML"
+                        hx-indicator="#busy"
+                        title="Inspect signal"
+                    >
+                        <span class="research-signal-index">{{ signal.index_label }}</span>
+                        <span class="research-signal-body">
+                            <span class="research-signal-title">{{ signal.title }}</span>
+                            <span class="research-signal-summary muted">{{ signal.summary }}</span>
+                            <span class="research-signal-tags">
+                                <span class="research-tag research-tag-layer layer-{{ signal.layer|lower }}">{{ signal.layer_label or ('Layer ' ~ signal.layer) }}</span>
+                                {% for tag in signal.tags %}
+                                    {% if tag != signal.layer_label %}
+                                    <span class="research-tag">{{ tag }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="research-signal-time muted">{{ signal.time_ago }}</span>
+                            </span>
+                        </span>
+                        <span class="research-signal-score">{{ signal.score_label }}</span>
+                    </button>
+                    <label class="research-signal-check" title="Select topic" onclick="event.stopPropagation();">
+                        <input
+                            type="checkbox"
+                            {% if signal.selected %}checked{% endif %}
+                            {% if not signal.selected and R.selection_full %}disabled{% endif %}
+                            hx-post="/ui/agent0/signals/{{ signal.id }}/toggle"
+                            hx-swap="none"
+                            hx-indicator="this"
+                            hx-disabled-elt="this"
+                        >
+                        <span>Select</span>
+                    </label>
+                </article>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state" style="padding: 2rem 1rem; text-align: center;">
+                    <p class="muted" style="margin: 0;">No signals yet for today. Run <strong>Mockup</strong> or wait for the 06:00 EST Agent 0 ingest.</p>
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <aside class="research-detail-card">
+        {% if active %}
+        <div class="research-detail-head">
+            <div>
+                <div class="research-detail-kicker">{{ active.detail_label }} · {{ active.layer_label or ('Layer ' ~ active.layer) }}</div>
+                <h2 class="research-detail-title">{{ active.title }}</h2>
+                {% if active.summary and active.summary != 'No summary captured for this signal yet.' %}
+                <p class="research-detail-summary muted">{{ active.summary }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="research-score-panel">
+            <div class="research-score-row">
+                <div class="research-score-ring" aria-label="Confidence {{ active.confidence or active.score }} out of 100">
+                    <span>{{ active.confidence or active.score }}<small>/100</small></span>
+                </div>
+                <div class="research-score-copy">
+                    <div class="research-score-headline-row">
+                        <div class="research-score-headline">{{ active.unanimous_headline or 'Signal presence' }}</div>
+                        {% if active.debate_badge %}
+                        <span class="badge badge-ok">{{ active.debate_badge }}</span>
+                        {% endif %}
+                    </div>
+                    <p class="research-score-detail muted">{{ active.unanimous_detail or 'High confidence across media and social' }}</p>
+                </div>
+            </div>
+            <div class="research-confidence-track" aria-hidden="true">
+                <div class="research-confidence-fill" style="width: {{ active.confidence_bar or active.confidence or active.score or 0 }}%;"></div>
+            </div>
+        </div>
+
+        <div class="research-detail-block">
+            <div class="research-detail-block-head">
+                <div class="research-detail-block-title" style="margin-bottom: 0;">Mainstream overlap</div>
+                <span class="research-detail-count">{{ active.outlet_count or (active.outlet_bars|length if active.outlet_bars else 0) }} outlets</span>
+            </div>
+            {% if active.outlet_bars %}
+            <p class="research-detail-sub muted">
+                Each bar is that outlet’s story match vs the selected topic (semantic 40% · entity 25% · event 20% · time 15%).
+                The ring score is the average of these bars{% if active.match_breakdown %} — {{ active.match_breakdown }}{% endif %}.
+            </p>
+            <div class="research-outlet-bars">
+                {% for outlet in active.outlet_bars %}
+                <div class="research-outlet-row">
+                    <div class="research-outlet-label">
+                        <span>{{ outlet.name }}{% if outlet.layer %} <span class="muted">· {{ outlet.layer }}</span>{% endif %}</span>
+                        <span class="research-outlet-pct">{{ outlet.strength }}%</span>
+                    </div>
+                    <div class="research-outlet-track">
+                        <div class="research-outlet-fill" style="width: {{ outlet.strength }}%;"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="research-detail-sub muted">No cross-outlet matches yet for this story.</p>
+            {% endif %}
+        </div>
+
+        <div class="research-detail-block research-take">
+            <div class="research-detail-block-title">
+                Agent M’s take
+                {% if active.ai_consensus_score %}
+                <span class="badge badge-ok" style="margin-left: 0.35rem;">AI {{ '%.1f'|format(active.ai_consensus_score|float) }}/10</span>
+                {% endif %}
+            </div>
+            {% if active.agent_take %}
+            <p>{{ active.agent_take }}</p>
+            {% if active.agent_take_headline %}
+            <p class="muted" style="margin: 0.55rem 0 0; font-size: 0.78rem;">Matched AI ranking: {{ active.agent_take_headline }}</p>
+            {% endif %}
+            {% else %}
+            <p class="muted" style="margin: 0;">No AI ranking suggestion for this signal yet. After Agent 0 scores today’s clusters, the take will appear here.</p>
+            {% endif %}
+        </div>
+
+        <div class="research-detail-actions">
+            <button
+                type="button"
+                id="research-detail-toggle-btn"
+                class="btn btn-ghost"
+                data-signal-id="{{ active.id }}"
+                hx-post="/ui/agent0/signals/{{ active.id }}/toggle"
+                hx-swap="none"
+                hx-indicator="#busy"
+            >
+                {% if active.selected %}Remove from selection{% else %}Add to selection{% endif %}
+            </button>
+            <button
+                type="button"
+                id="research-create-pitches-btn"
+                class="btn btn-primary"
+                hx-post="/ui/agent0/create-pitches"
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                {% if not R.can_create_pitches %}disabled title="Select {{ R.max_selected or 5 }} topics first"{% endif %}
+            >
+                Create top 5 pitches →
+            </button>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 2rem 1rem; text-align: center;">
+            <p class="muted" style="margin: 0;">Select a signal to inspect unanimous presence, mainstream overlap, and Agent M’s take.</p>
+        </div>
+        {% endif %}
+    </aside>
+</section>
+{% if toast %}
+<div id="toast-oob" hx-swap-oob="true">{% include "partials/toast.html" %}</div>
+{% endif %}

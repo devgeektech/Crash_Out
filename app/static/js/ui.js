@@ -366,4 +366,66 @@
             }, duration);
         }
     };
+
+    // Trend Research: sync checkbox selection in place (no list remount / scroll jump).
+    window.__lastResearchSelection = null;
+    window.syncResearchSelection = function(detail, { toast = true } = {}) {
+        const root = document.getElementById("research-root");
+        if (!root || !detail) return;
+        window.__lastResearchSelection = detail;
+        const selected = new Set((detail.selected || []).map(String));
+        const max = Number(detail.max || 5);
+        const full = selected.size >= max;
+
+        root.querySelectorAll(".research-signal").forEach((row) => {
+            const id = String(row.getAttribute("data-signal-id") || "");
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (!cb || !id) return;
+            const isSel = selected.has(id);
+            cb.checked = isSel;
+            cb.disabled = !isSel && full;
+            row.classList.toggle("is-selected", isSel);
+        });
+
+        const countEl = document.getElementById("research-selected-count");
+        if (countEl) countEl.textContent = `${selected.size}/${max} selected`;
+        const bar = document.getElementById("research-select-bar");
+        if (bar) {
+            bar.dataset.selectedCount = String(selected.size);
+            bar.dataset.maxSelected = String(max);
+        }
+
+        const createBtn = document.getElementById("research-create-pitches-btn");
+        if (createBtn) {
+            const ready = selected.size === max;
+            createBtn.disabled = !ready;
+            if (ready) createBtn.removeAttribute("title");
+            else createBtn.title = `Select ${max} topics first`;
+        }
+
+        const detailBtn = document.getElementById("research-detail-toggle-btn");
+        if (detailBtn) {
+            const activeId = String(detailBtn.getAttribute("data-signal-id") || "");
+            detailBtn.textContent = selected.has(activeId)
+                ? "Remove from selection"
+                : "Add to selection";
+        }
+
+        if (toast && detail.toast && window.showInAppToast) {
+            window.showInAppToast(detail.toast, detail.toast_kind || "info", 2500);
+        }
+    };
+
+    document.body.addEventListener("researchSelectionUpdated", (evt) => {
+        window.syncResearchSelection(evt.detail || {}, { toast: true });
+    });
+
+    // Re-apply after HTMX clears hx-disabled-elt on the clicked checkbox.
+    document.body.addEventListener("htmx:afterRequest", (evt) => {
+        const path = String(evt.detail?.pathInfo?.requestPath || evt.detail?.xhr?.responseURL || "");
+        if (!path.includes("/ui/agent0/signals/") || !path.includes("/toggle")) return;
+        if (window.__lastResearchSelection) {
+            window.syncResearchSelection(window.__lastResearchSelection, { toast: false });
+        }
+    });
 })();

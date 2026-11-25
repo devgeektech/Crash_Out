@@ -3,6 +3,7 @@ Jinja + HTMX UI helpers and routes for the Crash Out HITL hub.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -385,11 +386,14 @@ def _resolve_viewing_stage(ep: Episode, viewing_stage: Optional[int]) -> int:
         stage = max(0, min(5, viewing_stage))
         if stage in DISABLED_STAGES:
             return min(3, gw)
-        # Prevent jumping ahead to unapproved stages (Stage 0 is always allowed)
+        # Agent 0 tabs (Trend research / Approve pitch) are always reachable.
+        if stage <= 1:
+            return stage
+        # Prevent jumping ahead to unapproved production stages.
         if stage > gw:
             return gw
         return stage
-    # Default landing: video queue (before Pitch)
+    # Default landing: Trend research
     return 0
 
 
@@ -759,6 +763,88 @@ def _studio_queue_cards(user_id: Optional[int] = None) -> list:
 
 
 
+def _agent0_tab_from_request(request: Request, stage: int) -> str:
+    """Agent 0 inner tabs: research | approve | history."""
+    if int(stage) == 1:
+        return "approve"
+    research = (request.query_params.get("research") or "").strip().lower()
+    if research in {"history", "trend-history", "28"}:
+        return "history"
+    raw = (request.query_params.get("a0") or request.query_params.get("tab") or "").strip().lower()
+    if raw in {"approve", "pitch", "approve-pitch"}:
+        return "approve"
+    if raw in {"history", "trend-history"}:
+        return "history"
+    # Fall back to session research view when query has no explicit tab.
+    from app.trends.research_ui import get_research_view
+
+    if get_research_view(request.session, "today") == "history" and not request.query_params.get("research"):
+        # Only honor session history when explicitly navigating history URLs;
+        # default landing on stage 0 is Trend Research.
+        pass
+    return "research"
+
+
+def _research_view_from_request(request: Request) -> str:
+    from app.trends.research_ui import get_research_view, remember_research_prefs
+
+    qp = request.query_params.get("research")
+    if qp is not None:
+        remember_research_prefs(request.session, view=qp)
+        return "history" if str(qp).lower() in {"history", "trend-history", "28"} else "today"
+    return get_research_view(request.session, "today")
+
+
+def _history_cards_28d(cards: list) -> list:
+    """Keep queue/history rows from the last 28 days when timestamps exist."""
+    cutoff = time.time() - (28 * 86400)
+    kept = []
+    for card in cards or []:
+        ep = card.get("episode") if isinstance(card, dict) else None
+        ts = 0.0
+        for raw in (
+            getattr(ep, "updated_at", None) if ep else None,
+            getattr(ep, "created_at", None) if ep else None,
+            card.get("updated_at") if isinstance(card, dict) else None,
+            card.get("created_at") if isinstance(card, dict) else None,
+        ):
+            try:
+                ts = max(ts, float(raw or 0))
+            except (TypeError, ValueError):
+                continue
+        if ts <= 0 or ts >= cutoff:
+            kept.append(card)
+    return kept
+
+
+def _research_context_for_request(request: Request) -> Dict[str, Any]:
+    from app.trends.research_ui import (
+        build_research_context,
+        get_active_signal_id,
+        get_research_filter,
+        get_research_query,
+        get_selected_signal_ids,
+        remember_research_prefs,
+    )
+
+    qp_filter = request.query_params.get("filter")
+    qp_q = request.query_params.get("q")
+    if qp_filter is not None or qp_q is not None:
+        remember_research_prefs(
+            request.session,
+            filter_bucket=qp_filter if qp_filter is not None else None,
+            query=qp_q if qp_q is not None else None,
+        )
+    selected = get_selected_signal_ids(request.session)
+    active = get_active_signal_id(request.session)
+    return build_research_context(
+        selected_ids=selected,
+        active_id=active,
+        filter_bucket=get_research_filter(request.session, qp_filter or "all"),
+        query=get_research_query(request.session, qp_q or ""),
+    )
+
+
 def build_context(
     request: Request,
     viewing_stage: Optional[int] = None,
@@ -790,6 +876,31 @@ def build_context(
     if char_id not in CHARACTERS:
         char_id = "gary"
 
+    catalog_cards = _studio_queue_cards(user_id=user_id)
+    research_view = _research_view_from_request(request)
+    agent0_tab = _agent0_tab_from_request(request, stage)
+    if agent0_tab == "history":
+        research_view = "history"
+    elif agent0_tab == "research" and int(stage) == 0:
+        research_view = "today"
+    research = (
+        _research_context_for_request(request)
+        if int(stage) == 0 and agent0_tab == "research"
+        else {
+            "signals": [],
+            "selected_count": 0,
+            "can_create_pitches": False,
+            "max_selected": 5,
+            "total_count": 0,
+            "filter_bucket": "all",
+            "query": "",
+            "active_signal": None,
+            "character_count": 0,
+            "mainstream_count": 0,
+            "social_count": 0,
+        }
+    )
+
     ctx = {
         "request": request,
         "user": get_current_user(request),
@@ -811,7 +922,11 @@ def build_context(
         "toast_kind": "error" if error else toast_kind,
         "scene_cards": _build_scene_cards(ep),
         "master_video": _resolve_master_video(ep),
-        "catalog_cards": _studio_queue_cards(user_id=user_id),
+        "catalog_cards": catalog_cards,
+        "history_cards": _history_cards_28d(catalog_cards),
+        "agent0_tab": agent0_tab,
+        "research_view": research_view,
+        "research": research,
         "page": "studio",
         "episode_list": state_manager.list_episodes_sorted(user_id=user_id),
         "production_statuses": list(PRODUCTION_STATUSES),
@@ -1600,6 +1715,170 @@ def _stage_for_selected_episode(ep: Episode) -> int:
     return stage
 
 
+def _render_agent0_workspace(request: Request, *, stage: int = 0, toast: Optional[str] = None, toast_kind: str = "info", error: Optional[str] = None):
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=stage,
+        toast=toast,
+        toast_kind=toast_kind,
+        error=error,
+    )
+
+
+def _render_research_panel(request: Request, *, toast: Optional[str] = None, toast_kind: str = "info") -> HTMLResponse:
+    """Fast path: only the Today's research panel (no full studio workspace rebuild)."""
+    from app.trends.research_ui import remember_research_prefs
+
+    remember_research_prefs(request.session, view="today")
+    research = _research_context_for_request(request)
+    response = templates.TemplateResponse(
+        request,
+        "partials/stages/stage_0_research.html",
+        {
+            "request": request,
+            "research": research,
+            "toast": toast,
+            "toast_kind": toast_kind,
+        },
+    )
+    return response
+
+
+@router.get("/ui/agent0/research", response_class=HTMLResponse)
+def ui_agent0_research(
+    request: Request,
+    research: str = "today",
+    filter: str = "all",
+    q: str = "",
+    signal: Optional[str] = None,
+    partial: int = 0,
+):
+    """Trend Research panel (today's signals or 28-day history)."""
+    from app.trends.research_ui import remember_research_prefs, set_active_signal
+
+    remember_research_prefs(request.session, view=research, filter_bucket=filter, query=q)
+    if signal:
+        set_active_signal(request.session, signal)
+    view = "history" if str(research).lower() in {"history", "trend-history", "28"} else "today"
+    # Checkbox / filter / open interactions only need the research panel.
+    if partial or (view == "today" and request.headers.get("hx-target") == "research-root"):
+        return _render_research_panel(request)
+    return _render_agent0_workspace(request, stage=0)
+
+
+@router.post("/ui/agent0/signals/{signal_id}/open", response_class=HTMLResponse)
+def ui_agent0_open_signal(request: Request, signal_id: str):
+    from app.trends.research_ui import set_active_signal
+
+    set_active_signal(request.session, signal_id)
+    return _render_research_panel(request)
+
+
+@router.post("/ui/agent0/signals/{signal_id}/toggle", response_class=HTMLResponse)
+def ui_agent0_toggle_signal(request: Request, signal_id: str):
+    """
+    Toggle selection without remounting the research panel.
+    Keeps scroll position and does not change the active detail row.
+    """
+    from app.trends.research_ui import MAX_SELECTED_SIGNALS, get_selected_signal_ids, toggle_signal_selection
+
+    before = set(get_selected_signal_ids(request.session))
+    after = toggle_signal_selection(request.session, signal_id)
+    toast = None
+    kind = "info"
+    if signal_id in before and signal_id not in after:
+        toast = f"Removed topic ({len(after)}/{MAX_SELECTED_SIGNALS})"
+    elif signal_id not in before and signal_id in after:
+        toast = f"Selected topic ({len(after)}/{MAX_SELECTED_SIGNALS})"
+    elif signal_id not in before and signal_id not in after:
+        toast = f"Already selected {MAX_SELECTED_SIGNALS} topics"
+        kind = "error"
+
+    # Empty body + HX-Trigger: client syncs checkboxes in place (no list remount).
+    response = HTMLResponse(content="")
+    response.headers["HX-Trigger"] = json.dumps(
+        {
+            "researchSelectionUpdated": {
+                "selected": after,
+                "max": MAX_SELECTED_SIGNALS,
+                "toggled": str(signal_id),
+                "toast": toast,
+                "toast_kind": kind,
+            }
+        }
+    )
+    return response
+
+
+@router.post("/ui/agent0/create-pitches", response_class=HTMLResponse)
+def ui_agent0_create_pitches(request: Request):
+    """Create Top 5 pitches from the 5 selected research topics and open Approve pitch."""
+    from app.studio.naming import make_studio_episode_name
+    from app.trends.research_ui import (
+        MAX_SELECTED_SIGNALS,
+        create_pitches_from_signal_ids,
+        get_selected_signal_ids,
+        set_selected_signal_ids,
+    )
+
+    selected = get_selected_signal_ids(request.session)
+    if len(selected) != MAX_SELECTED_SIGNALS:
+        return _render_agent0_workspace(
+            request,
+            stage=0,
+            error=f"Select exactly {MAX_SELECTED_SIGNALS} topics before creating pitches ({len(selected)} selected).",
+        )
+
+    try:
+        result = create_pitches_from_signal_ids(selected)
+    except Exception as exc:
+        logger.exception("Selected-topic pitch generation failed: %s", exc)
+        return _render_agent0_workspace(request, stage=0, error=str(exc))
+
+    concepts = result.get("concepts") or []
+    run = result.get("run") or {}
+    headline = ""
+    if concepts:
+        headline = str(concepts[0].get("headline") or concepts[0].get("title") or "").strip()
+    merch = ""
+    if concepts:
+        merch = str(concepts[0].get("proposed_merch_hook") or concepts[0].get("suggested_merch") or "").strip()
+
+    user = get_current_user(request)
+    user_id = user.id if user else None
+    item = add_manual_catalog_video(
+        title=headline or "Selected Trend Pitches",
+        subtitle=f"Agent 0 selected topics ({len(concepts)} pitches) · {run.get('run_date') or ''}",
+        merch=merch or "Capitalism broke my dad",
+        user_id=user_id,
+    )
+    from app.studio.generation import next_episode_number
+
+    target_num = next_episode_number()
+    ep = state_manager.create_episode(
+        title=make_studio_episode_name(serial_number=target_num),
+        engine="vidu",
+        catalog_id=str(item["id"]),
+        script_key=str(item.get("script_key") or item["id"]),
+        episode_number=target_num,
+        user_id=user_id,
+    )
+    ep.available_concepts = concepts
+    ep.selected_concept = None
+    set_production_status(ep, "draft")
+    state_manager.save()
+    set_selected_signal_ids(request.session, [])
+    orchestrator.log(ep.id, f"Created {len(concepts)} pitches from {MAX_SELECTED_SIGNALS} selected research topics.")
+    return render(
+        request,
+        "partials/htmx_workspace.html",
+        viewing_stage=1,
+        toast=f"Top {len(concepts)} pitches ready — pick one to approve",
+        toast_kind="success",
+    )
+
+
 @router.post("/ui/queue/mockup", response_class=HTMLResponse)
 def ui_mockup_queue_scheduler(request: Request):
     """
@@ -1607,14 +1886,23 @@ def ui_mockup_queue_scheduler(request: Request):
     1. Triggers Agent 0 to fetch live trends from all layers.
     2. Clusters, friction-scores, and generates/deduplicates the Top 5 Pitch Cards.
     3. Adds a new video in the queue with the 5 pitch cards attached and activates it in Gate 1.
+
+    Optional query `research=today|history` controls which Agent 0 tab to reopen after the run.
     """
     from app.trends.scheduler import run_daily_agent0_job
     from app.studio.naming import make_studio_episode_name
     from app.trends.schema import pitches_to_concepts
+    from app.trends.research_ui import clear_raw_feed_cache, remember_research_prefs
+
+    qp = (request.query_params.get("research") or request.query_params.get("return_to") or "").strip().lower()
+    # Empty / today → Trend Research; history → Trend history queue.
+    stay_on_research = qp not in {"history", "trend-history", "28"}
+    remember_research_prefs(request.session, view="today" if stay_on_research else "history")
 
     try:
         # Run the full scheduler pipeline
         run = run_daily_agent0_job()
+        clear_raw_feed_cache()
         pitches = run.get("pitches") or []
         concepts = pitches_to_concepts(run)
 
@@ -1650,13 +1938,21 @@ def ui_mockup_queue_scheduler(request: Request):
         state_manager.save()
         orchestrator.log(ep.id, f"Mockup scheduler executed: Generated {len(concepts)} pitch cards.")
 
-        return render(
+        push = "/studio?stage=0&research=today" if stay_on_research else "/studio?stage=0&research=history"
+        toast = (
+            f"Mockup complete · Refreshed today's signals · {ep.title}"
+            if stay_on_research
+            else f"Mockup complete · Added {ep.title} with {len(concepts)} pitches!"
+        )
+        response = render(
             request,
             "partials/htmx_workspace.html",
-            viewing_stage=0,  # Open Agent 0 table list with the new episode added
-            toast=f"Mockup complete · Added {ep.title} with {len(concepts)} pitches!",
+            viewing_stage=0,
+            toast=toast,
             toast_kind="ok",
         )
+        response.headers["HX-Push-Url"] = push
+        return response
     except Exception as exc:
         logger.exception("Queue mockup scheduler failed: %s", exc)
         return render(

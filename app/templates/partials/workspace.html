@@ -2,7 +2,7 @@
     <nav class="stepper-bar" aria-label="Pipeline stages">
         <div class="stepper">
             {% for num, label in stage_labels.items() %}
-            {# If stage 1 is merged with stage 0, skip separate stage 1 in top stepper #}
+            {# Stage 1 is merged into A0 (Trend Research & Approve Pitch) — skip duplicate stepper item. #}
             {% if num != 1 %}
             {# Stage 0 is always open. Stages 2..5 require the prior gateway to be reached/approved #}
             {% set gw = ep.current_gateway|default(1) %}

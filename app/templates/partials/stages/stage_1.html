@@ -2,34 +2,17 @@
 {% set sel_flag = (sel.sensitivity_flag or '')|upper %}
 {% set is_approved = (ep.current_gateway and ep.current_gateway|int >= 2) or (ep.status and ep.status != 'DRAFT' and ep.status != 'WAITING_GATEWAY_1') %}
 
-<div style="margin-top: 0.25rem; margin-bottom: 0.75rem; display: flex; align-items: center;">
-    <button
-        type="button"
-        class="btn btn-primary"
-        hx-get="/ui/stage/0"
-        hx-target="#workspace"
-        hx-swap="outerHTML"
-        hx-push-url="/studio?stage=0"
-        hx-indicator="#busy"
-        title="Back to episode list"
-        style="display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1.1rem; font-size: 0.88rem; font-weight: 600;"
-    >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-        <span>Back to Episode List</span>
-    </button>
-</div>
+<section class="panel stage-card stage-agent0" style="padding-top: 0;">
+    {% include "partials/stages/agent0_main_tabs.html" %}
 
-<section class="panel stage-card" style="padding-top: 0.75rem;">
-    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.25rem 0.5rem 0.65rem; margin-bottom: 0.65rem;">
+    <div class="panel-header panel-header-compact agent0-header" style="align-items: center; padding-bottom: 0.65rem; margin-bottom: 0.35rem;">
         <div style="flex: 1; min-width: 0;">
-            <h1 class="panel-title" style="margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--text); word-break: break-word; overflow-wrap: break-word; line-height: 1.35;">
+            <h1 class="panel-title" style="margin: 0; word-break: break-word; overflow-wrap: break-word; line-height: 1.35;">
                 {{ ep.title }}
             </h1>
+            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">Approve one of the Top 5 pitches to unlock scripting.</p>
         </div>
-        <div class="panel-actions" style="flex-shrink: 0; margin: 0;">
+        <div class="panel-actions" style="flex-shrink: 0; margin: 0; align-self: center;">
             {% if is_approved %}
             <button
                 class="btn btn-primary"
@@ -195,7 +178,7 @@
             </article>
             {% endfor %}
         {% else %}
-            <div class="empty-state">No pitches yet. Run Mockup from Studio Queue to generate pitches.</div>
+            <div class="empty-state">No pitches yet. Select 5 topics in Trend Research, or run Mockup from Trend history.</div>
         {% endif %}
     </div>
 </section>

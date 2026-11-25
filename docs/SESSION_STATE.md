@@ -7,6 +7,119 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-25 — Story Match Confidence (S/E/C/T)
+
+Completed:
+- Publisher Mainstream overlap % is now **Story Match Confidence** vs the selected/anchor trend:
+  - Semantic 40% + Entity 25% + Event/context 20% + Time relevance 15%.
+- Flow: fetch topic → when found on another platform, score that article with all 4 factors → bar %.
+- Ring confidence = average of publisher match % across platforms (single-outlet stays early-signal).
+
+### 2026-11-25 — Research Checkbox: No Scroll / No Auto-Select
+
+Completed:
+- Checkbox toggle no longer remounts `#research-root` (uses `hx-swap="none"` + `HX-Trigger`).
+- Toggle does not change the active detail row; list scroll stays put while selection syncs in place.
+
+### 2026-11-25 — Mainstream Overlap UI + Match Confidence
+
+Completed:
+- Mainstream overlap matches reference layout: title + pink outlet count, “Reported by…”, per-outlet pink bars with %.
+- Per-platform match % from title Jaccard vs the anchor story; repeat hits on the same outlet accumulate (capped 100).
+- **Confidence** = sum(platform %) ÷ platform count; drives the Unanimous ring + confidence bar and list scores.
+
+### 2026-11-25 — Trend Research Mockup Button
+
+Completed:
+- Added **Mockup** on Trend Research (`stage_0_research.html`) to manually run the 06:00 EST Agent 0 scheduler.
+- Mock from research returns to `research=today`, clears the raw-feed cache, and refreshes signals; history Mockup still lands on Trend history.
+
+### 2026-11-25 — Presence Ranking + Layer Labels + Unanimous/Overlap
+
+Completed:
+- **Filters renamed**: Mainstream (A), Social Proof (B), Character Niche (C).
+- **No scrape-time title dedupe** (`collect_all_trends`): every outlet/platform hit is kept raw.
+- **Post-scrape presence merge** (`group_items_by_presence`): Jaccard-merge titles across platforms, then rank by outlet/platform/layer presence.
+- **Detail panel restored**: Unanimous signal ring + copy from real presence; Mainstream overlap bars from real Layer A outlet scores; Agent M take retained.
+- **Pitch create** resolves selected `topic_*` presence groups (with legacy `sig_*` fallback).
+
+---
+
+### 2026-11-25 — Trend Research: Real Data Only + AI Agent M Take
+
+Completed:
+- Removed fabricated detail UI (fake confidence copy, debate badges, invented social-proof counts, fake outlet % bars).
+- Detail panel now shows real feed facts (source, layer, character, views, feed score), real related outlets by title overlap, and **Agent M’s take** from the latest AI ranking/pitch run (`youth_sentiment_summary` / `crash_out_angle`) when a match exists.
+
+---
+
+### 2026-11-25 — Agent 0 Tab Layout: Corner History + Wide Research/Approve
+
+Completed:
+- **Trend history** stays a compact corner tab in the panel header.
+- **Trend Research** and **Approve pitch** are a full-width horizontal dual-tab bar beneath the header.
+
+---
+
+### 2026-11-25 — Agent 0 Top Tabs: Research / Approve / History
+
+Completed:
+- Removed left **Today's research / Trend history** subtabs.
+- Top Agent 0 row is now three tabs: **Trend Research**, **Approve pitch**, **Trend history**.
+
+---
+
+### 2026-11-25 — Restore Studio Stepper Bar (A0–A5)
+
+Completed:
+- Restored top pipeline bar to prior layout: **A0 Trend Research & Approve Pitch**, **A1 Scriptwriter**, **A3 Animation & Rendering**, **A4/A5 Soon**.
+- Stage 1 remains merged into A0 in the stepper; in-panel Trend Research / Approve pitch tabs are unchanged.
+
+---
+
+### 2026-11-25 — Agent 0: Layer C filter, ranking, fast checkbox
+
+Completed:
+- **Layer C**: Already present in All signals; Social filter was A/B conflation. Split filters to Mainstream A / Social B / **Character C**, with Layer badges on each row.
+- **Ranking**: Per-layer normalized scores + quality bonus; All view round-robins A→C→B so character niche is not buried under YouTube raw scores.
+- **Checkbox speed**: Toggle/open now swaps `#research-root` only (not full workspace), with a short raw-feed memory cache and capped similarity scan.
+
+---
+
+### 2026-11-25 — Agent 0 Trend Research UI (Today + History + Select 5)
+
+Completed:
+- **Agent 0 tabs**: Stage stepper now shows separate **Trend research** and **Approve pitch**; both stages expose matching in-panel tabs.
+- **Today's research** (`stage_0_research.html`): signal list + detail panel (score, mainstream overlap, social proof, Agent M take) using current theme tokens — not the reference mock fonts/sizes.
+- **Trend history · 28 days**: previous Studio queue table moved to `stage_0_history.html`.
+- **Select 5 → Top 5 pitches**: session-backed multi-select on today's signals; `POST /ui/agent0/create-pitches` scores the selected topics into Gate 1 pitch cards and opens Approve pitch.
+- **Helpers**: `app/trends/research_ui.py`, `load_raw_items()` in `app/trends/store.py`, research routes under `/ui/agent0/*`.
+
+---
+
+### 2026-11-25 — Temporal Worker Reload Hang Fix
+
+Completed:
+- **Root cause**: uvicorn `reload=True` cancelled the in-process Temporal worker on file save; lifespan never awaited/stopped that task, so Windows shutdown hung and the HTTP server died after `Worker cancelled, shutting down` INFO lines.
+- **Fix (`app/infra/temporal.py`, `app/main.py`)**: track the worker task via `start_temporal_runtime` / `shutdown_temporal_runtime`, cancel with a 2s timeout on lifespan exit, treat `CancelledError` as expected reload/shutdown, and clear the Temporal client so the next boot reconnects cleanly.
+
+---
+
+### 2026-11-25 — Episode Title Format: EP_YYYY-Mon-DD + Same-Day (N)
+
+Completed:
+- **Studio Episode Naming (`app/studio/naming.py`)**:
+  - Replaced `EP-<serial>-<YYYYMMDD>` with day-stamp titles: `EP_2026-Nov-23`.
+  - Same-day extras allocate `EP_2026-Nov-23 (2)`, `(3)`, … by scanning existing episode titles (including pitch-confirmed `EP_… - Pitch` forms).
+  - Month abbreviations are fixed English (`Jan`–`Dec`) so names stay locale-independent.
+  - Pitch confirm still preserves the day stamp / sequence: `EP_2026-Nov-23 (2) - {pitch}`.
+- **Create Path (`app/state.py`)**:
+  - Blank / placeholder titles (`New Episode`, `Untitled`) now mint the day-stamp name via `make_studio_episode_name`.
+- **Gateway 1 (`app/agents/agent_m_orchestrator.py`)**:
+  - Stopped overwriting the episode title with the raw pitch headline; now uses `apply_confirmed_pitch_title` so the day stamp / `(N)` sequence is kept.
+
+---
+
 ### 2026-11-24 — Studio Scriptwriter: Prompt Scroll Removal & Fullscreen Editor Mode
 
 Completed:
