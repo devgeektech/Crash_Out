@@ -7,6 +7,61 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-26 — Sensitive topic confirm uses themed in-app dialog
+
+Completed:
+- Replaced native browser `hx-confirm` alert for `SENSITIVE_REVIEW` Approve Pitch with the shared `#app-confirm-dialog` (warn styling + “Approve anyway”).
+- All `hx-confirm` prompts now route through `htmx:confirm` → themed dialog (delete stays danger-styled).
+
+Files: `app/static/js/ui.js`, `app/templates/base.html`, `app/static/css/app.css`, pitch modal + stage_1 templates
+
+### 2026-11-26 — Delete episode clears pitch; Work history after Approve only
+
+Completed:
+- Deleting an episode clears its research pitch cache so View Pitch / ✓ Pitch Approved does not linger for that signal.
+- Pitch modal Approve state is tied to the episode that owns the signal, not an unrelated active shell.
+- Work history lists episodes only after **Approve Pitch** (gateway ≥ 2 / script); Create Pitch draft shells stay out.
+
+Files: `app/ui.py`, `app/trends/research_ui.py`
+
+### 2026-11-26 — Regenerate Pitch loading lock + spinner
+
+Completed:
+- Clicking **Regenerate Pitch** greys out / disables **Approve Pitch** until the new card returns.
+- Pitch card shows a loading overlay spinner while regeneration runs.
+
+### 2026-11-26 — Episode Pitch card fits viewport
+
+Completed:
+- Pitch modal capped to ~88vh with a scrollable body; footer (notes / Regenerate / Approve) stays pinned on-screen.
+
+### 2026-11-26 — Approve Pitch: simple Regenerate Pitch control
+
+Completed:
+- Episode Pitch modal shows optional notes (`Add notes for Regeneration (Optional)`) + **Regenerate Pitch**, then **Approve Pitch**.
+- Notes are optional; regenerating refreshes the card in-place.
+
+### 2026-11-26 — Approve Pitch HITL: regenerate / improve
+
+Completed:
+- Episode Pitch modal (while approving) now offers **Regenerate completely** and **Improve with notes**.
+- Improve requires human guideline text; both keep the modal open and refresh the pitch card.
+- Friction scorer accepts HITL mode + prior pitch + guidance for a full replacement card.
+
+### 2026-11-26 — Fix Windows hang after Temporal worker reload
+
+Completed:
+- Root cause: uvicorn `--reload` cancelled the in-process Temporal worker; gRPC threads kept the child alive, so `/login` timed out after `Worker cancelled, shutting down`.
+- Dev (`run.py` reload): skip embedded Temporal worker; still connect/register schedules.
+- Harder shutdown: call `worker.shutdown()` with timeout; never block lifespan exit more than ~2.5s.
+- Watch only `app/` for reload to avoid noisy StatReload loops.
+
+### 2026-11-26 — Pulled master on live (`admin.crashout.tv`)
+
+Completed:
+- Fast-forward pulled `origin/master` on EC2 (`54.166.201.137` / `/var/www/Crash_Out`) from `604ee36` → `da23bbc`.
+- Restarted `crashout.service`; service active; `/login` returned HTTP 200.
+
 ### 2026-11-26 — Remove Trend Signal ⋯ open-source control
 
 Completed:

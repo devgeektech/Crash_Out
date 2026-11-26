@@ -800,9 +800,55 @@ def _research_view_from_request(request: Request) -> str:
     return get_research_view(request.session, "today")
 
 
+def _episode_pitch_approved(ep: Optional[Episode]) -> bool:
+    """True once Gate 1 (Approve Pitch) has passed — Work history entry gate."""
+    if not ep:
+        return False
+    if int(getattr(ep, "current_gateway", 1) or 1) >= 2:
+        return True
+    if getattr(ep, "script", None):
+        return True
+    status = str(getattr(ep, "status", None) or "").upper()
+    return status not in {"", "DRAFT", "WAITING_GATEWAY_1"}
+
+
+def _signal_ids_for_episode(ep: Optional[Episode]) -> list[str]:
+    if not ep:
+        return []
+    out: list[str] = []
+    concepts = []
+    if isinstance(ep.selected_concept, dict):
+        concepts.append(ep.selected_concept)
+    for c in ep.available_concepts or []:
+        if isinstance(c, dict):
+            concepts.append(c)
+    for concept in concepts:
+        sid = str(concept.get("source_signal_id") or "").strip()
+        if sid and sid not in out:
+            out.append(sid)
+    return out
+
+
+def _episode_for_pitch_signal(signal_id: str, user_id: Optional[int] = None) -> Optional[Episode]:
+    """Episode that owns a research pitch for this signal (not merely the active shell)."""
+    sid = str(signal_id or "").strip()
+    if not sid:
+        return None
+    for ep in state_manager.list_episodes_sorted(user_id=user_id):
+        if user_id is not None and ep.user_id is not None and ep.user_id != user_id:
+            continue
+        if sid in _signal_ids_for_episode(ep):
+            return ep
+    return None
+
+
 def _work_history_cards(cards: list) -> list:
-    """All worked queue/history episodes (newest first when timestamps exist)."""
-    rows = list(cards or [])
+    """Episodes that passed Approve Pitch (newest first). Draft Create Pitch shells stay out."""
+    rows = [
+        card
+        for card in (cards or [])
+        if isinstance(card, dict) and _episode_pitch_approved(card.get("episode"))
+    ]
 
     def _ts(card: dict) -> float:
         ep = card.get("episode") if isinstance(card, dict) else None
@@ -826,6 +872,20 @@ def _work_history_cards(cards: list) -> list:
 def _history_cards_28d(cards: list) -> list:
     """Back-compat alias — work history is no longer capped at 28 days."""
     return _work_history_cards(cards)
+
+
+def _pitch_btn_mode_for_selection(selected_ids: list, user_id: Optional[int] = None) -> str:
+    """Create / view / disabled, clearing orphan pitch caches when the episode was deleted."""
+    from app.trends.research_ui import clear_pitch_for_signal, pitch_mode_for_selection
+
+    mode = pitch_mode_for_selection(selected_ids, user_id=user_id)
+    if mode != "view":
+        return mode
+    sid = str((selected_ids or [None])[0] or "").strip()
+    if sid and not _episode_for_pitch_signal(sid, user_id=user_id):
+        clear_pitch_for_signal(sid, user_id=user_id)
+        return "create"
+    return "view"
 
 
 def _research_context_for_request(request: Request) -> Dict[str, Any]:
@@ -854,13 +914,17 @@ def _research_context_for_request(request: Request) -> Dict[str, Any]:
     filter_bucket = get_research_filter(request.session, qp_filter or "all")
     # Selection UI only on All signals; keep stored picks so refresh/All tab restore them.
     display_selected = selected if str(filter_bucket or "all").lower() == "all" else []
-    return build_research_context(
+    ctx = build_research_context(
         selected_ids=display_selected,
         active_id=active,
         filter_bucket=filter_bucket,
         query=get_research_query(request.session, qp_q or ""),
         user_id=user_id,
     )
+    mode = _pitch_btn_mode_for_selection(display_selected, user_id=user_id)
+    ctx["pitch_btn_mode"] = mode
+    ctx["has_pitch_for_selection"] = mode == "view"
+    return ctx
 
 
 def build_context(
@@ -1871,7 +1935,6 @@ def ui_agent0_toggle_signal(request: Request, signal_id: str):
         MAX_SELECTED_SIGNALS,
         get_research_filter,
         get_selected_signal_ids,
-        pitch_mode_for_selection,
         toggle_signal_selection,
     )
 
@@ -1894,7 +1957,7 @@ def ui_agent0_toggle_signal(request: Request, signal_id: str):
             toast = "Could not select topic"
             kind = "error"
 
-    mode = pitch_mode_for_selection(after, user_id=user_id)
+    mode = _pitch_btn_mode_for_selection(after, user_id=user_id)
     response = HTMLResponse(content="")
     response.headers["HX-Trigger"] = json.dumps(
         {
@@ -1970,6 +2033,7 @@ def ui_agent0_create_pitches(request: Request):
         concept["merch_punchline"] = episode_name
         concept["proposed_merch_hook"] = episode_name
         concept["suggested_merch"] = episode_name
+    concept["source_signal_id"] = signal_id
     set_pitch_for_signal(signal_id, concept, user_id=user_id)
     logger.info(
         "[create-pitch] UI success · signal_id=%s · episode_name=%s",
@@ -2061,6 +2125,7 @@ def _pitch_modal_response(
             "request": request,
             "pitch": pitch,
             "signal_id": signal_id or str((pitch or {}).get("source_signal_id") or ""),
+            "episode_id": getattr(ep, "id", "") if ep else "",
             "is_approved": is_approved,
             "ep": ep,
         },
@@ -2079,12 +2144,18 @@ def ui_agent0_pitch_modal(request: Request, signal_id: str = ""):
         selected = get_selected_signal_ids(request.session, user_id=user_id)
         sid = selected[0] if selected else ""
     pitch = get_pitch_for_signal(sid, user_id=user_id) if sid else None
+    # Approve state follows the episode that owns this signal — not an unrelated active shell.
+    ep = _episode_for_pitch_signal(sid, user_id=user_id)
+    if pitch and not ep:
+        # Orphan cache after episode delete — drop so CTA returns to Create Pitch.
+        from app.trends.research_ui import clear_pitch_for_signal
+
+        clear_pitch_for_signal(sid, user_id=user_id)
+        pitch = None
     if not pitch:
         return HTMLResponse(
             '<div class="research-pitch-modal-empty muted">No pitch for this selection yet. Click Create Pitch.</div>'
         )
-    user = get_current_user(request)
-    ep = state_manager.get_active_episode(user_id=user.id if user else None)
     return _pitch_modal_response(request, pitch=pitch, signal_id=sid, ep=ep)
 
 
@@ -2111,6 +2182,162 @@ def ui_episode_pitch_modal(request: Request, episode_id: str):
         signal_id=str(pitch.get("source_signal_id") or ""),
         ep=ep,
     )
+
+
+def _apply_regenerated_pitch(
+    *,
+    concept: Dict[str, Any],
+    signal_id: str,
+    ep: Optional[Episode],
+    user_id: Optional[int],
+    mode: str,
+    guidance: str,
+) -> Episode:
+    """Persist regenerated/improved pitch onto signal cache + active episode."""
+    from app.trends.research_ui import set_pitch_for_signal
+
+    episode_name = str(
+        concept.get("episode_name") or concept.get("headline") or concept.get("title") or ""
+    ).strip()
+    if episode_name:
+        concept["episode_name"] = episode_name
+        concept["headline"] = episode_name
+        concept["title"] = episode_name
+        concept["merch_punchline"] = episode_name
+        concept["proposed_merch_hook"] = episode_name
+        concept["suggested_merch"] = episode_name
+    if signal_id:
+        concept["source_signal_id"] = signal_id
+        set_pitch_for_signal(signal_id, concept, user_id=user_id)
+
+    if not ep:
+        ep = _ensure_episode(user_id=user_id)
+    if int(getattr(ep, "current_gateway", 1) or 1) >= 2:
+        raise HTTPException(status_code=400, detail="Pitch already approved — regenerate is locked.")
+
+    ep.available_concepts = [concept]
+    ep.selected_concept = concept
+    if episode_name:
+        ep.title = episode_name[:120]
+        ep.merch_punchline = episode_name
+    set_production_status(ep, "draft")
+    state_manager.save()
+    state_manager.set_active(ep.id)
+    note = "Regenerated pitch from scratch" if mode == "fresh" else "Improved pitch with HITL notes"
+    if guidance:
+        note = f"{note}: {guidance[:160]}"
+    orchestrator.log(ep.id, note)
+    return ep
+
+
+@router.post("/ui/agent0/regenerate-pitch", response_class=HTMLResponse)
+def ui_agent0_regenerate_pitch(
+    request: Request,
+    signal_id: str = Form(""),
+    episode_id: str = Form(""),
+    mode: str = Form("fresh"),
+    guidance: str = Form(""),
+):
+    """
+    HITL while approving: regenerate completely, or improve with human notes.
+    Returns the Episode Pitch modal HTML (modal stays open).
+    """
+    from app.auth.middleware import current_user_id
+    from app.trends.research_ui import (
+        create_pitches_from_signal_ids,
+        get_pitch_for_signal,
+        get_selected_signal_ids,
+    )
+
+    user = get_current_user(request)
+    user_id = user.id if user else current_user_id(request)
+    hitl_mode = str(mode or "fresh").strip().lower()
+    if hitl_mode not in {"fresh", "improve", "revise", "edit"}:
+        hitl_mode = "fresh"
+    notes = str(guidance or "").strip()
+    if hitl_mode in {"improve", "revise", "edit"} and not notes:
+        return HTMLResponse(
+            content=(
+                '<div class="research-pitch-modal-empty muted">'
+                "Add improvement notes, then click Improve pitch."
+                "</div>"
+            ),
+            status_code=400,
+        )
+
+    sid = str(signal_id or "").strip()
+    ep: Optional[Episode] = None
+    eid = str(episode_id or "").strip()
+    if eid:
+        ep = state_manager.episodes.get(eid)
+        if not ep or (user_id is not None and ep.user_id != user_id):
+            raise HTTPException(status_code=404, detail="Episode not found")
+        state_manager.set_active(ep.id)
+    else:
+        ep = state_manager.get_active_episode(user_id=user_id)
+
+    prior: Optional[Dict[str, Any]] = None
+    if sid:
+        prior = get_pitch_for_signal(sid, user_id=user_id)
+    if not prior and ep and ep.selected_concept and not is_empty_concept(ep.selected_concept):
+        prior = dict(ep.selected_concept)
+        sid = sid or str(prior.get("source_signal_id") or "")
+    if not sid:
+        selected = get_selected_signal_ids(request.session, user_id=user_id)
+        sid = selected[0] if selected else ""
+    if not sid:
+        return HTMLResponse(
+            content='<div class="research-pitch-modal-empty muted">No topic linked to this pitch.</div>',
+            status_code=400,
+        )
+
+    try:
+        result = create_pitches_from_signal_ids(
+            [sid],
+            mode=hitl_mode,
+            guidance=notes,
+            prior_pitch=prior,
+        )
+    except Exception as exc:
+        logger.exception("[regenerate-pitch] failed · signal_id=%s · mode=%s · %s", sid, hitl_mode, exc)
+        response = HTMLResponse(content="")
+        response.headers["HX-Trigger"] = json.dumps(
+            {"researchPitchError": {"message": str(exc)}}
+        )
+        return response
+
+    concepts = result.get("concepts") or []
+    if not concepts:
+        response = HTMLResponse(content="")
+        response.headers["HX-Trigger"] = json.dumps(
+            {"researchPitchError": {"message": "Regeneration returned no pitch card."}}
+        )
+        return response
+
+    concept = dict(concepts[0])
+    ep = _apply_regenerated_pitch(
+        concept=concept,
+        signal_id=sid,
+        ep=ep,
+        user_id=user_id,
+        mode=hitl_mode,
+        guidance=notes,
+    )
+    toast = "Pitch regenerated" if hitl_mode == "fresh" else "Pitch improved"
+    response = _pitch_modal_response(request, pitch=concept, signal_id=sid, ep=ep)
+    response.headers["HX-Trigger"] = json.dumps(
+        {
+            "researchPitchReady": {
+                "signal_id": sid,
+                "pitch_btn_mode": "view",
+                "toast": toast,
+                "toast_kind": "success",
+                "episode_id": ep.id,
+                "keep_modal_open": True,
+            }
+        }
+    )
+    return response
 
 
 @router.post("/ui/agent0/approve-pitch", response_class=HTMLResponse)
@@ -2326,6 +2553,10 @@ def ui_add_catalog_video(
 @router.post("/ui/catalog/{catalog_id}/delete", response_class=HTMLResponse)
 def ui_delete_catalog_video(request: Request, catalog_id: str):
     """Delete a queue video or active episode."""
+    from app.trends.research_ui import clear_pitch_for_signal
+
+    user = get_current_user(request)
+    user_id = user.id if user else None
     item = get_catalog_item(catalog_id)
     ep_by_id = state_manager.episodes.get(catalog_id)
     title = (item.get("title") if item else (ep_by_id.title if ep_by_id else catalog_id))
@@ -2341,6 +2572,14 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
                 error="Video not found.",
             )
 
+    # Clear research pitch caches tied to deleted episodes so View Pitch / Approved state dies with them.
+    signal_ids: list[str] = []
+    for ep in list(state_manager.episodes.values()):
+        if ep.catalog_id == catalog_id or ep.id == catalog_id:
+            for sid in _signal_ids_for_episode(ep):
+                if sid not in signal_ids:
+                    signal_ids.append(sid)
+
     delete_manual_catalog_video(catalog_id)
     for ep_id, ep in list(state_manager.episodes.items()):
         if ep.catalog_id == catalog_id or ep.id == catalog_id:
@@ -2348,10 +2587,22 @@ def ui_delete_catalog_video(request: Request, catalog_id: str):
             if state_manager.active_episode_id == ep_id:
                 state_manager.active_episode_id = None
 
-    if not state_manager.get_active_episode() and state_manager.episodes:
-        state_manager.active_episode_id = next(iter(state_manager.episodes))
+    for sid in signal_ids:
+        clear_pitch_for_signal(sid, user_id=user_id)
+
+    if not state_manager.get_active_episode(user_id=user_id) and state_manager.episodes:
+        # Prefer another episode owned by this user when possible.
+        nxt = next(
+            (
+                e
+                for e in state_manager.episodes.values()
+                if user_id is None or e.user_id is None or e.user_id == user_id
+            ),
+            None,
+        )
+        state_manager.active_episode_id = nxt.id if nxt else next(iter(state_manager.episodes), None)
     state_manager.save()
-    _ensure_episode()
+    _ensure_episode(user_id=user_id)
 
     return render(
         request,

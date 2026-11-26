@@ -129,7 +129,8 @@ async def _lifespan(_app: FastAPI):
     start_worker()
     start_agent0_scheduler()
 
-    # Background Temporal connect + worker (must be cancelled cleanly on reload).
+    # Background Temporal connect (+ optional embedded worker).
+    # Under uvicorn --reload the worker is skipped so Windows does not hang.
     temporal_boot = asyncio.create_task(start_temporal_runtime(), name="temporal-boot")
 
     try:
@@ -139,10 +140,14 @@ async def _lifespan(_app: FastAPI):
         if not temporal_boot.done():
             temporal_boot.cancel()
             try:
-                await temporal_boot
-            except (asyncio.CancelledError, Exception):
+                await asyncio.wait_for(temporal_boot, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                 pass
-        await shutdown_temporal_runtime()
+        try:
+            await asyncio.wait_for(shutdown_temporal_runtime(), timeout=2.5)
+        except (asyncio.TimeoutError, Exception):
+            # Never block process exit — orphaned Temporal threads hang Windows reload.
+            pass
 
 
 def _script_scenes_for_episode(ep) -> list:

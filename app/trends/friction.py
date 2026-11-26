@@ -119,7 +119,63 @@ def _cluster_brief(cluster: Dict[str, Any], index: int) -> str:
     )
 
 
-def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
+def _hitl_regen_block(
+    *,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Extra user-prompt instructions for Regenerate / Improve HITL."""
+    mode = str(mode or "fresh").strip().lower()
+    notes = str(guidance or "").strip()
+    prior = prior_pitch if isinstance(prior_pitch, dict) else {}
+    prior_bits = []
+    for key, label in (
+        ("episode_name", "Episode name"),
+        ("headline", "Headline"),
+        ("merch_punchline", "Merch"),
+        ("episode_potential", "Episode potential"),
+        ("character_involvement", "Characters"),
+        ("possible_storyline", "Storyline"),
+        ("comedy_angle", "Comedy"),
+        ("crash_out_angle", "Crash-out angle"),
+        ("premise", "Premise"),
+    ):
+        val = str(prior.get(key) or "").strip()
+        if val:
+            prior_bits.append(f"- {label}: {val[:280]}")
+    prior_block = "\n".join(prior_bits[:8])
+
+    if mode in {"improve", "revise", "edit"}:
+        if not notes and not prior_block:
+            return ""
+        return (
+            "\n\nHITL IMPROVE MODE (human-in-the-loop):\n"
+            "Rewrite ONE stronger pitch for the same topic using the notes below.\n"
+            "Keep the same news/social event, but upgrade satire, character collision, and merch punch.\n"
+            "Return a FULL replacement pitch card (not a diff).\n"
+            + (f"Human improvement notes:\n{notes}\n" if notes else "")
+            + (f"Current pitch to improve:\n{prior_block}\n" if prior_block else "")
+        )
+
+    # fresh regenerate
+    return (
+        "\n\nHITL REGENERATE MODE:\n"
+        "Generate a COMPLETELY NEW pitch for this topic — different episode_name, storyline, comedy angle, and character collision.\n"
+        "Do NOT reuse the previous merch punchline or climax.\n"
+        + (f"Optional human direction:\n{notes}\n" if notes else "")
+        + (f"Avoid echoing this previous pitch:\n{prior_block}\n" if prior_block else "")
+    )
+
+
+def score_clusters_with_llm(
+    clusters: List[Dict[str, Any]],
+    *,
+    run_date: str,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """
     Score clusters via OpenAI. Returns [] on failure so callers can heuristic-fallback.
     Single-topic Create Pitch asks for exactly one card (not an empty batch).
@@ -147,10 +203,12 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
     from app.trends.store import load_recent_pitches_for_dedup
 
     selected_mode = len(clusters) <= 2
+    hitl_mode = str(mode or "fresh").strip().lower()
     logger.info(
-        "[friction] LLM scoring start · clusters=%d · mode=%s · run_date=%s",
+        "[friction] LLM scoring start · clusters=%d · mode=%s · hitl=%s · run_date=%s",
         len(clusters),
         "selected_topic" if selected_mode else "daily_batch",
+        hitl_mode,
         run_date,
     )
 
@@ -191,6 +249,7 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
 
     model = (config.openai_model or "gpt-6-luna").strip()
     brief = "\n\n".join(_cluster_brief(c, i) for i, c in enumerate(clusters[:18], 1))
+    hitl_block = _hitl_regen_block(mode=hitl_mode, guidance=guidance, prior_pitch=prior_pitch)
     if selected_mode:
         cluster_ids = ", ".join(str(c.get("id") or "") for c in clusters)
         user = (
@@ -201,7 +260,8 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
             "episode_potential, character_involvement, possible_storyline, comedy_angle.\n"
             "NEVER return {\"pitches\": []}. If unsure, still invent a strong possible_storyline.\n"
             "Use ai_summary / agent_take when provided as editorial context.\n"
-            f"{exclusion_text}\n"
+            f"{exclusion_text}"
+            f"{hitl_block}\n"
             f"EVENT CLUSTER(S) TO SCORE:\n\n{brief}"
         )
     else:
@@ -210,7 +270,8 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
             "Generate 8 to 10 top candidate pitches ranked by friction consensus and originality.\n"
             "Ensure maximum narrative, thematic, and suburban setting versatility.\n"
             "NEVER return an empty pitches array when clusters are provided.\n"
-            f"{exclusion_text}\n"
+            f"{exclusion_text}"
+            f"{hitl_block}\n"
             f"EVENT CLUSTERS TO SCORE:\n\n{brief}"
         )
     payload: Dict[str, Any] = {
@@ -503,14 +564,32 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
     return ordered[:5]
 
 
-def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
+def score_clusters(
+    clusters: List[Dict[str, Any]],
+    *,
+    run_date: str,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     from app.trends.cluster import embed_texts, cosine, jaccard
     from app.trends.store import find_similar_pitches, load_recent_pitches_for_dedup
 
-    logger.info("[friction] score_clusters · input_clusters=%d · run_date=%s", len(clusters or []), run_date)
+    logger.info(
+        "[friction] score_clusters · input_clusters=%d · run_date=%s · hitl=%s",
+        len(clusters or []),
+        run_date,
+        mode,
+    )
     candidates: List[Dict[str, Any]] = []
     try:
-        candidates = score_clusters_with_llm(clusters, run_date=run_date)
+        candidates = score_clusters_with_llm(
+            clusters,
+            run_date=run_date,
+            mode=mode,
+            guidance=guidance,
+            prior_pitch=prior_pitch,
+        )
     except Exception as exc:
         logger.warning("[friction] LLM scoring raised — heuristic fallback: %s", exc)
         candidates = []
