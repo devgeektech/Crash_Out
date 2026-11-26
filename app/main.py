@@ -121,7 +121,7 @@ async def _lifespan(_app: FastAPI):
     from app.studio.worker import start_worker
     from app.trends.scheduler import shutdown_agent0_scheduler, start_agent0_scheduler
     from app.trends.store import init_store
-    from app.infra.temporal import get_temporal_client, schedule_daily_agent0_cron
+    from app.infra.temporal import shutdown_temporal_runtime, start_temporal_runtime
 
     init_db()
     ensure_auth_ready()
@@ -129,20 +129,20 @@ async def _lifespan(_app: FastAPI):
     start_worker()
     start_agent0_scheduler()
 
-    # Background connection for Temporal: register daily 06:00 EST schedule & run worker
-    async def _init_temporal_background():
-        client = await get_temporal_client()
-        if client:
-            await schedule_daily_agent0_cron()
-            from app.infra.temporal import run_temporal_worker
-            asyncio.create_task(run_temporal_worker())
-
-    asyncio.create_task(_init_temporal_background())
+    # Background Temporal connect + worker (must be cancelled cleanly on reload).
+    temporal_boot = asyncio.create_task(start_temporal_runtime(), name="temporal-boot")
 
     try:
         yield
     finally:
         shutdown_agent0_scheduler()
+        if not temporal_boot.done():
+            temporal_boot.cancel()
+            try:
+                await temporal_boot
+            except (asyncio.CancelledError, Exception):
+                pass
+        await shutdown_temporal_runtime()
 
 
 def _script_scenes_for_episode(ep) -> list:

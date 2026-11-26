@@ -54,6 +54,8 @@ class PlatformCredentials(BaseModel):
     telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
     agent0_schedule_enabled: str = os.getenv("AGENT0_SCHEDULE_ENABLED", "false")
+    # Live OpenAI Agent M take + Top-10 AI summaries (default on; set AGENT0_LIVE_TAKE=0 to disable)
+    agent0_live_take: str = os.getenv("AGENT0_LIVE_TAKE", "true")
 
     # AWS S3 Storage
     aws_s3_bucket: str = os.getenv("AWS_S3_BUCKET", "")

@@ -18,7 +18,7 @@ GATEWAY_METADATA = {
     1: {
         "title": "Gate 1: Trend Pitch Selection",
         "agent": "Agent 0 (Trend Ingest & Pitch Engine)",
-        "stage": 1,
+        "stage": 0,
         "description": "5 friction-intersection pitches generated across Layer A/B/C news and youth feeds. Awaiting human selection & sign-off.",
         "badge_color": "#0284c7",
         "badge_bg": "#e0f2fe",
@@ -194,10 +194,17 @@ class AgentMOrchestrator:
                 raise ValueError(reason)
             
             episode.selected_concept = selected_concept
-            episode.title = selected_concept["title"]
+            from app.studio.naming import apply_confirmed_pitch_title
+
+            pitch_label = str(
+                (selected_concept or {}).get("headline")
+                or (selected_concept or {}).get("title")
+                or ""
+            ).strip()
+            apply_confirmed_pitch_title(episode, pitch_label)
             episode.status = "CONCEPT_APPROVED"
             episode.current_gateway = 2
-            self.log(episode_id, f"HITL Gateway 1 Approved: Pitch '{episode.title}' signed off.")
+            self.log(episode_id, f"HITL Gateway 1 Approved: Pitch '{pitch_label or episode.title}' signed off.")
 
         elif gateway_num == 2:
             # Human approves Script & Merch

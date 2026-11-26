@@ -1,0 +1,73 @@
+{% set concept = pitch or {} %}
+{% set flag = (concept.sensitivity_flag or 'SAFE')|upper %}
+{% set episode_name = concept.episode_name or concept.headline or concept.title or concept.merch_punchline or concept.proposed_merch_hook or '' %}
+{% set potential = concept.episode_potential or '' %}
+{% set characters = concept.character_involvement or '' %}
+{% set storyline = concept.possible_storyline or concept.crash_out_angle or concept.premise or '' %}
+{% set comedy = concept.comedy_angle or concept.youth_sentiment_summary or concept.cultural_hook or '' %}
+{% set is_approved = is_approved if is_approved is defined else false %}
+
+<div class="research-pitch-modal" role="dialog" aria-modal="true" aria-label="Episode Pitch" data-signal-id="{{ signal_id }}">
+    <div class="research-pitch-modal-backdrop" onclick="window.closeResearchPitchModal && window.closeResearchPitchModal()"></div>
+    <div class="research-pitch-modal-panel">
+        <div class="research-pitch-modal-accent" aria-hidden="true"></div>
+
+        <div class="research-pitch-modal-head">
+            <div class="research-pitch-modal-head-copy">
+                <p class="research-pitch-modal-kicker">Agent 0 · Gate 1</p>
+                <h3 class="research-pitch-modal-title">Episode Pitch</h3>
+            </div>
+            <button type="button" class="research-pitch-modal-close" onclick="window.closeResearchPitchModal && window.closeResearchPitchModal()" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <section class="rpm-field rpm-field-merch">
+            <span class="rpm-label">Episode name · Merch punchline</span>
+            <h2 class="research-pitch-modal-headline" style="margin: 0;">{{ episode_name or '—' }}</h2>
+        </section>
+
+        <div class="research-pitch-modal-grid">
+            <section class="rpm-field">
+                <span class="rpm-label">Episode potential</span>
+                <p class="rpm-text">{{ potential or '—' }}</p>
+            </section>
+            <section class="rpm-field">
+                <span class="rpm-label">Comedy angle</span>
+                <p class="rpm-text">{{ comedy or '—' }}</p>
+            </section>
+        </div>
+
+        <section class="rpm-field">
+            <span class="rpm-label">Character involvement</span>
+            <p class="rpm-text">{{ characters or '—' }}</p>
+        </section>
+
+        <section class="rpm-field rpm-field-angle">
+            <span class="rpm-label">Possible storyline</span>
+            <p class="rpm-text rpm-angle">{{ storyline or '—' }}</p>
+        </section>
+
+        <div class="research-pitch-modal-actions">
+            {% if is_approved %}
+            <button type="button" class="btn btn-primary" disabled>✓ Pitch Approved</button>
+            {% else %}
+            <button
+                type="button"
+                class="btn btn-primary"
+                hx-post="/ui/agent0/approve-pitch"
+                hx-vals='{"signal_id": {{ signal_id|tojson }} }'
+                hx-target="#workspace"
+                hx-swap="outerHTML"
+                hx-indicator="#busy"
+                {% if flag == 'SENSITIVE_REVIEW' %}
+                hx-confirm="This pitch is flagged SENSITIVE_REVIEW. Approve for scripting anyway?"
+                {% endif %}
+            >Approve Pitch</button>
+            {% endif %}
+        </div>
+    </div>
+</div>

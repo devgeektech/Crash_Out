@@ -22,6 +22,8 @@ TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
 TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "crash-out-production-queue")
 
 _temporal_client = None
+_worker_task: Optional[asyncio.Task] = None
+_SHUTDOWN_TIMEOUT_SEC = 2.0
 
 
 async def get_temporal_client():
@@ -39,6 +41,39 @@ async def get_temporal_client():
     except Exception as exc:
         logger.warning("Temporal server not reachable at %s: %s. Using local async worker fallback.", TEMPORAL_HOST, exc)
         return None
+
+
+async def start_temporal_runtime() -> None:
+    """Connect, register schedules, and start the in-process Temporal worker task."""
+    global _worker_task
+    client = await get_temporal_client()
+    if not client:
+        return
+    await schedule_daily_agent0_cron()
+    if _worker_task is not None and not _worker_task.done():
+        return
+    _worker_task = asyncio.create_task(run_temporal_worker(), name="temporal-worker")
+
+
+async def shutdown_temporal_runtime() -> None:
+    """
+    Stop the in-process Temporal worker quickly so uvicorn reload/CTRL+C
+    cannot hang on worker cancellation (common on Windows).
+    """
+    global _worker_task, _temporal_client
+    task = _worker_task
+    _worker_task = None
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, timeout=_SHUTDOWN_TIMEOUT_SEC)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        except Exception as exc:
+            logger.debug("Temporal worker shutdown note: %s", exc)
+        else:
+            logger.info("Temporal worker stopped.")
+    _temporal_client = None
 
 
 # Import temporalio decorators safely
@@ -321,8 +356,14 @@ async def run_temporal_worker():
                 run_seeder_activity,
             ],
             workflow_runner=UnsandboxedWorkflowRunner(),
+            # Keep reload/CTRL+C snappy; activities are abandoned on local restart.
+            graceful_shutdown_timeout=timedelta(seconds=0),
         )
         logger.info("Starting Temporal Worker on queue: %s", TEMPORAL_TASK_QUEUE)
         await worker.run()
+    except asyncio.CancelledError:
+        # Expected when uvicorn reloads or the app lifespan exits.
+        logger.info("Temporal worker cancelled (app reload/shutdown).")
+        raise
     except Exception as exc:
         logger.warning("Temporal worker encountered note: %s", exc)

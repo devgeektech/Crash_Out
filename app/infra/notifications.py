@@ -564,7 +564,7 @@ def notify_hitl_gate(
         4: "Gate 4: Merch & Distribution Package",
         5: "Gate 5: Guerrilla Seeding Sign-Off",
     }
-    stage_map = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+    stage_map = {1: 0, 2: 2, 3: 3, 4: 4, 5: 5}
     gw_title = gw_names.get(gateway_num, f"Gateway {gateway_num}")
     stage = stage_map.get(gateway_num, 1)
 
