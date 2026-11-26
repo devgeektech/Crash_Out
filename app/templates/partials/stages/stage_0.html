@@ -1,22 +1,81 @@
 {% set is_history = research_view == 'history' %}
-<section class="panel stage-card stage-agent0" style="margin-top: 0; padding-top: 0;">
-    {% include "partials/stages/agent0_main_tabs.html" %}
-
-    <div class="panel-header panel-header-compact agent0-header">
-        <div>
+<section class="panel stage-card stage-agent0 {% if is_history %}stage-agent0-history{% endif %}">
+    <div class="agent0-hero">
+        <div class="agent0-hero-copy">
             {% if is_history %}
-            <h1 class="panel-title">Trend history</h1>
-            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">
-                Prior queue episodes from the last 28 days. Open a row or jump to Approve pitch.
+            <div class="agent0-title-row">
+                <h1 class="panel-title">Work history</h1>
+                <div class="agent0-kicker">
+                    <span class="agent0-kicker-dot" aria-hidden="true"></span>
+                    Daily signals · Updated live
+                </div>
+            </div>
+            <p class="panel-desc">
+                Every trend episode you’ve worked — open a row to continue, or jump to Approve pitch.
             </p>
             {% else %}
-            <h1 class="panel-title">Trend research</h1>
-            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">
-                Find the stories that are breaking through today, then turn the strongest signals into Crash-Out pitches.
-            </p>
+            <div class="agent0-title-row">
+                <h1 class="panel-title">Trend research</h1>
+                <div class="agent0-kicker">
+                    <span class="agent0-kicker-dot" aria-hidden="true"></span>
+                    Daily signals · Updated live
+                </div>
+            </div>
+            <p class="panel-desc panel-desc-single">Find the stories that are breaking through today, then turn the strongest signal into a Crash-Out scene.</p>
             {% endif %}
         </div>
-        {% include "partials/stages/agent0_tabs.html" %}
+
+        <div class="agent0-hero-actions">
+            {% if is_history %}
+            <div class="work-history-search">
+                <input
+                    type="search"
+                    id="queueTableSearch"
+                    class="input"
+                    placeholder="Search by Episode..."
+                    aria-label="Search by Episode"
+                    oninput="filterQueueTable()"
+                >
+            </div>
+            {% else %}
+            <button
+                id="research-mockup-btn"
+                type="button"
+                class="btn btn-primary btn-sm{% if mockup_searching %} is-searching{% endif %}"
+                hx-post="/ui/queue/mockup?research=today"
+                hx-target="#research-mockup-btn"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                data-mockup-btn="1"
+                {% if mockup_searching %}disabled{% endif %}
+                title="Scrape Mainstream (A) + Social Proof (B) in the background and refresh today's signals"
+            >{% if mockup_searching %}Searching...{% else %}Mockup{% endif %}</button>
+            {% endif %}
+            <div class="research-view-toggle" role="tablist" aria-label="Research view">
+                <a
+                    class="research-view-toggle-btn {% if not is_history %}is-active{% endif %}"
+                    href="/studio?stage=0&research=today"
+                    hx-get="/ui/stage/0?research=today"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-push-url="/studio?stage=0&research=today"
+                    hx-indicator="#busy"
+                    role="tab"
+                    aria-selected="{{ 'false' if is_history else 'true' }}"
+                >Today’s research</a>
+                <a
+                    class="research-view-toggle-btn {% if is_history %}is-active{% endif %}"
+                    href="/studio?stage=0&research=history"
+                    hx-get="/ui/stage/0?research=history"
+                    hx-target="#workspace"
+                    hx-swap="outerHTML"
+                    hx-push-url="/studio?stage=0&research=history"
+                    hx-indicator="#busy"
+                    role="tab"
+                    aria-selected="{{ 'true' if is_history else 'false' }}"
+                >Work history</a>
+            </div>
+        </div>
     </div>
 
     {% if is_history %}

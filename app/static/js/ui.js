@@ -367,65 +367,388 @@
         }
     };
 
-    // Trend Research: sync checkbox selection in place (no list remount / scroll jump).
+    // Opening a signal remounts #research-root — keep window + list scroll put.
+    window.__researchScrollLock = null;
+    function captureResearchScroll() {
+        const list = document.querySelector("#research-root .research-signal-list");
+        window.__researchScrollLock = {
+            windowY: window.scrollY || window.pageYOffset || 0,
+            listTop: list ? list.scrollTop : 0,
+        };
+    }
+    function restoreResearchScroll(clear) {
+        const lock = window.__researchScrollLock;
+        if (!lock) return;
+        const list = document.querySelector("#research-root .research-signal-list");
+        if (list) list.scrollTop = lock.listTop;
+        window.scrollTo(0, lock.windowY);
+        if (clear) window.__researchScrollLock = null;
+    }
+    document.body.addEventListener("htmx:beforeRequest", (evt) => {
+        const elt = evt.detail && evt.detail.elt;
+        if (!elt || !elt.matches || !elt.matches(".research-signal-main")) return;
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+        captureResearchScroll();
+    });
+    document.body.addEventListener("htmx:afterSwap", (evt) => {
+        const target = evt.detail && evt.detail.target;
+        if (!target) return;
+        const isResearch =
+            (target.id === "research-root") ||
+            (target.querySelector && target.querySelector("#research-root"));
+        if (!isResearch || !window.__researchScrollLock) return;
+        // Restore after layout settles (detail card height can change).
+        requestAnimationFrame(() => {
+            restoreResearchScroll(false);
+            requestAnimationFrame(() => restoreResearchScroll(true));
+        });
+    });
+
+    // Trend Research: sync Select buttons in place (same as old checkbox flow).
+    // Server toggles selection; HX-Trigger updates buttons without remounting the list.
     window.__lastResearchSelection = null;
     window.syncResearchSelection = function(detail, { toast = true } = {}) {
         const root = document.getElementById("research-root");
         if (!root || !detail) return;
         window.__lastResearchSelection = detail;
         const selected = new Set((detail.selected || []).map(String));
-        const max = Number(detail.max || 5);
-        const full = selected.size >= max;
 
         root.querySelectorAll(".research-signal").forEach((row) => {
             const id = String(row.getAttribute("data-signal-id") || "");
-            const cb = row.querySelector('input[type="checkbox"]');
-            if (!cb || !id) return;
-            const isSel = selected.has(id);
-            cb.checked = isSel;
-            cb.disabled = !isSel && full;
-            row.classList.toggle("is-selected", isSel);
+            if (!id) return;
+            row.classList.toggle("is-selected", selected.has(id));
         });
 
-        const countEl = document.getElementById("research-selected-count");
-        if (countEl) countEl.textContent = `${selected.size}/${max} selected`;
-        const bar = document.getElementById("research-select-bar");
-        if (bar) {
-            bar.dataset.selectedCount = String(selected.size);
-            bar.dataset.maxSelected = String(max);
-        }
-
-        const createBtn = document.getElementById("research-create-pitches-btn");
-        if (createBtn) {
-            const ready = selected.size === max;
-            createBtn.disabled = !ready;
-            if (ready) createBtn.removeAttribute("title");
-            else createBtn.title = `Select ${max} topics first`;
-        }
-
-        const detailBtn = document.getElementById("research-detail-toggle-btn");
-        if (detailBtn) {
-            const activeId = String(detailBtn.getAttribute("data-signal-id") || "");
-            detailBtn.textContent = selected.has(activeId)
-                ? "Remove from selection"
-                : "Add to selection";
-        }
+        const selectedId = selected.size ? String([...selected][0]) : "";
+        const pitchMode = String(detail.pitch_btn_mode || (selectedId ? "create" : "disabled"));
+        window.syncResearchPitchButton(pitchMode, selectedId);
 
         if (toast && detail.toast && window.showInAppToast) {
             window.showInAppToast(detail.toast, detail.toast_kind || "info", 2500);
         }
     };
 
+    const RESEARCH_VIEW_PITCH_HTML =
+        '<svg class="research-view-pitch-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>' +
+        '<circle cx="12" cy="12" r="3"></circle>' +
+        "</svg><span class=\"research-view-pitch-label\">View Pitch</span>";
+
+    window.__lastResearchPitchReady = null;
+
+    window.syncResearchPitchButton = function(mode, signalId) {
+        const createBtn = document.getElementById("research-create-pitches-btn");
+        if (!createBtn) return;
+        const pitchMode = String(mode || "disabled");
+        const sid = String(signalId || "");
+        createBtn.dataset.pitchBtnMode = pitchMode;
+        createBtn.dataset.selectedSignalId = sid;
+        createBtn.dataset.loading = "";
+        createBtn.removeAttribute("hx-post");
+        createBtn.removeAttribute("hx-swap");
+        createBtn.removeAttribute("hx-indicator");
+        createBtn.removeAttribute("hx-disabled-elt");
+        createBtn.removeAttribute("disabled");
+        createBtn.onclick = null;
+
+        if (pitchMode === "view") {
+            createBtn.disabled = false;
+            createBtn.removeAttribute("aria-disabled");
+            createBtn.removeAttribute("title");
+            createBtn.innerHTML = RESEARCH_VIEW_PITCH_HTML;
+            createBtn.setAttribute("aria-label", "View Pitch");
+            createBtn.onclick = (evt) => {
+                if (evt) evt.preventDefault();
+                window.openResearchPitchModal && window.openResearchPitchModal(sid);
+            };
+        } else if (pitchMode === "create") {
+            createBtn.disabled = false;
+            createBtn.removeAttribute("aria-disabled");
+            createBtn.removeAttribute("title");
+            createBtn.textContent = "Create Pitch";
+            createBtn.setAttribute("aria-label", "Create Pitch");
+            createBtn.setAttribute("hx-post", "/ui/agent0/create-pitch");
+            createBtn.setAttribute("hx-swap", "none");
+            createBtn.setAttribute("hx-indicator", "#busy");
+            // Do not use hx-disabled-elt — it restores pre-request HTML and can wipe View Pitch.
+            createBtn.onclick = function() {
+                this.dataset.loading = "1";
+                this.textContent = "Creating…";
+                this.disabled = true;
+            };
+            if (window.htmx) window.htmx.process(createBtn);
+        } else {
+            createBtn.disabled = true;
+            createBtn.title = "Select one topic from All signals first";
+            createBtn.textContent = "Create Pitch";
+            createBtn.setAttribute("aria-label", "Create Pitch");
+        }
+    };
+
+    function getResearchPitchModalHost() {
+        let host = document.getElementById("research-pitch-modal-host");
+        if (!host) {
+            host = document.createElement("div");
+            host.id = "research-pitch-modal-host";
+            host.className = "research-pitch-modal-root";
+            document.body.appendChild(host);
+        }
+        return host;
+    }
+
+    async function mountPitchModalHtml(url) {
+        const host = getResearchPitchModalHost();
+        const res = await fetch(url, {
+            credentials: "same-origin",
+            headers: { Accept: "text/html" },
+        });
+        if (!res.ok) throw new Error(`pitch modal ${res.status}`);
+        host.innerHTML = await res.text();
+        host.hidden = false;
+        document.body.classList.add("pitch-modal-open");
+        if (window.htmx) window.htmx.process(host);
+    }
+
+    window.openResearchPitchModal = async function(signalId) {
+        const sid = encodeURIComponent(String(signalId || ""));
+        try {
+            await mountPitchModalHtml(`/ui/agent0/pitch-modal?signal_id=${sid}`);
+        } catch (err) {
+            if (window.showInAppToast) {
+                window.showInAppToast("Could not open pitch details", "error", 3000);
+            }
+        }
+    };
+
+    window.openEpisodePitchModal = async function(episodeId) {
+        const eid = encodeURIComponent(String(episodeId || ""));
+        try {
+            await mountPitchModalHtml(`/ui/episodes/${eid}/pitch-modal`);
+        } catch (err) {
+            if (window.showInAppToast) {
+                window.showInAppToast("Could not open episode pitch", "error", 3000);
+            }
+        }
+    };
+
+    window.closeResearchPitchModal = function() {
+        const host = document.getElementById("research-pitch-modal-host");
+        if (host) {
+            host.hidden = true;
+            host.innerHTML = "";
+        }
+        document.body.classList.remove("pitch-modal-open");
+    };
+
+    document.addEventListener("keydown", (evt) => {
+        if (evt.key === "Escape" && document.body.classList.contains("pitch-modal-open")) {
+            window.closeResearchPitchModal && window.closeResearchPitchModal();
+        }
+    });
+
+    document.body.addEventListener("htmx:beforeRequest", (evt) => {
+        const elt = evt.detail && evt.detail.elt;
+        const path = String(
+            evt.detail?.pathInfo?.requestPath ||
+            evt.detail?.requestConfig?.path ||
+            (elt && elt.getAttribute && elt.getAttribute("hx-post")) ||
+            ""
+        );
+        if (!path.includes("/ui/agent0/approve-pitch")) return;
+        // Close Episode Pitch immediately, then show generating alert while script builds.
+        window.closeResearchPitchModal && window.closeResearchPitchModal();
+        if (window.showInAppToast) {
+            window.showInAppToast("Generating Script…", "info", 0);
+        }
+    });
+
+    document.body.addEventListener("htmx:afterRequest", (evt) => {
+        const path = String(evt.detail?.pathInfo?.requestPath || evt.detail?.xhr?.responseURL || "");
+        if (!path.includes("/ui/agent0/approve-pitch")) return;
+        window.closeResearchPitchModal && window.closeResearchPitchModal();
+        if (!evt.detail?.successful && window.showInAppToast) {
+            window.showInAppToast("Script generation failed", "error", 4000);
+        }
+    });
+
+    document.body.addEventListener("researchPitchReady", (evt) => {
+        const detail = evt.detail || {};
+        window.__lastResearchPitchReady = detail;
+        const sid = detail.signal_id || "";
+        window.syncResearchPitchButton(detail.pitch_btn_mode || "view", sid);
+        // HTMX may restore the button after this event — re-apply on next frames.
+        requestAnimationFrame(() => {
+            window.syncResearchPitchButton("view", sid);
+            requestAnimationFrame(() => window.syncResearchPitchButton("view", sid));
+        });
+        if (sid && window.openResearchPitchModal) {
+            window.openResearchPitchModal(sid);
+        }
+        if (window.showInAppToast && detail.toast) {
+            window.showInAppToast(detail.toast, detail.toast_kind || "success", 3000);
+        }
+    });
+
+    document.body.addEventListener("htmx:afterSettle", (evt) => {
+        const path = String(evt.detail?.pathInfo?.requestPath || evt.detail?.xhr?.responseURL || "");
+        const ready = window.__lastResearchPitchReady;
+        if (path.includes("/ui/agent0/create-pitch") && ready && ready.signal_id) {
+            window.syncResearchPitchButton(ready.pitch_btn_mode || "view", ready.signal_id);
+            return;
+        }
+        // After open remounts #research-root, re-bind View Pitch from server-rendered data attrs.
+        const btn = document.getElementById("research-create-pitches-btn");
+        if (!btn) return;
+        const mode = btn.dataset.pitchBtnMode || "";
+        const sid = btn.dataset.selectedSignalId || "";
+        if (mode === "view" && sid) {
+            window.syncResearchPitchButton("view", sid);
+        }
+    });
+
+    document.body.addEventListener("researchPitchError", (evt) => {
+        const detail = evt.detail || {};
+        const createBtn = document.getElementById("research-create-pitches-btn");
+        if (createBtn && createBtn.dataset.loading === "1") {
+            window.syncResearchPitchButton("create", createBtn.dataset.selectedSignalId || "");
+        }
+        if (window.showInAppToast) {
+            window.showInAppToast(detail.message || "Pitch creation failed", "error", 4000);
+        }
+    });
+
     document.body.addEventListener("researchSelectionUpdated", (evt) => {
         window.syncResearchSelection(evt.detail || {}, { toast: true });
     });
 
-    // Re-apply after HTMX clears hx-disabled-elt on the clicked checkbox.
+    // Re-apply after HTMX clears hx-disabled-elt on the clicked Select button.
     document.body.addEventListener("htmx:afterRequest", (evt) => {
         const path = String(evt.detail?.pathInfo?.requestPath || evt.detail?.xhr?.responseURL || "");
         if (!path.includes("/ui/agent0/signals/") || !path.includes("/toggle")) return;
         if (window.__lastResearchSelection) {
             window.syncResearchSelection(window.__lastResearchSelection, { toast: false });
+        }
+    });
+
+    // —— Mockup background search (survives page switches) ——
+    window.__mockupPollTimer = window.__mockupPollTimer || null;
+    window.__mockupFinishing = false;
+
+    function setMockupButtonSearching(searching) {
+        const btn = document.getElementById("research-mockup-btn");
+        if (!btn) return;
+        btn.classList.toggle("is-searching", !!searching);
+        btn.textContent = searching ? "Searching..." : "Mockup";
+        if (searching) btn.setAttribute("disabled", "disabled");
+        else btn.removeAttribute("disabled");
+    }
+
+    async function fetchMockupStatus(ack = false) {
+        const url = ack ? "/ui/queue/mockup/status?ack=1" : "/ui/queue/mockup/status";
+        const res = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`mockup status ${res.status}`);
+        return res.json();
+    }
+
+    async function finishMockupSearch(job) {
+        if (window.__mockupFinishing) return;
+        window.__mockupFinishing = true;
+        try {
+            if (window.__mockupPollTimer) {
+                window.clearInterval(window.__mockupPollTimer);
+                window.__mockupPollTimer = null;
+            }
+            const status = String(job?.status || "");
+            const epId = String(job?.episode_id || "");
+            if (status === "error") {
+                if (window.showInAppToast) {
+                    window.showInAppToast(job?.error || "Mockup search failed", "error", 6000);
+                }
+                setMockupButtonSearching(false);
+                await fetchMockupStatus(true);
+                return;
+            }
+            if (window.showInAppToast) {
+                window.showInAppToast(job?.message || "Trends refreshed", "ok", 5000);
+            }
+            await fetchMockupStatus(true);
+            const push = epId
+                ? `/studio?stage=0&research=today&episode=${encodeURIComponent(epId)}`
+                : "/studio?stage=0&research=today";
+            try { history.pushState({}, "", push); } catch (_) {}
+            if (window.htmx) {
+                window.htmx.ajax("GET", "/ui/stage/0?research=today", {
+                    target: "#workspace",
+                    swap: "outerHTML",
+                });
+            } else {
+                window.location.href = push;
+            }
+        } finally {
+            window.__mockupFinishing = false;
+        }
+    }
+
+    window.startMockupSearchPolling = function(detail) {
+        if (detail && window.showInAppToast) {
+            window.showInAppToast(
+                detail.message || "Searching for Trending Topics...",
+                "info",
+                0
+            );
+        }
+        setMockupButtonSearching(true);
+        if (window.__mockupPollTimer) {
+            window.clearInterval(window.__mockupPollTimer);
+        }
+        window.__mockupPollTimer = window.setInterval(async () => {
+            try {
+                const job = await fetchMockupStatus(false);
+                if (job.running) {
+                    setMockupButtonSearching(true);
+                    return;
+                }
+                if (job.status === "done" || job.status === "error") {
+                    await finishMockupSearch(job);
+                }
+            } catch (_) {
+                // Keep polling; transient network blips shouldn't stop the job.
+            }
+        }, 1500);
+    };
+
+    document.body.addEventListener("mockupSearchStarted", (evt) => {
+        window.startMockupSearchPolling(evt.detail || {});
+    });
+
+    // Resume Searching state + polling after any full/partial page load.
+    async function resumeMockupSearchIfNeeded() {
+        try {
+            const job = await fetchMockupStatus(false);
+            if (job.running) {
+                window.startMockupSearchPolling({
+                    message: job.message || "Searching for Trending Topics...",
+                });
+            } else if (job.status === "done" || job.status === "error") {
+                await finishMockupSearch(job);
+            } else {
+                setMockupButtonSearching(false);
+            }
+        } catch (_) {}
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", resumeMockupSearchIfNeeded);
+    } else {
+        resumeMockupSearchIfNeeded();
+    }
+    document.body.addEventListener("htmx:afterSwap", (evt) => {
+        const target = evt.detail && evt.detail.target;
+        if (!target) return;
+        if (target.id === "workspace" || (target.querySelector && target.querySelector("#research-mockup-btn"))) {
+            resumeMockupSearchIfNeeded();
         }
     });
 })();

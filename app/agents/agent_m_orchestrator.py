@@ -18,7 +18,7 @@ GATEWAY_METADATA = {
     1: {
         "title": "Gate 1: Trend Pitch Selection",
         "agent": "Agent 0 (Trend Ingest & Pitch Engine)",
-        "stage": 1,
+        "stage": 0,
         "description": "5 friction-intersection pitches generated across Layer A/B/C news and youth feeds. Awaiting human selection & sign-off.",
         "badge_color": "#0284c7",
         "badge_bg": "#e0f2fe",

@@ -37,27 +37,72 @@ def normalize_pitch(raw: Dict[str, Any], *, rank: int, run_date: str) -> Dict[st
     except (TypeError, ValueError):
         score = 0.0
     score = max(1.0, min(10.0, score)) if score else 1.0
-    headline = str(raw.get("headline") or raw.get("title") or f"Pitch {rank}").strip()
-    angle = str(raw.get("crash_out_angle") or raw.get("premise") or "").strip()
-    merch = str(raw.get("proposed_merch_hook") or raw.get("suggested_merch") or "Capitalism broke my dad").strip()
-    youth_summary = str(raw.get("youth_sentiment_summary") or raw.get("cultural_hook") or "").strip()
+
+    # Episode name is the canonical title; merch punchline must match it.
+    episode_name = str(
+        raw.get("episode_name") or raw.get("headline") or raw.get("title") or f"Pitch {rank}"
+    ).strip()[:140]
+    merch = episode_name  # merch punchline == episode name
+
+    storyline = str(
+        raw.get("possible_storyline")
+        or raw.get("crash_out_angle")
+        or raw.get("premise")
+        or ""
+    ).strip()
+    comedy = str(
+        raw.get("comedy_angle")
+        or raw.get("youth_sentiment_summary")
+        or raw.get("cultural_hook")
+        or ""
+    ).strip()
+    potential = str(raw.get("episode_potential") or "").strip()
+    if not potential:
+        potential = (
+            f"Friction score {round(score, 1)}/10 — strong suburban satire potential "
+            f"from cross-layer news heat and Pearson family collision."
+        )
+    characters = str(
+        raw.get("character_involvement")
+        or raw.get("characters_blurb")
+        or ""
+    ).strip()
+    if not characters:
+        characters = (
+            "Gary spirals into conspiracy/DIY panic; Linda weaponizes wellness + HOA optics; "
+            "Chris monetizes the chaos with dry tech nihilism; Chloe turns the meltdown into a livestream poll."
+        )
+
     out = {
         "rank": int(raw.get("rank") or rank),
-        "headline": headline,
+        # Canonical + legacy aliases kept in sync for Gate 1 / Agent 1
+        "episode_name": episode_name,
+        "headline": episode_name,
+        "title": episode_name,
+        "merch_punchline": merch,
+        "proposed_merch_hook": merch,
+        "suggested_merch": merch,
+        "episode_potential": potential,
+        "character_involvement": characters,
+        "possible_storyline": storyline,
+        "crash_out_angle": storyline,
+        "premise": storyline,
+        "comedy_angle": comedy,
+        "youth_sentiment_summary": comedy,
+        "cultural_hook": comedy,
         "consensus_score": round(score, 1),
         "sources": {
             "mainstream": mainstream[:6],
             "youth_social": youth[:6],
         },
-        "youth_sentiment_summary": youth_summary,
-        "crash_out_angle": angle,
-        "proposed_merch_hook": merch,
         "sensitivity_flag": flag,
         "run_date": run_date,
-        # Internal scoring breakdown (optional UI / debug)
         "score_breakdown": raw.get("score_breakdown") if isinstance(raw.get("score_breakdown"), dict) else {},
         "cluster_id": raw.get("cluster_id"),
         "layer_hits": raw.get("layer_hits") if isinstance(raw.get("layer_hits"), dict) else {},
+        "characters_involved": raw.get("characters_involved")
+        if isinstance(raw.get("characters_involved"), list)
+        else ["gary", "linda", "chris", "chloe"],
     }
     if "embedding" in raw and isinstance(raw["embedding"], (list, tuple)) and len(raw["embedding"]) == 1536:
         out["embedding"] = list(raw["embedding"])
@@ -86,40 +131,48 @@ def normalize_pitch_run(
 
 def pitch_to_concept(pitch: Dict[str, Any], *, run_date: Optional[str] = None) -> Dict[str, Any]:
     """Adapt a client pitch card into the Gate 1 / Agent 1 concept shape."""
-    day = run_date or pitch.get("run_date") or today_run_date()
-    sources = pitch.get("sources") if isinstance(pitch.get("sources"), dict) else {}
+    normalized = normalize_pitch(pitch, rank=int(pitch.get("rank") or 1), run_date=run_date or pitch.get("run_date") or today_run_date())
+    day = str(normalized.get("run_date") or today_run_date())
+    sources = normalized.get("sources") if isinstance(normalized.get("sources"), dict) else {}
     mainstream = _str_list(sources.get("mainstream"))
     youth = _str_list(sources.get("youth_social"))
-    source_trends = (mainstream + youth)[:4] or [str(pitch.get("headline") or "US culture")]
-    headline = str(pitch.get("headline") or "Untitled pitch").strip()
-    angle = str(pitch.get("crash_out_angle") or "").strip()
-    youth_summary = str(pitch.get("youth_sentiment_summary") or "").strip()
-    merch = str(pitch.get("proposed_merch_hook") or "Capitalism broke my dad").strip()
-    rank = int(pitch.get("rank") or 1)
+    episode_name = str(normalized.get("episode_name") or "Untitled pitch").strip()
+    storyline = str(normalized.get("possible_storyline") or "").strip()
+    comedy = str(normalized.get("comedy_angle") or "").strip()
+    merch = episode_name
+    potential = str(normalized.get("episode_potential") or "").strip()
+    characters = str(normalized.get("character_involvement") or "").strip()
+    rank = int(normalized.get("rank") or 1)
+    source_trends = (mainstream + youth)[:4] or [episode_name or "US culture"]
     return {
         "id": f"pitch_{day}_{rank}",
-        "title": headline[:120],
-        "cultural_hook": youth_summary or angle,
-        "premise": angle or youth_summary or headline,
-        "synopsis": angle or youth_summary,
-        "conflict": angle or "Suburban parent anxiety vs Gen Z internet humor.",
+        "title": episode_name[:120],
+        "episode_name": episode_name,
+        "cultural_hook": comedy or storyline,
+        "premise": storyline or comedy or episode_name,
+        "synopsis": storyline or comedy,
+        "conflict": storyline or "Suburban parent anxiety vs Gen Z internet humor.",
         "tone": "Friction-intersection satire — parent panic × youth meme culture",
         "suggested_merch": merch,
+        "merch_punchline": merch,
         "source_trends": source_trends,
-        "characters_involved": ["gary", "linda", "chris", "chloe"],
+        "characters_involved": normalized.get("characters_involved") or ["gary", "linda", "chris", "chloe"],
+        "character_involvement": characters,
+        "episode_potential": potential,
+        "possible_storyline": storyline,
+        "comedy_angle": comedy,
         "script_key": str(pitch.get("script_key") or "hoa_violation"),
-        # Pitch fields preserved for Gate 1 UI
         "is_pitch": True,
         "rank": rank,
-        "headline": headline,
-        "consensus_score": float(pitch.get("consensus_score") or 0),
+        "headline": episode_name,
+        "consensus_score": float(normalized.get("consensus_score") or 0),
         "sources": {"mainstream": mainstream, "youth_social": youth},
-        "youth_sentiment_summary": youth_summary,
-        "crash_out_angle": angle,
+        "youth_sentiment_summary": comedy,
+        "crash_out_angle": storyline,
         "proposed_merch_hook": merch,
-        "sensitivity_flag": str(pitch.get("sensitivity_flag") or SENSITIVITY_SAFE),
+        "sensitivity_flag": str(normalized.get("sensitivity_flag") or SENSITIVITY_SAFE),
         "run_date": day,
-        "score_breakdown": pitch.get("score_breakdown") or {},
+        "score_breakdown": normalized.get("score_breakdown") or {},
     }
 
 

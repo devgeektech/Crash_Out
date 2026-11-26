@@ -7,6 +7,266 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-26 — Remove Trend Signal ⋯ open-source control
+
+Completed:
+- Removed the right-side three-dot “Open source” control from the Trend Research detail panel.
+
+### 2026-11-26 — Top 10 ranked by joint score (media × social)
+
+Completed:
+- Each topic now scores **cross-media (A) alone**, **social-proof (B) alone**, and a **joint** combined score.
+- Today’s top 10 list sorts highest joint score → lowest; list shows joint; detail shows Media / Social / Joint breakdown.
+- Single-stream topics are scaled down so true Media × Social hits rise to the top.
+
+### 2026-11-26 — Waiting Pitch Approving opens Trend Research
+
+Completed:
+- Work history Open (and `/studio?stage=1`) for **Waiting Pitch Approving** now lands on Today’s Trend Research instead of the pitch-card page.
+- Agent M / HITL deep links for Gate 1 point at stage 0.
+
+### 2026-11-26 — Approve Pitch closes card + Generating Script alert
+
+Completed:
+- On Approve Pitch, Episode Pitch modal closes immediately and shows **Generating Script…** until Scriptwriter loads.
+
+### 2026-11-26 — Agent bar + Approve Pitch → Scriptwriter
+
+Completed:
+- Today's research: A0–A5 stepper stays fully greyed/inactive.
+- Work history / pipeline: stepper green for cleared gates, grey for locked, from episode `current_gateway` / status.
+- Approve Pitch generates Agent 1 script (same as Gate 1) and opens Scriptwriter UI; Animation & Rendering unchanged.
+
+### 2026-11-26 — Work history Pitch column = View Pitch
+
+Completed:
+- Work history tab active pill forced white.
+- Pitch column uses eye-icon **View Pitch** button (opens Episode Pitch modal); bulb icon removed.
+
+### 2026-11-26 — Widen Pitch details modal
+
+Completed:
+- Pitch details panel stretches to `min(1180px, 96vw)` so it fills the screen horizontally.
+
+### 2026-11-26 — Pitch fields: name / merch / potential / characters / storyline / comedy
+
+Completed:
+- AI pitch now generates: Episode name, Merch punchline (= episode name), Episode potential, Character involvement, Possible storyline, Comedy angle.
+- Modal + Stage 1 cards + schema/LLM/heuristic updated; legacy aliases kept in sync.
+
+### 2026-11-26 — Work history Open → current status stage
+
+Completed:
+- Open activates the episode and routes to its current queue-status stage (Trend Research / Script / Video / …), not always Trend Research.
+
+### 2026-11-26 — Fix invisible View Pitch button
+
+Completed:
+- Removed `hx-disabled-elt` restore race that wiped the View Pitch label after Create Pitch.
+- Re-bind View Pitch after settle; force white label/icon; keep detail CTA sticky/visible.
+
+### 2026-11-26 — Pitch details modal above viewport (no scroll trap)
+
+Completed:
+- Modal portals to `document.body` (escapes `backdrop-filter` containing block) and locks page scroll.
+- Wider compact layout, badges/grid/merch highlight, no inner scrollbar for typical pitches.
+
+### 2026-11-26 — Frosted glass research cards
+
+Completed:
+- Trend research stage uses a pinkish frosted backdrop; Today’s top 10 / Trend Signal stay solid white for clear contrast.
+
+### 2026-11-26 — Reduce studio left/right blank gutters
+
+Completed:
+- Raised global `--max` to 1560px; studio content body uses tighter side padding and full available width (no centered 1280px gutters).
+
+### 2026-11-26 — Create Pitch empty pitches[] fix + step logging
+
+Completed:
+- Root cause: OpenAI returned `{"pitches":[]}` on single-topic Create Pitch; 3×60s retries then hard-failed.
+- Selected-topic prompt now requires exactly 1 non-empty pitch; Luna gets `max_completion_tokens`.
+- Empty/failed LLM scoring falls back to heuristic (uses Agent M take when present).
+- Shorter empty-payload retries (3s); step logs tagged `[create-pitch]` / `[friction]`.
+
+### 2026-11-26 — Remove All signals select status bar
+
+Completed:
+- Removed “Open one topic…” / “1 selected” bar above the All signals list.
+
+### 2026-11-26 — Create Pitch auto-opens View Pitch popup
+
+Completed:
+- After Create Pitch finishes, the pitch popup opens automatically.
+- CTA switches to **View Pitch** with an eye icon (re-open anytime).
+
+### 2026-11-26 — Widen Today's top 10 viral topics card
+
+Completed:
+- Research layout grid shifted left (`1.45fr` / `0.7fr`) so the Today's top 10 viral topics list card is wider.
+
+### 2026-11-26 — All signals open no longer jumps page scroll
+
+Completed:
+- Opening a row still swaps `#research-root` but uses `show:none` and restores window + list scroll so the page location stays put.
+
+### 2026-11-26 — Single-select Create Pitch / View Pitch popup
+
+Completed:
+- Removed Trend Research / Approve Pitch subnav bar.
+- All signals is single-select; CTA is **Create Pitch** → loading → **View Pitch** (popup card + Approve Pitch).
+- Switching selection resets CTA to Create Pitch unless that topic already has a pitch.
+
+### 2026-11-26 — Work history Open → that episode’s Trend Research
+
+Completed:
+- Open activates the clicked episode and opens Trend Research (`research=today`), not another episode’s pipeline stage.
+- Mockup/scheduler ingest creates a shell, sets it active, clears research cache so Trend Research shows the new fetch.
+- Create top 5 pitches reuses the active awaiting shell when present.
+
+### 2026-11-26 — Mockup runs in background (Searching persists across pages)
+
+Completed:
+- Mockup starts a daemon ingest job and returns immediately; button stays **Searching…** while polling `/ui/queue/mockup/status`.
+- Switching pages does not cancel the job; when done, Trend Research refreshes with new data + Work history shell (still no auto pitches).
+
+### 2026-11-26 — Mockup refreshes trends + Work history row (no auto pitches)
+
+Completed:
+- Mockup scrapes/refreshes Trend Research, creates a Work history episode shell, stays on today’s research.
+- No pitch cards until selected topics → Create top 5 pitches. Empty shells show “Waiting Topic Selection”.
+
+### 2026-11-26 — Work history chrome polish
+
+Completed:
+- Trend Research main tab stays selected on Work history.
+- Removed Mockup from Work history; search + Search sit in the hero above the divider.
+
+### 2026-11-26 — Hard refresh keeps Work history / Trend research tab
+
+Completed:
+- Session + URL `research=` honored on hard refresh (no longer forced back to Trend research).
+- Studio HX-Push-Url includes `research=today|history` on stage 0.
+
+### 2026-11-26 — Trend Research no longer auto-creates pitches
+
+Completed:
+- Mockup + daily schedule = scrape/save raw signals only (`fetch_daily_raw_ingest`).
+- Pitch cards only from selected topics → **Create top 5 pitches**.
+- Mockup no longer creates catalog episodes or attaches pitch concepts.
+
+### 2026-11-26 — Match Trend Research left/right card heights
+
+Completed:
+- Right detail card stays content-height (no empty gap).
+- Left list card matches that height; signal list scrolls inside.
+
+### 2026-11-26 — Trend Research header layout polish
+
+Completed:
+- Hero subtitle stays on one line (`panel-desc-single`).
+- Mockup button moved up beside Today’s research / Work history toggle.
+- Search box aligned on the same row as “Today’s top 10 viral topics”.
+
+### 2026-11-26 — Remove AI summary / Agent M take from Trend Research UI
+
+Completed:
+- Research page detail no longer shows AI summary or Agent M’s take (presence + Story Match + social only).
+- Page build path stops at Top-10 presence board; OpenAI enrich moved to Create Pitches → Agent M handoff.
+- Validated flow: scrape A/B → presence match/squeeze → Top 10 with streams/social → AI summary on pitch handoff.
+
+### 2026-11-26 — Live OpenAI Agent M take + Top-10 AI summaries
+
+Completed:
+- Pipeline stays scrape → cross-stream match/squeeze → Top 10 viral board → OpenAI enrichment.
+- One batch OpenAI call attaches editorial `ai_summary` + Agent M cast take + fit score to each Top-10 card (`AGENT0_LIVE_TAKE` default on; heuristic fallback).
+- Detail panel shows **AI summary** then **Agent M’s take** (source badge: openai / overlap+cast fit).
+- Luna-safe chat payload (`max_completion_tokens`, `response_format=json_object`); `.env.example` documents `AGENT0_LIVE_TAKE`.
+
+### 2026-11-26 — Detail panel: social as Story Match bars (no Social proof pills)
+
+Completed:
+- Removed the detail **Social proof** pills block.
+- Social streams (Reddit/X/YouTube/…) now appear in the same Story Match % bars as mainstream outlets.
+
+### 2026-11-26 — Selection only on All signals (persist on refresh)
+
+Completed:
+- Select / Create pitches only on the **All signals** tab (combined board).
+- User selections persist across refresh (session + per-user store); nothing is auto-selected unless the user clicked Select.
+
+### 2026-11-26 — Select button = original checkbox toggle behavior
+
+Completed:
+- Kept Select button UI; restored checkbox-style server toggle (`hx-swap=none` + `HX-Trigger` sync).
+- Removed capture-phase optimistic JS / `hx-vals` that blocked HTMX and broke multi-select.
+
+### 2026-11-26 — Filter-aware list tags (Mainstream / Social / All)
+
+Completed:
+- **Mainstream** tab: mainstream outlet tags only.
+- **Social proof** tab: social pills only.
+- **All signals**: Media × Social badge + mainstream outlets + social pills combined.
+
+### 2026-11-26 — Trend Research list capped to Top 10 viral
+
+Completed:
+- List shows only the top 10 topics ranked for cross-stream virality (Media × Social / multi-outlet first).
+- Selected topics stay visible if they fall outside that Top 10.
+
+### 2026-11-26 — Client feedback: diversity + Media × Social cross-check
+
+Completed:
+- Soft Mainstream↔Social attach so Layer B hits join matching A topics (entity/story match).
+- Rank/score boost for A+B (`has_cross_layer`); Media × Social badge + social pills on list; Social proof restored on detail.
+- Soft theme anti-clone on the ranked list (max 2/theme near top; clones deferred, not deleted) so Top isn’t five political wire variants.
+- Light lifestyle/suburban/youth boost when overlap is decent.
+
+### 2026-11-26 — Fix Trend Research multi-select (up to 5)
+
+Completed:
+- Select was sticking at 1 topic when the cookie session dropped prior ids.
+- Selection now persists per user in memory + session, and the client posts the intended selected list with each toggle.
+
+### 2026-11-26 — Restored working tree to Nov 25 ~8:00 PM
+
+Completed:
+- Recovered post-commit evening Trend Research UI (Agent M take, Select button, outlet links, detail panel, fonts, Layer C removed) by replaying transcript edits up to the 8:00 PM Nov 25 checkpoint.
+- Excluded all Nov 26 Media × Social / theme-diversity work.
+
+### 2026-11-25 — Agent M take on Trend Research (always filled)
+
+Completed:
+- Agent M’s take no longer waits for a pitch-scoring run (was always “pending”).
+- Each research signal now gets an immediate cast+overlap opinion (Gary/Linda/Chris/Chloe + outlets + social proof); reuses pitch-run editorial when a close match exists.
+- Optional OpenAI polish via `AGENT0_LIVE_TAKE=1` (fallback-first heuristic otherwise).
+
+### 2026-11-25 — Trend Detail Panel (Reference Layout)
+
+Completed:
+- Right-side signal detail restyled to match reference: pink confidence panel, ring + bar, debate badge, Mainstream overlap bars, Social proof pills, Agent M take card, full-width CTA.
+- Content stays dynamic from presence grouping / Story Match / Layer B hits (`research_ui.py` social proof chips).
+- List Select uses a button (no checkbox) with instant Selected sync; score shows `94` + `/100` + `signal score`.
+
+### 2026-11-25 — Research Hero (Reference Layout)
+
+Completed:
+- Kept original A0–A5 studio stepper (reverted reference stepper restyle).
+- Trend Research hero: `Daily signals · Updated live` kicker + segmented **Today’s research / Trend history 28 days** toggle.
+
+### 2026-11-25 — UI Fonts → DM Sans + Space Grotesk
+
+Completed:
+- Body/UI: **DM Sans** (`--font`).
+- Headings: **Space Grotesk** (`--font-heading`) on `h1–h6`, `.panel-title`, research titles/headlines.
+- Mono stays IBM Plex Mono.
+
+### 2026-11-25 — Remove Layer C from Trend Research
+
+Completed:
+- Removed **Character Niche (C)** filter tab and labels from Trend Research.
+- Research presence / Story Match confidence now uses **Mainstream (A) + Social Proof (B) only** (Layer C hits excluded from grouping and averages).
+
 ### 2026-11-25 — Story Match Confidence (S/E/C/T)
 
 Completed:

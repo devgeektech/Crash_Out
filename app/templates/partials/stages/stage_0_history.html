@@ -1,36 +1,6 @@
-{# Trend history (28 days): previous Studio queue table #}
-<section class="panel stage-card stage-queue stage-history" style="margin-top: 0; padding-top: 0.25rem;">
-    <div class="panel-header panel-header-compact" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding-bottom: 0.85rem;">
-        <div>
-            <h2 class="panel-title" style="font-size: 1.05rem; margin: 0;">Trend history · 28 days</h2>
-            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">Prior queue episodes and pitch packages. Select a row or open Approve pitch.</p>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; width: 280px; max-width: 100%;">
-                <input
-                    type="text"
-                    id="queueTableSearch"
-                    class="input"
-                    placeholder="Search by Episode..."
-                    style="font-size: 0.85rem; padding: 0.45rem 0.75rem; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); width: 100%;"
-                    onkeyup="filterQueueTable()"
-                >
-                <button type="button" class="btn btn-sm btn-ghost" onclick="filterQueueTable()" title="Search">Search</button>
-            </div>
-            <button
-                id="mockup-btn"
-                class="btn btn-primary btn-sm"
-                hx-post="/ui/queue/mockup?research=history"
-                hx-target="#workspace"
-                hx-swap="outerHTML"
-                hx-indicator="#busy"
-                hx-disabled-elt="this"
-                onclick="this.disabled=true; this.style.opacity='0.5'; this.style.pointerEvents='none'; this.innerText='Searching...'; if(window.showInAppToast){window.showInAppToast('Searching for Trending Topics...', 'info', 6000);}"
-                title="Mockup 06:00 EST scheduler: Ingest trends, generate 5 pitches and add video"
-            >Mockup</button>
-        </div>
-    </div>
-<div class="table-card" style="margin-top: 0.75rem;">
+{# Work history: all Studio queue episodes you've worked #}
+<section class="stage-queue stage-history work-history-body">
+<div class="table-card">
         <table class="data-table" id="queueDataTable" style="width: 100%; table-layout: auto;">
             <thead>
                 <tr style="background: var(--brand-soft); border-bottom: 2px solid rgba(255, 45, 138, 0.25);">
@@ -56,7 +26,7 @@
                         {% set display_id = card_ep.id %}
                     {% else %}
                         {% set select_url = '/ui/queue/' ~ card.id ~ '/select' %}
-                        {% set open_url = '/ui/catalog/' ~ card.id ~ '/gate1' %}
+                        {% set open_url = '/ui/catalog/' ~ card.id ~ '/open' %}
                         {% set pitch_url = '/ui/catalog/' ~ card.id ~ '/pitches' %}
                         {% set rename_url = '/ui/queue/' ~ card.id ~ '/rename' %}
                         {% set display_title = card.title %}
@@ -124,18 +94,24 @@
                             <div class="muted mono" style="font-size: 0.75rem; margin-top: 0.25rem;">{{ display_id }}</div>
                         </td>
                         <td onclick="event.stopPropagation();" style="white-space: nowrap; padding: 0.85rem 1rem; vertical-align: middle;">
+                            {% set card_pitch = (card_ep.selected_concept if card_ep and card_ep.selected_concept else None) or (card_concepts[0] if card_concepts else None) %}
+                            {% if card_ep and card_pitch %}
                             <button
                                 type="button"
-                                class="btn btn-sm btn-ghost"
-                                hx-post="{{ pitch_url }}"
-                                hx-target="#workspace"
-                                hx-swap="outerHTML"
-                                hx-indicator="#busy"
-                                title="Open pitch review page"
-                                style="font-weight: 600; padding: 0.35rem 0.65rem; border: 1px solid var(--border);"
+                                class="btn btn-sm history-view-pitch-btn"
+                                title="View Episode Pitch"
+                                aria-label="View"
+                                onclick="window.openEpisodePitchModal && window.openEpisodePitchModal('{{ card_ep.id }}')"
                             >
-                                💡 Pitch {% if card_concepts %}({{ card_concepts|length }}){% endif %}
+                                <span class="research-view-pitch-label">View</span>
+                                <svg class="research-view-pitch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
                             </button>
+                            {% else %}
+                            <span class="history-pitch-empty muted">No pitch</span>
+                            {% endif %}
                         </td>
                         <td style="padding: 0.85rem 1rem; white-space: nowrap; vertical-align: middle;">
                             <span class="badge {% if card.episode_status == 'Published' %}badge-ok{% endif %}" style="white-space: nowrap; display: inline-block;">{{ card.episode_status }}</span>
@@ -149,7 +125,7 @@
                                     hx-target="#workspace"
                                     hx-swap="outerHTML"
                                     hx-indicator="#busy"
-                                    title="Open episode in production pipeline"
+                                    title="Open current status stage for this episode"
                                 >
                                     Open →
                                 </button>
@@ -176,7 +152,7 @@
                 {% else %}
                     <tr id="noQueueFallback">
                         <td colspan="5" class="muted" style="text-align: center; padding: 2rem;">
-                            No episode history in the last 28 days. Create pitches from Today's research or run Mockup.
+                            No worked episodes yet. Create pitches from Today’s research or run Mockup.
                         </td>
                     </tr>
                 {% endif %}

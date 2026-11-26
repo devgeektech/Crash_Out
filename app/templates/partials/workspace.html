@@ -1,21 +1,38 @@
-<div id="workspace" class="workspace" data-stage="{{ viewing_stage }}">
+{% set research_view = research_view|default('today') %}
+{% set research_mode = (viewing_stage == 0 and research_view != 'history') %}
+<div id="workspace" class="workspace {% if research_mode %}workspace-research-mode{% endif %}" data-stage="{{ viewing_stage }}" data-research="{{ research_view }}">
     <nav class="stepper-bar" aria-label="Pipeline stages">
         <div class="stepper">
+            {% set ns = namespace(first=true) %}
+            {% set gw = ep.current_gateway|default(1) %}
             {% for num, label in stage_labels.items() %}
             {# Stage 1 is merged into A0 (Trend Research & Approve Pitch) — skip duplicate stepper item. #}
             {% if num != 1 %}
-            {# Stage 0 is always open. Stages 2..5 require the prior gateway to be reached/approved #}
-            {% set gw = ep.current_gateway|default(1) %}
-            {% set is_locked = (num > gw) or (num in disabled_stages) %}
-            {% set is_completed = (gw > num and num > 0) %}
+            {# Map stepper chip → gateway gate: A0=1, Script=2, Video=3, … #}
+            {% set stage_gate = 1 if num == 0 else num %}
+            {% if research_mode %}
+                {# Today's research: entire agent bar stays greyed / inactive #}
+                {% set is_locked = true %}
+                {% set is_completed = false %}
+                {% set is_active = false %}
+            {% else %}
+                {# Work history / pipeline: green for cleared gates, grey for locked #}
+                {% set is_locked = (stage_gate > gw) or (num in disabled_stages) %}
+                {% set is_completed = (gw > stage_gate) %}
+                {% set is_active = viewing_stage == num or (num == 0 and viewing_stage == 1) %}
+            {% endif %}
             {% set mark = stage_marks.get(num, label[:1]) %}
+            {% if not ns.first %}
+            <span class="step-connector {% if is_completed or is_active %}is-hot{% endif %}" aria-hidden="true"></span>
+            {% endif %}
+            {% set ns.first = false %}
             <button
-                class="step-item {% if viewing_stage == num or (num == 0 and viewing_stage == 1) %}active{% endif %} {% if is_completed %}completed{% endif %} {% if is_locked %}is-disabled is-locked{% endif %}"
+                class="step-item {% if is_active %}active{% endif %} {% if is_completed and not is_active %}completed{% endif %} {% if is_locked %}is-disabled is-locked{% endif %}"
                 type="button"
                 {% if is_locked %}
                 disabled
                 aria-disabled="true"
-                title="Locked until previous stage is approved"
+                title="{% if research_mode %}Select an episode in Work history to unlock stages{% elif num in disabled_stages %}Coming soon{% else %}Locked until previous stage is approved{% endif %}"
                 {% else %}
                 hx-get="/ui/stage/{{ num }}{% if num == 2 and script_scene %}?scene={{ script_scene }}{% endif %}"
                 hx-target="#workspace"
@@ -27,12 +44,16 @@
                 <span class="step-num">{{ mark }}</span>
                 <span class="step-info">
                     <span class="step-title">{{ label }}</span>
-                    {% if is_locked and num in disabled_stages %}
+                    {% if research_mode %}
+                    <span class="step-sub">Research mode</span>
+                    {% elif is_active %}
+                    <span class="step-sub step-sub-current">Current stage</span>
+                    {% elif is_locked and num in disabled_stages %}
                     <span class="step-sub">Soon</span>
                     {% elif is_locked %}
-                    <span class="step-sub" style="color: var(--muted); font-size: 0.72rem;">Pending approval</span>
+                    <span class="step-sub">Pending approval</span>
                     {% elif is_completed %}
-                    <span class="step-sub" style="color: var(--ok); font-size: 0.72rem;">Approved</span>
+                    <span class="step-sub step-sub-ok">Approved</span>
                     {% endif %}
                 </span>
             </button>
