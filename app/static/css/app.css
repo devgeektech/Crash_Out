@@ -2102,6 +2102,42 @@ a {
     gap: 0.5rem;
 }
 
+.app-confirm-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.app-confirm-icon-danger {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    color: #be123c;
+}
+
+.app-confirm-icon-warn {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #c2410c;
+}
+
+.app-dialog[data-kind="warn"] #app-confirm-ok {
+    background: var(--brand, #ff2d8a);
+    border-color: var(--brand, #ff2d8a);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(255, 45, 138, 0.25);
+}
+
+.app-dialog[data-kind="danger"] #app-confirm-ok {
+    background: #be123c;
+    border-color: #be123c;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(190, 18, 60, 0.25);
+}
+
 .btn-danger {
     background: #b91c1c;
     border-color: #b91c1c;
@@ -3827,7 +3863,8 @@ body.pitch-modal-open {
     z-index: 12000;
     display: grid;
     place-items: center;
-    padding: 1rem;
+    padding: 0.75rem;
+    box-sizing: border-box;
 }
 
 .research-pitch-modal-backdrop {
@@ -3841,19 +3878,93 @@ body.pitch-modal-open {
 .research-pitch-modal-panel {
     position: relative;
     z-index: 1;
-    width: min(1180px, 96vw);
-    max-height: min(92vh, 860px);
+    width: min(980px, 96vw);
+    max-height: min(88vh, 760px);
+    height: auto;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.55rem;
     background: #ffffff;
     border: 1px solid rgba(255, 200, 224, 0.9);
     border-radius: 18px;
     box-shadow:
         0 24px 64px rgba(26, 18, 32, 0.28),
         0 0 0 1px rgba(255, 255, 255, 0.55) inset;
-    padding: 1.15rem 1.35rem 1.15rem;
+    padding: 0.95rem 1.1rem 0.9rem;
+    box-sizing: border-box;
+}
+
+.research-pitch-modal-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    border-radius: inherit;
+}
+
+.research-pitch-modal-loading[hidden] {
+    display: none !important;
+}
+
+.research-pitch-modal-spinner {
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 45, 138, 0.18);
+    border-top-color: var(--brand);
+    animation: rpm-spin 0.75s linear infinite;
+}
+
+.research-pitch-modal-loading-text {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #6f5d68;
+}
+
+@keyframes rpm-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.research-pitch-modal-panel.is-regenerating .research-pitch-modal-body,
+.research-pitch-modal-panel.is-regenerating .research-pitch-modal-head {
+    pointer-events: none;
+    user-select: none;
+    filter: grayscale(0.25);
+    opacity: 0.72;
+}
+
+.research-pitch-modal-panel [data-approve-pitch].is-greyed,
+.research-pitch-modal-panel [data-approve-pitch]:disabled {
+    opacity: 0.45;
+    filter: grayscale(1);
+    cursor: not-allowed;
+    pointer-events: none;
+    background: #9ca3af !important;
+    border-color: #9ca3af !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+
+.research-pitch-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding-right: 0.15rem;
 }
 
 .research-pitch-modal-accent {
@@ -3871,7 +3982,8 @@ body.pitch-modal-open {
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
-    padding-top: 0.15rem;
+    padding-top: 0.1rem;
+    flex-shrink: 0;
 }
 
 .research-pitch-modal-head-copy {
@@ -3976,7 +4088,7 @@ body.pitch-modal-open {
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 0.65rem 0.75rem;
+    padding: 0.5rem 0.65rem;
 }
 
 .rpm-field-merch {
@@ -4007,6 +4119,21 @@ body.pitch-modal-open {
     color: var(--text);
 }
 
+.rpm-clamp,
+.rpm-clamp-wide {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.rpm-clamp {
+    -webkit-line-clamp: 3;
+}
+
+.rpm-clamp-wide {
+    -webkit-line-clamp: 3;
+}
+
 .rpm-merch {
     margin: 0;
     font-family: var(--font-heading);
@@ -4020,7 +4147,7 @@ body.pitch-modal-open {
 .rpm-angle {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 5;
+    -webkit-line-clamp: 4;
     overflow: hidden;
     line-height: 1.42;
     font-size: 0.82rem;
@@ -4036,35 +4163,98 @@ body.pitch-modal-open {
     overflow: hidden;
 }
 
+.rpm-regen {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+}
+
+.rpm-regen-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.rpm-regen-icon {
+    flex-shrink: 0;
+}
+
+.rpm-hitl-guidance {
+    width: 100%;
+    min-height: 2.6rem;
+    max-height: 4.5rem;
+    resize: vertical;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    border-radius: 10px;
+}
+
+.rpm-hitl-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.35rem;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
 .research-pitch-modal-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 0.15rem;
-    padding-top: 0.75rem;
+    margin-top: 0;
+    padding-top: 0.55rem;
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.research-pitch-modal-actions-hitl {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
 }
 
 .research-pitch-modal-actions .btn {
-    min-width: 10rem;
+    min-width: 9.5rem;
     justify-content: center;
     border-radius: 12px;
-    min-height: 2.55rem;
+    min-height: 2.4rem;
     font-weight: 700;
 }
 
 @media (max-width: 720px) {
+    .research-pitch-modal {
+        padding: 0.45rem;
+        align-items: end;
+    }
+
     .research-pitch-modal-grid {
         grid-template-columns: 1fr;
     }
 
     .research-pitch-modal-panel {
-        width: 96vw;
-        padding: 1rem;
-        gap: 0.55rem;
+        width: 100%;
+        max-height: 92vh;
+        padding: 0.85rem 0.85rem 0.75rem;
+        gap: 0.45rem;
+        border-radius: 16px;
+    }
+
+    .rpm-regen-row {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .rpm-regen-row .btn {
+        width: 100%;
     }
 
     .rpm-angle {
-        -webkit-line-clamp: 4;
+        -webkit-line-clamp: 3;
     }
 }
 

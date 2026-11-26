@@ -114,19 +114,41 @@
         autosizeAllPromptFields(document);
     }
 
-    let pendingDeleteUrl = null;
+    let pendingConfirm = null;
 
     window.closeDeleteConfirm = function() {
-        closeDeleteConfirm();
+        closeAppConfirm();
     };
 
-    function openDeleteConfirm(url, title) {
+    function setConfirmChrome({ title, message, confirmLabel, kind }) {
         const dialog = document.getElementById("app-confirm-dialog");
-        const message = document.getElementById("app-confirm-message");
-        if (!dialog || !message) return;
-        pendingDeleteUrl = url;
-        const label = (title || "this video").trim() || "this video";
-        message.textContent = `Delete “${label}” from the queue? This cannot be undone.`;
+        const titleEl = document.getElementById("app-confirm-title");
+        const messageEl = document.getElementById("app-confirm-message");
+        const okBtn = document.getElementById("app-confirm-ok");
+        const iconWrap = document.getElementById("app-confirm-icon");
+        const iconDanger = document.getElementById("app-confirm-icon-danger");
+        const iconWarn = document.getElementById("app-confirm-icon-warn");
+        if (!dialog || !titleEl || !messageEl || !okBtn) return null;
+
+        const mode = kind === "warn" ? "warn" : "danger";
+        dialog.setAttribute("data-kind", mode);
+        titleEl.textContent = title || "Please confirm";
+        messageEl.textContent = message || "Are you sure you want to continue?";
+        okBtn.textContent = confirmLabel || "OK";
+
+        if (iconWrap) {
+            iconWrap.classList.toggle("app-confirm-icon-warn", mode === "warn");
+            iconWrap.classList.toggle("app-confirm-icon-danger", mode !== "warn");
+        }
+        if (iconDanger) iconDanger.hidden = mode === "warn";
+        if (iconWarn) iconWarn.hidden = mode !== "warn";
+        return dialog;
+    }
+
+    function openAppConfirm({ title, message, confirmLabel, kind, action }) {
+        const dialog = setConfirmChrome({ title, message, confirmLabel, kind });
+        if (!dialog) return;
+        pendingConfirm = action || null;
         if (typeof dialog.showModal === "function") {
             dialog.showModal();
         } else {
@@ -134,14 +156,30 @@
         }
     }
 
-    function closeDeleteConfirm() {
+    function openDeleteConfirm(url, title) {
+        const label = (title || "this video").trim() || "this video";
+        openAppConfirm({
+            title: "Delete Episode?",
+            message: `Delete “${label}” from the queue? This cannot be undone.`,
+            confirmLabel: "OK",
+            kind: "danger",
+            action: { type: "delete", url },
+        });
+    }
+
+    function closeAppConfirm() {
         const dialog = document.getElementById("app-confirm-dialog");
         if (!dialog) return;
         if (typeof dialog.close === "function") {
             dialog.close("cancel");
         } else {
             dialog.removeAttribute("open");
+            pendingConfirm = null;
         }
+    }
+
+    function closeDeleteConfirm() {
+        closeAppConfirm();
     }
 
     function finishEpisodeRename(input, { submit }) {
@@ -211,23 +249,48 @@
     const confirmDialog = document.getElementById("app-confirm-dialog");
     if (confirmDialog) {
         confirmDialog.addEventListener("close", () => {
-            const url = pendingDeleteUrl;
+            const action = pendingConfirm;
             const confirmed = confirmDialog.returnValue === "confirm";
-            pendingDeleteUrl = null;
-            if (!confirmed || !url || typeof htmx === "undefined") return;
-            htmx.ajax("POST", url, {
-                target: "#workspace",
-                swap: "outerHTML",
-                indicator: "#busy",
-            });
+            pendingConfirm = null;
+            if (!confirmed || !action) return;
+            if (action.type === "delete") {
+                if (!action.url || typeof htmx === "undefined") return;
+                htmx.ajax("POST", action.url, {
+                    target: "#workspace",
+                    swap: "outerHTML",
+                    indicator: "#busy",
+                });
+                return;
+            }
+            if (action.type === "htmx" && typeof action.issueRequest === "function") {
+                action.issueRequest(true);
+            }
         });
 
         confirmDialog.addEventListener("click", (event) => {
             if (event.target === confirmDialog) {
-                closeDeleteConfirm();
+                closeAppConfirm();
             }
         });
     }
+
+    // Replace native browser confirm() from hx-confirm with themed in-app dialog.
+    document.body.addEventListener("htmx:confirm", (evt) => {
+        const question = String((evt.detail && evt.detail.question) || "").trim();
+        if (!question) return;
+        evt.preventDefault();
+        const isSensitive = /SENSITIVE_REVIEW/i.test(question);
+        openAppConfirm({
+            title: isSensitive ? "Sensitive topic review" : "Please confirm",
+            message: question,
+            confirmLabel: isSensitive ? "Approve anyway" : "OK",
+            kind: isSensitive ? "warn" : "danger",
+            action: {
+                type: "htmx",
+                issueRequest: evt.detail && evt.detail.issueRequest,
+            },
+        });
+    });
 
     document.addEventListener("keydown", (event) => {
         const input = event.target;
@@ -556,6 +619,33 @@
             (elt && elt.getAttribute && elt.getAttribute("hx-post")) ||
             ""
         );
+        if (path.includes("/ui/agent0/regenerate-pitch")) {
+            const panel =
+                (elt && elt.closest && elt.closest(".research-pitch-modal-panel")) ||
+                document.querySelector(".research-pitch-modal-panel");
+            if (panel) {
+                panel.classList.add("is-regenerating");
+                const loading = panel.querySelector(".research-pitch-modal-loading");
+                if (loading) {
+                    loading.hidden = false;
+                    loading.setAttribute("aria-busy", "true");
+                }
+                const approve = panel.querySelector("[data-approve-pitch]");
+                if (approve) {
+                    approve.disabled = true;
+                    approve.setAttribute("aria-disabled", "true");
+                    approve.classList.add("is-greyed");
+                }
+                const notes = panel.querySelector("textarea[name='guidance']");
+                if (notes) notes.disabled = true;
+                const regen = panel.querySelector("[data-regenerate-pitch]");
+                if (regen) regen.disabled = true;
+            }
+            if (window.showInAppToast) {
+                window.showInAppToast("Regenerating pitch…", "info", 0);
+            }
+            return;
+        }
         if (!path.includes("/ui/agent0/approve-pitch")) return;
         // Close Episode Pitch immediately, then show generating alert while script builds.
         window.closeResearchPitchModal && window.closeResearchPitchModal();
@@ -583,11 +673,48 @@
             window.syncResearchPitchButton("view", sid);
             requestAnimationFrame(() => window.syncResearchPitchButton("view", sid));
         });
-        if (sid && window.openResearchPitchModal) {
+        // Regenerate/Improve already swapped the modal HTML — don't remount over it.
+        if (!detail.keep_modal_open && sid && window.openResearchPitchModal) {
             window.openResearchPitchModal(sid);
+        } else if (detail.keep_modal_open) {
+            const host = document.getElementById("research-pitch-modal-host");
+            if (host) {
+                host.hidden = false;
+                document.body.classList.add("pitch-modal-open");
+                if (window.htmx) window.htmx.process(host);
+            }
         }
         if (window.showInAppToast && detail.toast) {
             window.showInAppToast(detail.toast, detail.toast_kind || "success", 3000);
+        }
+    });
+
+    document.body.addEventListener("htmx:afterRequest", (evt) => {
+        const path = String(evt.detail?.pathInfo?.requestPath || evt.detail?.xhr?.responseURL || "");
+        if (!path.includes("/ui/agent0/regenerate-pitch")) return;
+        if (evt.detail?.successful) return;
+        // Failed regenerate: clear loading state on the still-mounted card.
+        const panel = document.querySelector(".research-pitch-modal-panel");
+        if (panel) {
+            panel.classList.remove("is-regenerating");
+            const loading = panel.querySelector(".research-pitch-modal-loading");
+            if (loading) {
+                loading.hidden = true;
+                loading.setAttribute("aria-busy", "false");
+            }
+            const approve = panel.querySelector("[data-approve-pitch]");
+            if (approve) {
+                approve.disabled = false;
+                approve.removeAttribute("aria-disabled");
+                approve.classList.remove("is-greyed");
+            }
+            const notes = panel.querySelector("textarea[name='guidance']");
+            if (notes) notes.disabled = false;
+            const regen = panel.querySelector("[data-regenerate-pitch]");
+            if (regen) regen.disabled = false;
+        }
+        if (window.showInAppToast) {
+            window.showInAppToast("Could not update pitch", "error", 4000);
         }
     });
 

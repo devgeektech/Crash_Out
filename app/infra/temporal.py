@@ -23,7 +23,33 @@ TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "crash-out-production-que
 
 _temporal_client = None
 _worker_task: Optional[asyncio.Task] = None
-_SHUTDOWN_TIMEOUT_SEC = 2.0
+_worker_instance = None
+_SHUTDOWN_TIMEOUT_SEC = 1.5
+
+
+def _env_flag(name: str, default: str = "") -> str:
+    return str(os.getenv(name, default) or "").strip().lower()
+
+
+def should_embed_temporal_worker() -> bool:
+    """
+    In-process Temporal workers + uvicorn --reload hang on Windows:
+    worker gRPC threads keep the child alive after lifespan exit, so the
+    reloader never spawns a healthy new server (HTTP timeouts).
+
+    Default: embed worker unless reload mode / explicit disable.
+    Production systemd (no reload) keeps the embedded worker.
+    """
+    flag = _env_flag("CRASHOUT_EMBED_TEMPORAL_WORKER")
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if flag in {"0", "false", "no", "off"}:
+        return False
+    if _env_flag("UVICORN_RELOAD") in {"1", "true", "yes", "on"}:
+        return False
+    if _env_flag("CRASHOUT_DEV_RELOAD") in {"1", "true", "yes", "on"}:
+        return False
+    return True
 
 
 async def get_temporal_client():
@@ -44,12 +70,18 @@ async def get_temporal_client():
 
 
 async def start_temporal_runtime() -> None:
-    """Connect, register schedules, and start the in-process Temporal worker task."""
+    """Connect, register schedules, and optionally start the in-process Temporal worker."""
     global _worker_task
     client = await get_temporal_client()
     if not client:
         return
     await schedule_daily_agent0_cron()
+    if not should_embed_temporal_worker():
+        logger.info(
+            "Temporal embedded worker skipped (reload/dev mode). "
+            "Set CRASHOUT_EMBED_TEMPORAL_WORKER=1 to force-enable."
+        )
+        return
     if _worker_task is not None and not _worker_task.done():
         return
     _worker_task = asyncio.create_task(run_temporal_worker(), name="temporal-worker")
@@ -60,17 +92,27 @@ async def shutdown_temporal_runtime() -> None:
     Stop the in-process Temporal worker quickly so uvicorn reload/CTRL+C
     cannot hang on worker cancellation (common on Windows).
     """
-    global _worker_task, _temporal_client
+    global _worker_task, _temporal_client, _worker_instance
+    worker = _worker_instance
+    _worker_instance = None
+    if worker is not None:
+        try:
+            await asyncio.wait_for(worker.shutdown(), timeout=_SHUTDOWN_TIMEOUT_SEC)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.info("Temporal worker shutdown timed out; abandoning for process exit.")
+        except Exception as exc:
+            logger.debug("Temporal worker.shutdown() note: %s", exc)
+
     task = _worker_task
     _worker_task = None
     if task is not None and not task.done():
         task.cancel()
         try:
-            await asyncio.wait_for(task, timeout=_SHUTDOWN_TIMEOUT_SEC)
+            await asyncio.wait_for(task, timeout=0.5)
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
         except Exception as exc:
-            logger.debug("Temporal worker shutdown note: %s", exc)
+            logger.debug("Temporal worker task shutdown note: %s", exc)
         else:
             logger.info("Temporal worker stopped.")
     _temporal_client = None
@@ -334,8 +376,10 @@ async def schedule_daily_agent0_cron():
 
 async def run_temporal_worker():
     """Start standalone worker listening on task queue."""
+    global _worker_instance
     from temporalio.worker import Worker, UnsandboxedWorkflowRunner
 
+    worker = None
     try:
         client = await get_temporal_client()
         if not client:
@@ -359,6 +403,7 @@ async def run_temporal_worker():
             # Keep reload/CTRL+C snappy; activities are abandoned on local restart.
             graceful_shutdown_timeout=timedelta(seconds=0),
         )
+        _worker_instance = worker
         logger.info("Starting Temporal Worker on queue: %s", TEMPORAL_TASK_QUEUE)
         await worker.run()
     except asyncio.CancelledError:
@@ -367,3 +412,6 @@ async def run_temporal_worker():
         raise
     except Exception as exc:
         logger.warning("Temporal worker encountered note: %s", exc)
+    finally:
+        if _worker_instance is worker:
+            _worker_instance = None

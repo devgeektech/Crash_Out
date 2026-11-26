@@ -1889,6 +1889,12 @@ def set_pitch_for_signal(
     return cleaned
 
 
+def clear_pitch_for_signal(signal_id: str, user_id: Optional[int] = None) -> bool:
+    """Drop cached pitch for a signal (e.g. after episode delete). Returns True if removed."""
+    key = _pitch_cache_key(user_id, signal_id)
+    return _PITCH_BY_SIGNAL.pop(key, None) is not None
+
+
 def pitch_mode_for_selection(
     selected_ids: Sequence[str],
     user_id: Optional[int] = None,
@@ -2029,14 +2035,34 @@ def clusters_from_selected_items(items: Sequence[Dict[str, Any]]) -> List[Dict[s
     return clusters
 
 
-def create_pitches_from_signal_ids(signal_ids: Sequence[str]) -> Dict[str, Any]:
-    """Score the selected presence topic(s) into Gate 1 pitch card(s)."""
+def create_pitches_from_signal_ids(
+    signal_ids: Sequence[str],
+    *,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Score the selected presence topic(s) into Gate 1 pitch card(s).
+
+    mode:
+      - fresh: full regenerate (Create Pitch / Regenerate)
+      - improve: rewrite using prior_pitch + HITL guidance notes
+    """
     from app.trends.friction import score_clusters
 
     wanted = [str(s).strip() for s in signal_ids if str(s).strip()][:MAX_SELECTED_SIGNALS]
-    logger.info("[create-pitch] Start · signal_ids=%s", wanted)
+    hitl_mode = str(mode or "fresh").strip().lower()
+    notes = str(guidance or "").strip()
+    logger.info(
+        "[create-pitch] Start · signal_ids=%s · hitl=%s · guidance_chars=%d",
+        wanted,
+        hitl_mode,
+        len(notes),
+    )
     if len(wanted) != MAX_SELECTED_SIGNALS:
         raise ValueError(f"Select exactly {MAX_SELECTED_SIGNALS} topic to create a pitch.")
+    if hitl_mode in {"improve", "revise", "edit"} and not notes:
+        raise ValueError("Add improvement notes before clicking Improve pitch.")
 
     bundle = load_raw_items()
     items = _research_feed_items(bundle.get("items") or [])
@@ -2115,8 +2141,14 @@ def create_pitches_from_signal_ids(signal_ids: Sequence[str]) -> Dict[str, Any]:
             cluster["editorial"] = card["agent_take"]
         if card.get("ai_consensus_score") is not None:
             cluster["ai_consensus_score"] = card["ai_consensus_score"]
-    logger.info("[create-pitch] Step 2/4 · Friction score clusters=%d", len(clusters))
-    pitches = score_clusters(clusters, run_date=run_date)
+    logger.info("[create-pitch] Step 2/4 · Friction score clusters=%d · hitl=%s", len(clusters), hitl_mode)
+    pitches = score_clusters(
+        clusters,
+        run_date=run_date,
+        mode=hitl_mode,
+        guidance=notes,
+        prior_pitch=prior_pitch if isinstance(prior_pitch, dict) else None,
+    )
     # Single-topic Create Pitch: keep the strongest card only.
     pitches = list(pitches or [])[:1]
     logger.info(
@@ -2131,6 +2163,8 @@ def create_pitches_from_signal_ids(signal_ids: Sequence[str]) -> Dict[str, Any]:
         run_date=run_date,
         meta={
             "mode": "selected_presence_topics",
+            "hitl_mode": hitl_mode,
+            "hitl_guidance": notes[:500] if notes else "",
             "raw_count": len(items),
             "topic_count": len(topics),
             "selected_count": len(selected_topics),
