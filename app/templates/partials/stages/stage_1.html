@@ -2,34 +2,15 @@
 {% set sel_flag = (sel.sensitivity_flag or '')|upper %}
 {% set is_approved = (ep.current_gateway and ep.current_gateway|int >= 2) or (ep.status and ep.status != 'DRAFT' and ep.status != 'WAITING_GATEWAY_1') %}
 
-<div style="margin-top: 0.25rem; margin-bottom: 0.75rem; display: flex; align-items: center;">
-    <button
-        type="button"
-        class="btn btn-primary"
-        hx-get="/ui/stage/0"
-        hx-target="#workspace"
-        hx-swap="outerHTML"
-        hx-push-url="/studio?stage=0"
-        hx-indicator="#busy"
-        title="Back to episode list"
-        style="display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1.1rem; font-size: 0.88rem; font-weight: 600;"
-    >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-        <span>Back to Episode List</span>
-    </button>
-</div>
-
-<section class="panel stage-card" style="padding-top: 0.75rem;">
-    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.25rem 0.5rem 0.65rem; margin-bottom: 0.65rem;">
+<section class="panel stage-card stage-agent0">
+    <div class="panel-header panel-header-compact agent0-header" style="align-items: center; padding-bottom: 0.65rem; margin-bottom: 0.35rem;">
         <div style="flex: 1; min-width: 0;">
-            <h1 class="panel-title" style="margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--text); word-break: break-word; overflow-wrap: break-word; line-height: 1.35;">
+            <h1 class="panel-title" style="margin: 0; word-break: break-word; overflow-wrap: break-word; line-height: 1.35;">
                 {{ ep.title }}
             </h1>
+            <p class="panel-desc muted" style="margin: 0.15rem 0 0;">Approve one of the Top 5 pitches to unlock scripting.</p>
         </div>
-        <div class="panel-actions" style="flex-shrink: 0; margin: 0;">
+        <div class="panel-actions" style="flex-shrink: 0; margin: 0; align-self: center;">
             {% if is_approved %}
             <button
                 class="btn btn-primary"
@@ -49,7 +30,7 @@
                 hx-swap="outerHTML"
                 hx-indicator="#busy"
                 {% if sel_flag == 'SENSITIVE_REVIEW' %}
-                hx-confirm="This pitch is flagged SENSITIVE_REVIEW. Approve for scripting anyway?"
+                hx-confirm="This pitch is flagged SENSITIVE_REVIEW (brand-safety / violence / tragedy). Approve for scripting anyway?"
                 {% endif %}
                 style="padding: 0.42rem 1.1rem; font-size: 0.88rem; font-weight: 600;"
             >Approve pitch</button>
@@ -64,18 +45,12 @@
             {% set is_blank = concept.empty and not (concept.headline or concept.title) %}
             {% set flag = (concept.sensitivity_flag or 'SAFE')|upper %}
             {% set score = concept.consensus_score %}
-            {% set headline = concept.headline or concept.title or '' %}
-            {% set youth = concept.youth_sentiment_summary or concept.cultural_hook or '' %}
-            {% set angle = concept.crash_out_angle or concept.premise or '' %}
-            {% set merch = concept.proposed_merch_hook or concept.suggested_merch or '' %}
-            {% set mainstream = '' %}
-            {% set youth_src = '' %}
-            {% if concept.sources %}
-                {% set mainstream = (concept.sources.mainstream or [])|join(', ') %}
-                {% set youth_src = (concept.sources.youth_social or [])|join(', ') %}
-            {% elif concept.source_trends %}
-                {% set mainstream = concept.source_trends|join(', ') %}
-            {% endif %}
+            {% set headline = concept.episode_name or concept.headline or concept.title or '' %}
+            {% set merch = concept.merch_punchline or concept.proposed_merch_hook or concept.suggested_merch or headline %}
+            {% set potential = concept.episode_potential or '' %}
+            {% set characters = concept.character_involvement or '' %}
+            {% set storyline = concept.possible_storyline or concept.crash_out_angle or concept.premise or '' %}
+            {% set comedy = concept.comedy_angle or concept.youth_sentiment_summary or concept.cultural_hook or '' %}
             {% set is_selected_card = (idx == selected_concept_index) %}
             <article
                 class="concept-card concept-card-live {% if is_selected_card %}selected{% endif %} {% if flag == 'SENSITIVE_REVIEW' %}pitch-sensitive{% endif %} {% if is_blank %}concept-card-empty{% endif %}"
@@ -129,73 +104,89 @@
                     <input type="hidden" name="action" value="save">
 
                     <div class="concept-inline-block">
-                        <span class="concept-inline-label">Title</span>
+                        <span class="concept-inline-label">Episode name</span>
                         <textarea
                             class="concept-inline concept-inline-title"
-                            name="headline"
+                            name="episode_name"
                             rows="2"
-                            placeholder="Headline"
+                            placeholder="Episode name"
                             required
-                            aria-label="Title"
+                            aria-label="Episode name"
                             {% if is_approved %}readonly disabled{% endif %}
                             style="word-wrap: break-word; overflow-wrap: break-word; white-space: pre-wrap; resize: vertical; {% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >{{ headline }}</textarea>
                     </div>
 
                     <div class="concept-inline-block">
-                        <span class="concept-inline-label">Youth Sentiment</span>
-                        <textarea
-                            class="concept-inline concept-inline-hook"
-                            name="youth_sentiment_summary"
-                            rows="2"
-                            placeholder="—"
-                            aria-label="Youth Sentiment"
-                            {% if is_approved %}readonly disabled{% endif %}
-                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
-                        >{{ youth }}</textarea>
-                    </div>
-
-                    <div class="concept-inline-block">
-                        <span class="concept-inline-label">Crash-Out angle</span>
-                        <textarea
-                            class="concept-inline concept-inline-body concept-inline-angle"
-                            name="crash_out_angle"
-                            rows="7"
-                            placeholder="—"
-                            aria-label="Crash-Out angle"
-                            {% if is_approved %}readonly disabled{% endif %}
-                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
-                        >{{ angle }}</textarea>
-                    </div>
-
-                    <div class="concept-inline-block">
-                        <span class="concept-inline-label">Mainstream Sources</span>
-                        <p class="concept-readonly">{{ mainstream or '—' }}</p>
-                    </div>
-
-                    <div class="concept-inline-block">
-                        <span class="concept-inline-label">Youth Sources</span>
-                        <p class="concept-readonly">{{ youth_src or '—' }}</p>
-                    </div>
-
-                    <div class="concept-inline-block">
-                        <span class="concept-inline-label">Merch Hook</span>
+                        <span class="concept-inline-label">Merch punchline</span>
                         <input
                             class="concept-inline concept-inline-meta"
                             type="text"
-                            name="proposed_merch_hook"
+                            name="merch_punchline"
                             value="{{ merch }}"
-                            placeholder="—"
-                            aria-label="Merch Hook"
+                            placeholder="Same as episode name"
+                            aria-label="Merch punchline"
                             {% if is_approved %}readonly disabled{% endif %}
                             style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
                         >
+                    </div>
+
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Episode potential</span>
+                        <textarea
+                            class="concept-inline concept-inline-hook"
+                            name="episode_potential"
+                            rows="2"
+                            placeholder="—"
+                            aria-label="Episode potential"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
+                        >{{ potential }}</textarea>
+                    </div>
+
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Character involvement</span>
+                        <textarea
+                            class="concept-inline concept-inline-hook"
+                            name="character_involvement"
+                            rows="3"
+                            placeholder="—"
+                            aria-label="Character involvement"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
+                        >{{ characters }}</textarea>
+                    </div>
+
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Possible storyline</span>
+                        <textarea
+                            class="concept-inline concept-inline-body concept-inline-angle"
+                            name="possible_storyline"
+                            rows="6"
+                            placeholder="—"
+                            aria-label="Possible storyline"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
+                        >{{ storyline }}</textarea>
+                    </div>
+
+                    <div class="concept-inline-block">
+                        <span class="concept-inline-label">Comedy angle</span>
+                        <textarea
+                            class="concept-inline concept-inline-hook"
+                            name="comedy_angle"
+                            rows="2"
+                            placeholder="—"
+                            aria-label="Comedy angle"
+                            {% if is_approved %}readonly disabled{% endif %}
+                            style="{% if is_approved %}cursor: not-allowed; opacity: 0.85;{% endif %}"
+                        >{{ comedy }}</textarea>
                     </div>
                 </form>
             </article>
             {% endfor %}
         {% else %}
-            <div class="empty-state">No pitches yet. Run Mockup from Studio Queue to generate pitches.</div>
+            <div class="empty-state">No pitches yet. Select 5 topics in Trend Research and click Create top 5 pitches.</div>
         {% endif %}
     </div>
 </section>

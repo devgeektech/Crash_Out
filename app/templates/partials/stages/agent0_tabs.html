@@ -1,0 +1,18 @@
+{# Agent 0 nav: compact Trend history corner tab + wide Trend Research / Approve pitch bar #}
+{% set active_tab = agent0_tab or 'research' %}
+{% if research_view == 'history' and active_tab == 'research' %}
+  {% set active_tab = 'history' %}
+{% endif %}
+
+<a
+    class="agent0-history-tab {% if active_tab == 'history' %}is-active{% endif %}"
+    href="/studio?stage=0&research=history"
+    hx-get="/ui/stage/0?research=history"
+    hx-target="#workspace"
+    hx-swap="outerHTML"
+    hx-push-url="/studio?stage=0&research=history"
+    hx-indicator="#busy"
+    role="tab"
+    aria-selected="{{ 'true' if active_tab == 'history' else 'false' }}"
+    title="Work history"
+>Work history</a>

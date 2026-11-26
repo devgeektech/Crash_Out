@@ -41,32 +41,31 @@ THE CAST:
 - CHRIS (15): Techno-nihilist Gen Z doomer. Monotone, dry existential philosophy. Hacks neighborhood tech, runs absurd arbitrage bots, shorts local businesses on Robinhood.
 - CHLOE (11): Ruthless pre-teen influencer / "momager". Treats her parents' meltdowns as monetizable content. Conducts street interviews with bewildered bystanders, runs live TikTok polls ("Vote: Should Dad get arrested or apologize?"), sells drop-shipped merch mid-crisis.
 
-CRITICAL RULES FOR "crash_out_angle" VERSATILITY:
+CRITICAL RULES FOR "possible_storyline" VERSATILITY:
 - DO NOT default repeatedly to the Pearson kitchen or driveway. Every pitch MUST explore a DIFFERENT suburban arena across modern America:
   * RETAIL / CONSUMER: Costco bulk aisle standoff, Trader Joe's parking spot territorial battle, Apple Store Genius Bar warranty meltdown, Self-checkout kiosk error accusations, Drive-thru intercom screaming match, Car dealership showroom EV lease negotiation.
   * SUBURBAN CIVIC & RECREATIONAL: HOA Emergency Board meeting, School Board public microphone spectacle, High school sports bleachers, Pickleball court turf war, Little League dugout brawl, Community pool wristband enforcement raid.
   * IN-TRANSIT & INFRASTRUCTURE: Stalled in a Cybertruck charging queue, TSA security line status clash, Family road-trip EV battery range anxiety, Urgent Care waiting room triage dispute.
   * DOMESTIC BEYOND THE KITCHEN: Cul-de-sac property-line dispute with neighbor's robot lawnmower, Open House walkthrough where Linda pretends to buy, Attic prepper stash crisis, Backyard BBQ smoking out the neighbor's wedding.
-- Each pitch MUST have 3-5 vivid sentences establishing:
-  1. Setting: Specific, visual, culturally resonant location.
-  2. Inciting Conflict: How today's news event creates suburban crisis.
-  3. Character Collision: Unique, non-repetitive actions for Gary, Linda, Chris, and Chloe.
-  4. The Crash-Out Climax: Fresh, visual escalation (e.g., local TV news vans arrive, HOA golf-cart chase, store manager calling the police, Chloe's livestream poll deciding Gary's fate, sirens blaring).
+- possible_storyline MUST be 3-5 vivid sentences covering setting, inciting conflict, character collision, and crash-out climax.
+- merch_punchline MUST be identical to episode_name (hoodie-ready episode title).
 
 Return ONLY valid JSON matching this exact structure:
 {
   "pitches": [
     {
       "cluster_id": "...",
-      "headline": "newsroom-style punchy headline",
+      "episode_name": "punchy episode title that also works as hoodie merch",
+      "merch_punchline": "MUST equal episode_name exactly",
+      "episode_potential": "1-2 sentences on why this episode can pop / viral + satire upside",
+      "character_involvement": "how Gary, Linda, Chris, and Chloe specifically collide in this episode",
+      "possible_storyline": "3-5 sentence narrative escalation",
+      "comedy_angle": "the core satirical joke / comedy engine in 1-2 sentences",
       "cross_layer_consensus": 1-10,
       "generational_friction": 1-10,
       "absurdity_visual_gag": 1-10,
       "brand_safety": 1-10,
       "sensitivity_flag": "SAFE" | "SENSITIVE_REVIEW",
-      "youth_sentiment_summary": "one sentence cynical Gen Z / TikTok takeaway",
-      "crash_out_angle": "detailed, versatile 3-5 sentence narrative escalation",
-      "proposed_merch_hook": "punchy 2-4 word hoodie slogan",
       "sources": {
         "mainstream": ["outlet or trend labels"],
         "youth_social": ["r/sub or meme labels"]
@@ -76,6 +75,7 @@ Return ONLY valid JSON matching this exact structure:
 }
 
 - Produce 8 to 10 top friction pitches ranked 1 to 10 (the downstream selector will pick the top 5 most original, non-duplicate concepts).
+- For selected-topic Create Pitch, return exactly one complete pitch with all six content fields filled.
 - Reject / mark SENSITIVE_REVIEW for mass violence, tragic loss of life, or explicit atrocities.
 """
 
@@ -102,20 +102,88 @@ def _cluster_brief(cluster: Dict[str, Any], index: int) -> str:
         sample.append(
             f"- [{it.get('layer')}/{it.get('outlet') or it.get('source')}] {it.get('title')}"
         )
+    editorial = str(cluster.get("agent_take") or cluster.get("editorial") or "").strip()
+    summary = str(cluster.get("ai_summary") or "").strip()
+    extra = []
+    if summary:
+        extra.append(f"   ai_summary={summary[:280]}")
+    if editorial:
+        extra.append(f"   agent_take={editorial[:320]}")
     return (
         f"{index}. id={cluster.get('id')} label={cluster.get('label')}\n"
         f"   layers={cluster.get('layers')} cross_layer={cluster.get('cross_layer')} "
         f"hits={cluster.get('layer_hits')} members={cluster.get('member_count')}\n"
         f"   outlets={', '.join(cluster.get('outlets') or [])}\n"
+        + ("\n".join(extra) + "\n" if extra else "")
         + "\n".join(sample)
     )
 
 
-def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
+def _hitl_regen_block(
+    *,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Extra user-prompt instructions for Regenerate / Improve HITL."""
+    mode = str(mode or "fresh").strip().lower()
+    notes = str(guidance or "").strip()
+    prior = prior_pitch if isinstance(prior_pitch, dict) else {}
+    prior_bits = []
+    for key, label in (
+        ("episode_name", "Episode name"),
+        ("headline", "Headline"),
+        ("merch_punchline", "Merch"),
+        ("episode_potential", "Episode potential"),
+        ("character_involvement", "Characters"),
+        ("possible_storyline", "Storyline"),
+        ("comedy_angle", "Comedy"),
+        ("crash_out_angle", "Crash-out angle"),
+        ("premise", "Premise"),
+    ):
+        val = str(prior.get(key) or "").strip()
+        if val:
+            prior_bits.append(f"- {label}: {val[:280]}")
+    prior_block = "\n".join(prior_bits[:8])
+
+    if mode in {"improve", "revise", "edit"}:
+        if not notes and not prior_block:
+            return ""
+        return (
+            "\n\nHITL IMPROVE MODE (human-in-the-loop):\n"
+            "Rewrite ONE stronger pitch for the same topic using the notes below.\n"
+            "Keep the same news/social event, but upgrade satire, character collision, and merch punch.\n"
+            "Return a FULL replacement pitch card (not a diff).\n"
+            + (f"Human improvement notes:\n{notes}\n" if notes else "")
+            + (f"Current pitch to improve:\n{prior_block}\n" if prior_block else "")
+        )
+
+    # fresh regenerate
+    return (
+        "\n\nHITL REGENERATE MODE:\n"
+        "Generate a COMPLETELY NEW pitch for this topic — different episode_name, storyline, comedy angle, and character collision.\n"
+        "Do NOT reuse the previous merch punchline or climax.\n"
+        + (f"Optional human direction:\n{notes}\n" if notes else "")
+        + (f"Avoid echoing this previous pitch:\n{prior_block}\n" if prior_block else "")
+    )
+
+
+def score_clusters_with_llm(
+    clusters: List[Dict[str, Any]],
+    *,
+    run_date: str,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Score clusters via OpenAI. Returns [] on failure so callers can heuristic-fallback.
+    Single-topic Create Pitch asks for exactly one card (not an empty batch).
+    """
     api_key = (config.openai_api_key or "").strip()
     if not api_key:
         err_msg = "OpenAI API key (OPENAI_API_KEY) is missing. Set OPENAI_API_KEY in .env."
-        logger.error(err_msg)
+        logger.error("[friction] %s", err_msg)
         log_system_incident(
             event_type="AGENT0_CONFIG_ERROR",
             actor="Agent M Orchestrator",
@@ -129,9 +197,20 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
         raise RuntimeError(err_msg)
 
     if not clusters:
+        logger.warning("[friction] score_clusters_with_llm called with 0 clusters")
         return []
 
     from app.trends.store import load_recent_pitches_for_dedup
+
+    selected_mode = len(clusters) <= 2
+    hitl_mode = str(mode or "fresh").strip().lower()
+    logger.info(
+        "[friction] LLM scoring start · clusters=%d · mode=%s · hitl=%s · run_date=%s",
+        len(clusters),
+        "selected_topic" if selected_mode else "daily_batch",
+        hitl_mode,
+        run_date,
+    )
 
     # Collect prior pitch history from the last 14 days to inoculate the LLM against duplicates
     recent_history = load_recent_pitches_for_dedup(days=14)
@@ -149,24 +228,52 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
             if len(exclusion_lines) >= 16:
                 break
         if exclusion_lines:
-            exclusion_text = (
-                "\n\nCRITICAL DEDUPLICATION RULE — DO NOT REPEAT RECENT TOPICS:\n"
-                "The studio has ALREADY produced pitches on these topics in the last 14 days:\n"
-                + "\n".join(exclusion_lines)
-                + "\n\nSTRICT REQUIREMENT:\n"
-                "- Do NOT generate pitches covering these same news events, companies, controversy angles, or suburban situations.\n"
-                "- Every candidate pitch MUST explore fresh real-world news friction with novel settings and unique collision dynamics.\n"
-            )
+            if selected_mode:
+                # Explicit user pick: never refuse with empty pitches[]; just demand a fresh angle.
+                exclusion_text = (
+                    "\n\nANGLE FRESHNESS (selected topic — still REQUIRED to return a pitch):\n"
+                    "Recent studio pitches (avoid copying their crash_out_angle / merch):\n"
+                    + "\n".join(exclusion_lines[:8])
+                    + "\n- You MUST still return a non-empty pitches array for the selected cluster.\n"
+                    "- Invent a NEW suburban arena and climax even if the news topic overlaps.\n"
+                )
+            else:
+                exclusion_text = (
+                    "\n\nCRITICAL DEDUPLICATION RULE — DO NOT REPEAT RECENT TOPICS:\n"
+                    "The studio has ALREADY produced pitches on these topics in the last 14 days:\n"
+                    + "\n".join(exclusion_lines)
+                    + "\n\nSTRICT REQUIREMENT:\n"
+                    "- Do NOT generate pitches covering these same news events, companies, controversy angles, or suburban situations.\n"
+                    "- Every candidate pitch MUST explore fresh real-world news friction with novel settings and unique collision dynamics.\n"
+                )
 
     model = (config.openai_model or "gpt-6-luna").strip()
     brief = "\n\n".join(_cluster_brief(c, i) for i, c in enumerate(clusters[:18], 1))
-    user = (
-        "Score these event clusters for CRASH OUT daily pitch cards.\n"
-        "Generate 8 to 10 top candidate pitches ranked by friction consensus and originality.\n"
-        "Ensure maximum narrative, thematic, and suburban setting versatility.\n"
-        f"{exclusion_text}\n"
-        f"EVENT CLUSTERS TO SCORE:\n\n{brief}"
-    )
+    hitl_block = _hitl_regen_block(mode=hitl_mode, guidance=guidance, prior_pitch=prior_pitch)
+    if selected_mode:
+        cluster_ids = ", ".join(str(c.get("id") or "") for c in clusters)
+        user = (
+            "SELECTED-TOPIC Create Pitch handoff for CRASH OUT.\n"
+            f"Return EXACTLY {len(clusters)} pitch object(s) in pitches[] — one per cluster below.\n"
+            f"Required cluster_id value(s): {cluster_ids}\n"
+            "Each pitch MUST include: episode_name, merch_punchline (= episode_name), "
+            "episode_potential, character_involvement, possible_storyline, comedy_angle.\n"
+            "NEVER return {\"pitches\": []}. If unsure, still invent a strong possible_storyline.\n"
+            "Use ai_summary / agent_take when provided as editorial context.\n"
+            f"{exclusion_text}"
+            f"{hitl_block}\n"
+            f"EVENT CLUSTER(S) TO SCORE:\n\n{brief}"
+        )
+    else:
+        user = (
+            "Score these event clusters for CRASH OUT daily pitch cards.\n"
+            "Generate 8 to 10 top candidate pitches ranked by friction consensus and originality.\n"
+            "Ensure maximum narrative, thematic, and suburban setting versatility.\n"
+            "NEVER return an empty pitches array when clusters are provided.\n"
+            f"{exclusion_text}"
+            f"{hitl_block}\n"
+            f"EVENT CLUSTERS TO SCORE:\n\n{brief}"
+        )
     payload: Dict[str, Any] = {
         "model": model,
         "response_format": {"type": "json_object"},
@@ -176,15 +283,26 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
         ],
     }
     # Only set temperature if not a model that rejects non-default values (luna, o1, o3, etc.)
-    if not any(m in model.lower() for m in ("luna", "o1", "o3", "reasoning")):
+    is_reasoning = any(m in model.lower() for m in ("luna", "o1", "o3", "reasoning"))
+    if not is_reasoning:
         payload["temperature"] = 0.75
+        payload["max_tokens"] = 3500
+    else:
+        # gpt-*-luna / reasoning models reject temperature + max_tokens
+        payload["max_completion_tokens"] = 4000
 
     max_retries = 3
     last_error = ""
 
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info("Agent M: Scoring clusters via OpenAI (%s) — attempt %d/%d...", model, attempt, max_retries)
+            logger.info(
+                "[friction] OpenAI chat.completions · model=%s · attempt=%d/%d · clusters=%d",
+                model,
+                attempt,
+                max_retries,
+                len(clusters),
+            )
             resp = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={
@@ -195,27 +313,50 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
                 timeout=90,
             )
             if resp.status_code == 200:
-                content = (((resp.json() or {}).get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                body = resp.json() or {}
+                content = (((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+                usage = body.get("usage") or {}
+                logger.info(
+                    "[friction] OpenAI OK · attempt=%d · content_chars=%d · usage=%s · preview=%s",
+                    attempt,
+                    len(content),
+                    {k: usage.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens") if k in usage},
+                    (content[:120] or "").replace("\n", " "),
+                )
                 pitches = _parse_scored_pitches(content, clusters=clusters, run_date=run_date)
                 if pitches and len(pitches) >= 1:
-                    logger.info("Agent M: Successfully scored %d pitches via OpenAI on attempt %d.", len(pitches), attempt)
+                    logger.info(
+                        "[friction] Parsed %d pitch(es) from OpenAI on attempt %d",
+                        len(pitches),
+                        attempt,
+                    )
                     return pitches
-                else:
-                    last_error = f"OpenAI returned empty or unparseable pitch payload: {content[:150]}"
+                last_error = f"OpenAI returned empty or unparseable pitch payload: {(content or '')[:180]}"
             else:
                 last_error = f"HTTP {resp.status_code}: {resp.text[:250]}"
+                logger.warning("[friction] OpenAI HTTP error · %s", last_error)
         except Exception as exc:
             last_error = f"Request exception: {exc}"
+            logger.warning("[friction] OpenAI request exception · %s", exc)
 
-        logger.warning("Agent M: Scoring attempt %d/%d failed: %s", attempt, max_retries, last_error)
-        retry_delay_sec = int(os.getenv("AGENT_RETRY_INTERVAL_SECONDS", "60"))
+        logger.warning("[friction] Scoring attempt %d/%d failed: %s", attempt, max_retries, last_error)
+        empty_payload = "empty or unparseable" in last_error
         if attempt < max_retries:
-            logger.info("Agent 0: Waiting %ds (1 min) before retry attempt %d/%d...", retry_delay_sec, attempt + 1, max_retries)
+            # Empty JSON is not a rate-limit — short retry. HTTP/network uses longer delay.
+            if empty_payload:
+                retry_delay_sec = int(os.getenv("AGENT_EMPTY_RETRY_SECONDS", "3"))
+            else:
+                retry_delay_sec = int(os.getenv("AGENT_RETRY_INTERVAL_SECONDS", "15"))
+            logger.info(
+                "[friction] Waiting %ds before retry attempt %d/%d...",
+                retry_delay_sec,
+                attempt + 1,
+                max_retries,
+            )
             time.sleep(retry_delay_sec)
 
-    # All 3 automated retries exhausted — log incident to Agent M and fail explicitly (NO fallback!)
     incident_msg = f"Agent 0 LLM scoring failed after {max_retries} automated attempts: {last_error}"
-    logger.error("Agent M Alert: %s. Requires manual retry.", incident_msg)
+    logger.error("[friction] %s — falling back to heuristic scoring.", incident_msg)
     log_system_incident(
         event_type="AGENT0_LLM_FAILURE",
         actor="Agent M Orchestrator",
@@ -225,12 +366,15 @@ def score_clusters_with_llm(clusters: List[Dict[str, Any]], *, run_date: str) ->
             "error": incident_msg,
             "retry_count": max_retries,
             "max_retries": 3,
-            "requires_manual_retry": True,
+            "requires_manual_retry": False,
+            "fallback": "heuristic",
             "can_retry": True,
             "run_date": run_date,
+            "cluster_count": len(clusters),
+            "mode": "selected_topic" if selected_mode else "daily_batch",
         },
     )
-    raise RuntimeError(f"{incident_msg}. Manual retry required via Agent M.")
+    return []
 
 
 def _parse_scored_pitches(
@@ -276,15 +420,23 @@ def _parse_scored_pitches(
         flag = str(row.get("sensitivity_flag") or SENSITIVITY_SAFE).upper()
         if breakdown["brand_safety"] < 4:
             flag = SENSITIVITY_REVIEW
+        episode_name = (
+            row.get("episode_name")
+            or row.get("headline")
+            or row.get("title")
+            or (cluster or {}).get("label")
+        )
         pitch = normalize_pitch(
             {
                 "rank": i,
-                "headline": row.get("headline") or (cluster or {}).get("label"),
+                "episode_name": episode_name,
+                "merch_punchline": episode_name,  # enforced same as episode name
+                "episode_potential": row.get("episode_potential"),
+                "character_involvement": row.get("character_involvement"),
+                "possible_storyline": row.get("possible_storyline") or row.get("crash_out_angle"),
+                "comedy_angle": row.get("comedy_angle") or row.get("youth_sentiment_summary"),
                 "consensus_score": weighted_consensus(breakdown),
                 "sources": {"mainstream": mainstream, "youth_social": youth},
-                "youth_sentiment_summary": row.get("youth_sentiment_summary"),
-                "crash_out_angle": row.get("crash_out_angle"),
-                "proposed_merch_hook": row.get("proposed_merch_hook"),
                 "sensitivity_flag": flag,
                 "score_breakdown": breakdown,
                 "cluster_id": row.get("cluster_id") or (cluster or {}).get("id"),
@@ -301,7 +453,8 @@ def _parse_scored_pitches(
 
 
 def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
-    """Deterministic fallback when no LLM key is available."""
+    """Deterministic fallback when LLM is unavailable or returns empty pitches[]."""
+    logger.info("[friction] Heuristic scoring · clusters=%d · run_date=%s", len(clusters), run_date)
     pitches: List[Dict[str, Any]] = []
     for cluster in clusters[:12]:
         hits = cluster.get("layer_hits") or {}
@@ -309,6 +462,16 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
         cross = 9.0 if a and b else (6.5 if (a and c) or (b and c) else 4.0)
         if a and b and c:
             cross = 10.0
+        if cluster.get("ai_consensus_score") is not None:
+            try:
+                ai_score = float(cluster.get("ai_consensus_score"))
+                # Map 0-100 or 1-10 editorial score into cross-layer-ish weight
+                if ai_score > 10:
+                    cross = max(cross, min(10.0, ai_score / 10.0))
+                else:
+                    cross = max(cross, min(10.0, ai_score))
+            except (TypeError, ValueError):
+                pass
         friction = 8.5 if cluster.get("cross_layer") else 5.5
         if any(ch in (cluster.get("characters") or []) for ch in ("gary", "linda")) and b:
             friction = 9.0
@@ -342,27 +505,46 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
         if not mainstream and a:
             mainstream = ["mainstream signal"]
         headline = str(cluster.get("label") or "Suburban friction story")
-        angle = (
-            f"In the Pearson kitchen, Gary doomscrolls a push alert about '{headline}' and starts "
-            f"narrating it like a rally speech while his stress watch flashes CRITICAL. "
-            f"Linda interrupts with vibrational HOA optics language, insisting the family cannot "
-            f"look 'chaotically online' in front of the cul-de-sac. Chloe already has a vertical "
-            f"livestream framed on Gary's reflection in the toaster, selling the meltdown as content, "
-            f"while Chris open-sources the household budget in the comments to prove Dad is cooked. "
-            f"The beat escalates when Gary tries to ban phones mid-sentence and accidentally "
-            f"confirms every joke the kids are clipping for the algorithm."
+        editorial = str(cluster.get("agent_take") or cluster.get("editorial") or "").strip()
+        summary = str(cluster.get("ai_summary") or "").strip()
+        if editorial and len(editorial) > 40:
+            angle = editorial[:900]
+        else:
+            angle = (
+                f"At a Costco bulk aisle, Gary doomscrolls a push alert about '{headline}' and starts "
+                f"narrating it like a rally speech while his stress watch flashes CRITICAL. "
+                f"Linda interrupts with vibrational HOA optics language, insisting the family cannot "
+                f"look 'chaotically online' in front of the sample cart. Chloe already has a vertical "
+                f"livestream framed on Gary's reflection in the freezer door, selling the meltdown as content, "
+                f"while Chris open-sources the household budget in the comments to prove Dad is cooked. "
+                f"The beat escalates when a store manager and two local news phones arrive mid-argument."
+            )
+            if summary:
+                angle = f"{summary[:180].rstrip('.')}. {angle}"
+        comedy = (
+            summary[:220]
+            if summary
+            else "Adults panic in public while the kids treat the meltdown as monetizable content."
         )
+        characters = (
+            "Gary doomscrolls into conspiracy/DIY panic; Linda polices HOA optics with wellness jargon; "
+            "Chris dryly hacks the money/status math; Chloe livestreams the climax for engagement."
+        )
+        potential = (
+            f"Cross-layer heat ({a}A/{b}B) plus Pearson collision makes a tight 60s short with clear merch hook."
+        )
+        episode_name = headline[:140]
         pitches.append(
             normalize_pitch(
                 {
-                    "headline": headline[:140],
+                    "episode_name": episode_name,
+                    "merch_punchline": episode_name,
+                    "episode_potential": potential,
+                    "character_involvement": characters,
+                    "possible_storyline": angle,
+                    "comedy_angle": comedy,
                     "consensus_score": weighted_consensus(breakdown),
                     "sources": {"mainstream": mainstream or ["US news"], "youth_social": youth or ["youth discourse"]},
-                    "youth_sentiment_summary": (
-                        "Gen Z treats the story as proof that adults are cooked and content is the only exit."
-                    ),
-                    "crash_out_angle": angle,
-                    "proposed_merch_hook": "My Dad Survived Another News Cycle",
                     "sensitivity_flag": flag,
                     "score_breakdown": breakdown,
                     "cluster_id": cluster.get("id"),
@@ -378,19 +560,48 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
     ordered = safe + [p for p in pitches if p not in safe]
     for i, p in enumerate(ordered[:5], 1):
         p["rank"] = i
+    logger.info("[friction] Heuristic scoring done · pitches=%d", len(ordered[:5]))
     return ordered[:5]
 
 
-def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dict[str, Any]]:
+def score_clusters(
+    clusters: List[Dict[str, Any]],
+    *,
+    run_date: str,
+    mode: str = "fresh",
+    guidance: str = "",
+    prior_pitch: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     from app.trends.cluster import embed_texts, cosine, jaccard
     from app.trends.store import find_similar_pitches, load_recent_pitches_for_dedup
 
-    candidates = score_clusters_with_llm(clusters, run_date=run_date)
+    logger.info(
+        "[friction] score_clusters · input_clusters=%d · run_date=%s · hitl=%s",
+        len(clusters or []),
+        run_date,
+        mode,
+    )
+    candidates: List[Dict[str, Any]] = []
+    try:
+        candidates = score_clusters_with_llm(
+            clusters,
+            run_date=run_date,
+            mode=mode,
+            guidance=guidance,
+            prior_pitch=prior_pitch,
+        )
+    except Exception as exc:
+        logger.warning("[friction] LLM scoring raised — heuristic fallback: %s", exc)
+        candidates = []
+    if not candidates:
+        logger.warning("[friction] LLM returned 0 pitches — using heuristic fallback")
+        candidates = score_clusters_heuristic(clusters, run_date=run_date)
     if not candidates:
         raise RuntimeError(
-            "Agent 0 LLM scoring returned 0 candidate pitches after automated retries. "
-            "Incident logged in Agent M. Manual retry required via UI."
+            "Agent 0 scoring returned 0 candidate pitches (LLM + heuristic). "
+            "Check selected topic data and retry."
         )
+    logger.info("[friction] Candidate pitches before dedupe: %d", len(candidates))
 
     # Load 14-day history for multi-layered duplicate elimination
     recent_history = load_recent_pitches_for_dedup(days=14)
@@ -508,4 +719,9 @@ def score_clusters(clusters: List[Dict[str, Any]], *, run_date: str) -> List[Dic
 
     for i, p in enumerate(valid_pitches[:5], 1):
         p["rank"] = i
+    logger.info(
+        "[friction] score_clusters done · final_pitches=%d · top=%s",
+        len(valid_pitches[:5]),
+        (valid_pitches[0].get("headline") if valid_pitches else "")[:80],
+    )
     return valid_pitches[:5]

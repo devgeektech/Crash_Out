@@ -431,6 +431,58 @@ def load_latest_pitch_run() -> Optional[Dict[str, Any]]:
     return None
 
 
+def load_raw_items(run_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load archived raw Agent 0 items for a run date.
+    Falls back to the most recent raw_*.json under outputs/agent0/raw/.
+    """
+    _ensure_dir()
+    day = (run_date or today_run_date()).strip()
+    candidates = [
+        os.path.join(AGENT0_RAW_DIR, f"raw_{day}.json"),
+        os.path.join(AGENT0_DIR, f"raw_{day}.json"),
+    ]
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("items"), list):
+                return {
+                    "run_date": str(data.get("run_date") or day),
+                    "count": int(data.get("count") or len(data.get("items") or [])),
+                    "items": list(data.get("items") or []),
+                }
+        except Exception as exc:
+            logger.debug("raw item load failed for %s: %s", path, exc)
+
+    # Fallback: newest snapshot in raw dir
+    try:
+        files = [
+            os.path.join(AGENT0_RAW_DIR, name)
+            for name in os.listdir(AGENT0_RAW_DIR)
+            if name.startswith("raw_") and name.endswith(".json")
+        ]
+        files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        for path in files[:8]:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and isinstance(data.get("items"), list) and data["items"]:
+                    return {
+                        "run_date": str(data.get("run_date") or day),
+                        "count": int(data.get("count") or len(data.get("items") or [])),
+                        "items": list(data.get("items") or []),
+                    }
+            except Exception:
+                continue
+    except Exception as exc:
+        logger.debug("raw item fallback scan failed: %s", exc)
+
+    return {"run_date": day, "count": 0, "items": []}
+
+
 def save_raw_items(run_date: str, items: List[Dict[str, Any]]) -> None:
     _ensure_dir()
     time_str = datetime.now().strftime("%H%M%S")

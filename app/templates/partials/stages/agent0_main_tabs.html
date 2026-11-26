@@ -1,0 +1,28 @@
+{# Full-width horizontal tabs: Trend Research | Approve pitch #}
+{# Work history is still under Trend Research — keep that tab selected. #}
+{% set active_tab = agent0_tab or 'research' %}
+{% set trend_active = active_tab in ['research', 'history'] or research_view == 'history' %}
+<nav class="agent0-main-tabs" role="tablist" aria-label="Agent 0 workflow tabs">
+    <a
+        class="agent0-main-tab {% if trend_active and active_tab != 'approve' %}is-active{% endif %}"
+        href="/studio?stage=0&research={{ 'history' if research_view == 'history' else 'today' }}"
+        hx-get="/ui/stage/0?research={{ 'history' if research_view == 'history' else 'today' }}"
+        hx-target="#workspace"
+        hx-swap="outerHTML"
+        hx-push-url="/studio?stage=0&research={{ 'history' if research_view == 'history' else 'today' }}"
+        hx-indicator="#busy"
+        role="tab"
+        aria-selected="{{ 'true' if trend_active and active_tab != 'approve' else 'false' }}"
+    >Trend Research</a>
+    <a
+        class="agent0-main-tab {% if active_tab == 'approve' %}is-active{% endif %}"
+        href="/studio?stage=1"
+        hx-get="/ui/stage/1"
+        hx-target="#workspace"
+        hx-swap="outerHTML"
+        hx-push-url="/studio?stage=1"
+        hx-indicator="#busy"
+        role="tab"
+        aria-selected="{{ 'true' if active_tab == 'approve' else 'false' }}"
+    >Approve Pitch</a>
+</nav>

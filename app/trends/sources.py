@@ -104,7 +104,12 @@ def fetch_web_search_trends() -> List[Dict[str, Any]]:
 
 
 def collect_all_trends() -> List[Dict[str, Any]]:
-    """Gather + dedupe hot topics across Layers A/B/C (with web-search soft fill)."""
+    """
+    Gather hot topics across Layers A/B/C (with web-search soft fill).
+
+    Important: do NOT dedupe at scrape time. Keep every outlet/platform hit so
+    downstream presence ranking can measure how widely a topic appears.
+    """
     bucket: List[Dict[str, Any]] = []
     try:
         from app.trends.sources_a import collect_layer_a
@@ -133,17 +138,20 @@ def collect_all_trends() -> List[Dict[str, Any]]:
             item.setdefault("outlet", "Web")
             bucket.append(item)
 
-    seen = set()
-    unique: List[Dict[str, Any]] = []
+    collected: List[Dict[str, Any]] = []
     for item in bucket:
-        key = (item.get("title") or "").strip().lower()
-        if not key or key in seen:
+        title = (item.get("title") or "").strip()
+        if not title:
             continue
-        seen.add(key)
-        if not item.get("layer"):
-            item = dict(item)
-            item["layer"] = "A"
-        unique.append(item)
-    unique.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
-    logger.info("Agent 0 collected %s unique raw items", len(unique))
-    return unique
+        row = dict(item)
+        if not row.get("layer"):
+            row["layer"] = "A"
+        collected.append(row)
+
+    # Preserve scrape order richness; light score sort only for readability.
+    collected.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+    logger.info(
+        "Agent 0 collected %s raw items across platforms (no scrape-time title dedupe)",
+        len(collected),
+    )
+    return collected

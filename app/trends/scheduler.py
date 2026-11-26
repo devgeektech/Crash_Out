@@ -1,6 +1,10 @@
 """
 Daily Agent 0 cadence — 06:00 EST (America/New_York) via APScheduler.
 
+Scrapes Mainstream + Social feeds into today's research board.
+Pitch cards are NOT generated here — only after the user selects topics
+and clicks Create top 5 pitches.
+
 Enable with AGENT0_SCHEDULE_ENABLED=true (default false in local POC).
 """
 from __future__ import annotations
@@ -24,20 +28,45 @@ def _enabled() -> bool:
     }
 
 
-def run_daily_agent0_job() -> dict:
-    """Fetch Top-5 pitches and optionally dispatch to Telegram."""
-    from app.trends.pipeline import fetch_daily_pitch_run
-    from app.trends.telegram_dispatch import dispatch_pitch_run
+def run_daily_agent0_job(*, create_shell: bool = False, user_id: Optional[int] = None) -> dict:
+    """
+    Scrape layers into today's raw research feed (no pitch cards).
 
-    logger.info("Agent 0 scheduled run starting")
-    run = fetch_daily_pitch_run(force_refresh=True)
-    dispatch_pitch_run(run)
-    logger.info(
-        "Agent 0 scheduled run complete: %s pitches (mode=%s)",
-        len(run.get("pitches") or []),
-        (run.get("meta") or {}).get("mode"),
+    When create_shell=True (scheduled runs), also mint a Work history episode shell
+    and set it active so Trend Research follows the new ingest.
+    Mockup job creates its own shell after calling this with create_shell=False.
+    """
+    from app.trends.pipeline import fetch_daily_raw_ingest
+    from app.trends.research_ui import clear_raw_feed_cache
+
+    logger.info("Agent 0 scheduled raw ingest starting")
+    result = fetch_daily_raw_ingest()
+    clear_raw_feed_cache()
+    raw_count = int(
+        (result.get("meta") or {}).get("raw_count")
+        or len(result.get("items") or [])
     )
-    return run
+    logger.info(
+        "Agent 0 scheduled raw ingest complete: %s items (mode=%s)",
+        raw_count,
+        (result.get("meta") or {}).get("mode"),
+    )
+    if create_shell:
+        from app.trends.mockup_job import create_research_ingest_shell
+
+        layers = (result.get("meta") or {}).get("layer_counts") or {}
+        layer_bits = " · ".join(f"{k}:{int(layers.get(k) or 0)}" for k in ("A", "B"))
+        ep = create_research_ingest_shell(
+            user_id=user_id,
+            raw_count=raw_count,
+            run_date=str(result.get("run_date") or ""),
+            layer_bits=layer_bits,
+        )
+        result = dict(result)
+        result["episode_id"] = ep.id
+        result["episode_title"] = ep.title
+        logger.info("Agent 0 scheduled shell episode=%s", ep.id)
+    return result
 
 
 def start_agent0_scheduler() -> Optional[Any]:
@@ -69,7 +98,7 @@ def start_agent0_scheduler() -> Optional[Any]:
 
     sched = BackgroundScheduler(timezone=timezone)
     sched.add_job(
-        run_daily_agent0_job,
+        lambda: run_daily_agent0_job(create_shell=True),
         CronTrigger(hour=hour, minute=minute, timezone=timezone),
         id="agent0_daily",
         replace_existing=True,
@@ -79,7 +108,7 @@ def start_agent0_scheduler() -> Optional[Any]:
     sched.start()
     _scheduler = sched
     logger.info(
-        "Agent 0 scheduler started — daily %02d:%02d %s",
+        "Agent 0 scheduler started — daily %02d:%02d %s (raw ingest only)",
         hour,
         minute,
         timezone,

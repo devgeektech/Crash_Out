@@ -1,6 +1,8 @@
 """
-Agent 0 pipeline: Layer A/B/C fetch → cluster → friction score → Top 5 pitches.
-Always returns concepts adapted from pitches (Gate 1 compatible).
+Agent 0 pipeline:
+  - Trend Research ingest = scrape layers + save raw signals (no pitches).
+  - Pitch cards = only from selected topics via Create top 5 pitches.
+  - fetch_daily_pitch_run kept for Agent M / API full scoring when explicitly requested.
 """
 from __future__ import annotations
 
@@ -12,7 +14,6 @@ from app.trends.cache import load_cached_concepts, save_cached_concepts
 from app.trends.cluster import cluster_items
 from app.trends.friction import score_clusters
 from app.trends.schema import (
-    empty_pitch_run,
     normalize_pitch_run,
     pitches_to_concepts,
     today_run_date,
@@ -28,11 +29,62 @@ from app.trends.store import (
 logger = logging.getLogger(__name__)
 
 
+def fetch_daily_raw_ingest(*, run_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Scrape Layer A/B/(C) feeds and persist raw items for Trend Research.
+    Does NOT cluster-score or save pitch cards — pitches come from selected topics.
+    """
+    if not run_date:
+        run_date = today_run_date()
+    meta: Dict[str, Any] = {
+        "mode": "raw_ingest",
+        "raw_count": 0,
+        "cluster_count": 0,
+        "layer_counts": {"A": 0, "B": 0, "C": 0},
+    }
+    try:
+        raw = collect_all_trends()
+        meta["raw_count"] = len(raw)
+        for it in raw:
+            layer = str(it.get("layer") or "?").upper()
+            if layer in meta["layer_counts"]:
+                meta["layer_counts"][layer] += 1
+        save_raw_items(run_date, raw)
+        logger.info(
+            "Agent 0 raw ingest: raw=%s layers=%s (no pitches)",
+            meta["raw_count"],
+            meta["layer_counts"],
+        )
+        return {
+            "run_date": run_date,
+            "items": raw,
+            "pitches": [],
+            "meta": meta,
+        }
+    except Exception as exc:
+        logger.exception("Agent 0 raw ingest failed: %s", exc)
+        log_system_incident(
+            event_type="AGENT0_EXECUTION_FAILURE",
+            actor="Agent M Orchestrator",
+            details={
+                "category": "Agent 0 Trend Ingest",
+                "task_name": "Daily Raw Trend Ingestion",
+                "error": str(exc),
+                "requires_manual_retry": True,
+                "can_retry": True,
+                "action_endpoint": "/ui/queue/mockup",
+            },
+        )
+        raise RuntimeError(f"Agent 0 raw ingest failed: {exc}") from exc
+
+
 def fetch_daily_pitch_run(*, force_refresh: bool = True, run_date: Optional[str] = None) -> Dict[str, Any]:
     """
-    Full Agent 0 run → Top 5 pitch cards (client schema).
-    No static mock fallbacks. Automated 3-retry handling via Agent M with manual retry requirement.
+    Full Agent 0 scrape → cluster → score → Top 5 pitch cards.
+    Prefer create_pitches_from_signal_ids for studio research; this remains for
+    Agent M / API callers that explicitly request a full scoring run.
     """
+    del force_refresh  # always live when called
     if not run_date:
         run_date = today_run_date()
     meta: Dict[str, Any] = {
@@ -43,13 +95,10 @@ def fetch_daily_pitch_run(*, force_refresh: bool = True, run_date: Optional[str]
     }
     pipeline_error = None
     try:
-        raw = collect_all_trends()
+        ingest = fetch_daily_raw_ingest(run_date=run_date)
+        raw = list(ingest.get("items") or [])
         meta["raw_count"] = len(raw)
-        for it in raw:
-            layer = str(it.get("layer") or "?").upper()
-            if layer in meta["layer_counts"]:
-                meta["layer_counts"][layer] += 1
-        save_raw_items(run_date, raw)
+        meta["layer_counts"] = dict((ingest.get("meta") or {}).get("layer_counts") or meta["layer_counts"])
 
         prior = load_prior_topic_embeddings(days=30)
         clusters = cluster_items(raw, prior_embeddings=prior)
