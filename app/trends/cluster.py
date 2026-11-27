@@ -151,7 +151,6 @@ def cluster_items(
         layer_hits = {
             "A": sum(1 for it in member_items if str(it.get("layer") or "").upper() == "A"),
             "B": sum(1 for it in member_items if str(it.get("layer") or "").upper() == "B"),
-            "C": sum(1 for it in member_items if str(it.get("layer") or "").upper() == "C"),
         }
         rep = max(member_items, key=lambda it: float(it.get("score") or 0))
         emb = vectors[members[0]] if use_vectors else None

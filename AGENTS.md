@@ -28,7 +28,7 @@ The system operates across **5 Autonomous Agents** coordinated by an Orchestrato
 
 ### Agent Roster:
 1. **Agent 0 (`app/agents/agent_0_trend_ingest.py`)**:
-   - Ingests Layer A (Mainstream US news), Layer B (Youth/Reddit/Meme), Layer C (Character niche feeds).
+   - Ingests Layer B (Youth/Reddit/Meme/YouTube) first, then Layer A (Mainstream US news). Layer C removed.
    - Generates embeddings and runs cosine similarity deduplication via pgvector against previous days' pitches.
    - Outputs top 5 friction intersection pitches.
 2. **Agent 1 (`app/agents/agent_1_scriptwriter.py`)**:

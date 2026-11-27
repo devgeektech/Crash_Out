@@ -40,10 +40,12 @@ def fetch_daily_raw_ingest(*, run_date: Optional[str] = None) -> Dict[str, Any]:
         "mode": "raw_ingest",
         "raw_count": 0,
         "cluster_count": 0,
-        "layer_counts": {"A": 0, "B": 0, "C": 0},
+        "layer_counts": {"A": 0, "B": 0},
     }
     try:
         raw = collect_all_trends()
+        # Drop any legacy Layer C rows if present in mixed caches/sources.
+        raw = [it for it in raw if str(it.get("layer") or "").upper() != "C"]
         meta["raw_count"] = len(raw)
         for it in raw:
             layer = str(it.get("layer") or "?").upper()
@@ -91,14 +93,19 @@ def fetch_daily_pitch_run(*, force_refresh: bool = True, run_date: Optional[str]
         "mode": "unknown",
         "raw_count": 0,
         "cluster_count": 0,
-        "layer_counts": {"A": 0, "B": 0, "C": 0},
+        "layer_counts": {"A": 0, "B": 0},
     }
     pipeline_error = None
     try:
         ingest = fetch_daily_raw_ingest(run_date=run_date)
-        raw = list(ingest.get("items") or [])
+        raw = [
+            it
+            for it in list(ingest.get("items") or [])
+            if str(it.get("layer") or "").upper() != "C"
+        ]
         meta["raw_count"] = len(raw)
         meta["layer_counts"] = dict((ingest.get("meta") or {}).get("layer_counts") or meta["layer_counts"])
+        meta["layer_counts"].pop("C", None)
 
         prior = load_prior_topic_embeddings(days=30)
         clusters = cluster_items(raw, prior_embeddings=prior)

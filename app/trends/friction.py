@@ -458,10 +458,9 @@ def score_clusters_heuristic(clusters: List[Dict[str, Any]], *, run_date: str) -
     pitches: List[Dict[str, Any]] = []
     for cluster in clusters[:12]:
         hits = cluster.get("layer_hits") or {}
-        a, b, c = int(hits.get("A") or 0), int(hits.get("B") or 0), int(hits.get("C") or 0)
-        cross = 9.0 if a and b else (6.5 if (a and c) or (b and c) else 4.0)
-        if a and b and c:
-            cross = 10.0
+        a, b = int(hits.get("A") or 0), int(hits.get("B") or 0)
+        # Layer C removed — cross-layer consensus is Mainstream × Social only.
+        cross = 9.0 if a and b else 4.0
         if cluster.get("ai_consensus_score") is not None:
             try:
                 ai_score = float(cluster.get("ai_consensus_score"))

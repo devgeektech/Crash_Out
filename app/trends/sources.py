@@ -105,36 +105,51 @@ def fetch_web_search_trends() -> List[Dict[str, Any]]:
 
 def collect_all_trends() -> List[Dict[str, Any]]:
     """
-    Gather hot topics across Layers A/B/C (with web-search soft fill).
+    Gather hot topics across Layers B → A (social-first, then mainstream).
+    Layer C (character niche) has been removed.
 
     Important: do NOT dedupe at scrape time. Keep every outlet/platform hit so
     downstream presence ranking can measure how widely a topic appears.
     """
     bucket: List[Dict[str, Any]] = []
+    ingest_order = ("B", "A")
+    logger.info("Agent 0 ingest_order: %s", ",".join(ingest_order))
+
+    # 1) Youth / social first — YouTube (News/Entertainment first), Reddit, slang, memes.
+    layer_b: List[Dict[str, Any]] = []
+    try:
+        from app.trends.sources_b import collect_layer_b, youtube_news_entertainment_titles
+
+        layer_b = collect_layer_b()
+        bucket.extend(layer_b)
+    except Exception as exc:
+        logger.warning("Layer B failed: %s", exc)
+        youtube_news_entertainment_titles = None  # type: ignore
+
+    # 2) Mainstream news — seeded by viral YouTube News/Entertainment titles for A×B match.
     try:
         from app.trends.sources_a import collect_layer_a
 
-        bucket.extend(collect_layer_a())
+        yt_seeds: List[str] = []
+        if layer_b and youtube_news_entertainment_titles:
+            try:
+                yt_seeds = youtube_news_entertainment_titles(layer_b, limit=8)
+            except Exception as seed_exc:
+                logger.debug("YouTube seed titles skipped: %s", seed_exc)
+        bucket.extend(collect_layer_a(youtube_bridge_titles=yt_seeds or None))
     except Exception as exc:
         logger.warning("Layer A failed: %s", exc)
-    try:
-        from app.trends.sources_b import collect_layer_b
 
-        bucket.extend(collect_layer_b())
-    except Exception as exc:
-        logger.warning("Layer B failed: %s", exc)
-    try:
-        from app.trends.sources_c import collect_layer_c
-
-        bucket.extend(collect_layer_c())
-    except Exception as exc:
-        logger.warning("Layer C failed: %s", exc)
-
-    # Soft fill if layered sources are thin (offline / blocked network)
+    # Soft fill if layered sources are thin — prefer youth/social queries (Layer B).
     if len(bucket) < 25:
         for item in fetch_web_search_trends():
             item = dict(item)
-            item.setdefault("layer", "A")
+            q = str((item.get("raw") or {}).get("query") or "").lower()
+            youthish = any(
+                tok in q
+                for tok in ("gen z", "tiktok", "meme", "slang", "viral", "hoa", "suburban")
+            )
+            item.setdefault("layer", "B" if youthish else "A")
             item.setdefault("outlet", "Web")
             bucket.append(item)
 
@@ -145,13 +160,14 @@ def collect_all_trends() -> List[Dict[str, Any]]:
             continue
         row = dict(item)
         if not row.get("layer"):
-            row["layer"] = "A"
+            row["layer"] = "B"
         collected.append(row)
 
     # Preserve scrape order richness; light score sort only for readability.
     collected.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
     logger.info(
-        "Agent 0 collected %s raw items across platforms (no scrape-time title dedupe)",
+        "Agent 0 collected %s raw items (ingest_order=%s, no scrape-time title dedupe)",
         len(collected),
+        ",".join(ingest_order),
     )
     return collected

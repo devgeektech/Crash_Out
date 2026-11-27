@@ -7,6 +7,82 @@ Do **not** treat the JD as a delivery checklist — see [PRODUCT.md](PRODUCT.md)
 
 ---
 
+### 2026-11-27 — Social proof chips show platform name only
+
+Completed:
+- List social tags no longer append volume numbers (`TikTok 87` → `TikTok`).
+
+Files: `app/templates/partials/stages/stage_0_research.html`
+
+### 2026-11-27 — Unify Joint score + fix list ranking
+
+Completed:
+- **Joint** and **cross_social** are now the same unified board number (Media×Social → `0.5M+0.5S+8`; social-only → social heat).
+- List / ring / breakdown use **Joint** only (removed duplicate Cross-social cell).
+- Top 10 is re-sorted by that joint score so rank order matches the number shown.
+
+Files: `app/trends/research_ui.py`, `app/templates/partials/stages/stage_0_research.html`
+
+### 2026-11-27 — Clean Top-10 trending board finalize
+
+Completed:
+- Final Top 10 is a **clean trending topics** list: junk/gaming-only titles filtered, near-duplicate headlines collapsed, one story per theme, ranked by `trending_board_quality` (cross-social + media + news YT bonuses).
+- Scrape path can stay social-first; last-mile `finalize_clean_trending_board` owns list quality.
+
+Files: `app/trends/research_ui.py`
+
+### 2026-11-27 — YouTube News/Entertainment priority + mainstream bridge
+
+Completed:
+- YouTube trending order is **News (25) → Entertainment (24) → Gaming (20)** with higher pull/score for News/Entertainment and a thin Gaming cap.
+- After Layer B, top YouTube News/Entertainment titles seed Google News RSS **Layer A bridges** so viral YT can attach to mainstream coverage.
+
+Files: `app/trends/sources_b.py`, `app/trends/sources_a.py`, `app/trends/sources.py`
+
+### 2026-11-27 — Remove Layer C completely
+
+Completed:
+- Deleted `app/trends/sources_c.py`; ingest is **B → A only**.
+- Pipeline / cluster / friction / research_ui no longer count or collect Layer C; legacy `C` rows are filtered out on ingest.
+- Docs updated (`AGENTS.md`, `AGENT0_API_REQUIREMENTS.md`).
+
+Files: `app/trends/sources.py`, `app/trends/pipeline.py`, `app/trends/cluster.py`, `app/trends/friction.py`, `app/trends/research_ui.py`, `app/agents/agent_0_trend_ingest.py`, `AGENTS.md`, `docs/AGENT0_API_REQUIREMENTS.md`
+
+### 2026-11-27 — Social-first scrape + cross-social Top 10
+
+Completed:
+- Ingest order is now **B → A → C** (youth/social first, then mainstream); soft web-fill prefers Layer B queries.
+- Layer B: YouTube categories first; Reddit core + up to 5 dynamic subs (PRAW popular or day-rotated pool); Gen Z slang follow-up RSS from today’s youth/KYM phrases.
+- Top 10 board ranks by new **`cross_social_score`** (multi-platform Layer B heat). Prefer 2+ social families; pad with strong single-platform social — not media-only. Media/Social/Joint still shown on detail.
+- Research UI meta/list/ring captions switched to cross-social; breakdown adds Cross-social value.
+
+Files: `app/trends/sources.py`, `app/trends/sources_b.py`, `app/trends/research_ui.py`, `app/templates/partials/stages/stage_0_research.html`
+
+### 2026-11-27 — Story Match uses embeddings (heuristic fallback)
+
+Completed:
+- Trend Research Story Match (outlet bars, `avg_match`, Media/Social alone scores, A↔B soft attach) now prefers **OpenAI `text-embedding-3-small` cosine** (`0.90×cosine% + 0.10×time`), batched per topic with a process-local text cache.
+- Lexical S/E/C/T formula kept as fallback when `OPENAI_API_KEY` is missing or the embed API fails.
+- Soft Mainstream↔Social attach threshold for embedding mode: cosine×100 ≥ **58** (aligned with cluster similarity).
+
+Files: `app/trends/research_ui.py`
+
+### 2026-11-27 — Trend board: Media×Social joint ≥ 75
+
+Completed:
+- Top viral list now **Media × Social only**, preferring `joint_score >= 75`.
+- If under 10, fills with other cross-checked topics below the floor — never pads with single-stream agenda/social-only rows.
+- Research meta + empty state explain the policy (`MIN_JOINT_BOARD_SCORE`).
+
+Files: `app/trends/research_ui.py`, `app/templates/partials/stages/stage_0_research.html`
+
+### 2026-11-26 — Merged master into branches + live pull
+
+Completed:
+- Merged `master` (`b1d8deb`) into `dev`, `users/vikas/login-setup`, `users/vikas/ui-updates`, `users/sushil/ui_updates` (fast-forward) and `users/vikas/Agent0` (merge commit; conflicts resolved favoring master).
+- Pushed all updated branches to `origin`.
+- Live EC2 (`54.166.201.137` / `/var/www/Crash_Out`): fast-forward `da23bbc` → `b1d8deb`, restarted `crashout.service` (`active`), `/login` HTTP 200.
+
 ### 2026-11-26 — Sensitive topic confirm uses themed in-app dialog
 
 Completed:

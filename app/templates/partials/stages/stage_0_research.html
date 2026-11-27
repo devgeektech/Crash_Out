@@ -25,7 +25,12 @@
                     >
                 </form>
             </div>
-            <p class="research-list-meta muted">{{ R.day_label or 'Today' }} · Ranked by joint score (media × social) · {{ R.raw_item_count or 0 }} raw hits</p>
+            <p class="research-list-meta muted">
+                {{ R.day_label or 'Today' }}
+                · {{ R.board_policy_label or ('Cross-social viral · ' ~ (R.min_cross_social_families or 2) ~ '+ platforms') }}
+                · {{ R.raw_item_count or 0 }} raw hits
+                {% if R.cross_social_pool is defined %}· {{ R.cross_social_pool }} cross-social{% elif R.cross_layer_pool is defined %}· {{ R.cross_layer_pool }} cross-checked{% endif %}
+            </p>
         </div>
 
         <div class="research-filters" role="tablist" aria-label="Signal filters">
@@ -103,8 +108,12 @@
                                 {% set show_mainstream_tags = filter_tab in ['all', 'mainstream'] %}
                                 {% set show_social_tags = filter_tab in ['all', 'social'] %}
 
-                                {# All signals: combined Media × Social + outlets + social pills #}
-                                {% if filter_tab == 'all' and signal.has_cross_layer %}
+                                {# All signals: cross-social / Media × Social badges #}
+                                {% if filter_tab == 'all' and signal.is_cross_social and signal.has_cross_layer %}
+                                <span class="research-tag research-tag-cross">Media × Social</span>
+                                {% elif filter_tab == 'all' and signal.is_cross_social %}
+                                <span class="research-tag research-tag-cross">Cross-social</span>
+                                {% elif filter_tab == 'all' and signal.has_cross_layer %}
                                 <span class="research-tag research-tag-cross">Media × Social</span>
                                 {% endif %}
 
@@ -141,16 +150,16 @@
                                             rel="noopener noreferrer"
                                             onclick="event.stopPropagation();"
                                             title="Social proof · {{ chip.name }}"
-                                        >{{ chip.name }} {{ chip.label }}</a>
+                                        >{{ chip.name }}</a>
                                         {% else %}
-                                        <span class="research-tag research-tag-social tone-{{ chip.tone or 'social' }}">{{ chip.name }} {{ chip.label }}</span>
+                                        <span class="research-tag research-tag-social tone-{{ chip.tone or 'social' }}">{{ chip.name }}</span>
                                         {% endif %}
                                     {% endfor %}
                                 {% endif %}
                                 <span class="research-signal-time muted">{{ signal.time_ago }}</span>
                             </span>
                         </span>
-                        <span class="research-signal-score" title="Media {{ signal.cross_media_score or 0 }} · Social {{ signal.social_proof_score or 0 }} · Joint {{ signal.joint_score or signal.score }}">
+                        <span class="research-signal-score" title="Joint {{ signal.joint_score if signal.joint_score is not none else signal.score }} · Media {{ signal.cross_media_score or 0 }} · Social {{ signal.social_proof_score or 0 }}">
                             <span class="research-signal-score-value">
                                 <span class="research-signal-score-num">{{ signal.joint_score if signal.joint_score is not none else signal.score }}</span><span class="research-signal-score-den">/100</span>
                             </span>
@@ -162,7 +171,16 @@
                 {% endfor %}
             {% else %}
                 <div class="empty-state" style="padding: 2rem 1rem; text-align: center;">
+                    {% if (R.raw_item_count or 0) > 0 %}
+                    <p class="muted" style="margin: 0;">
+                        No cross-social topics
+                        {% if R.min_cross_social_families %}on {{ R.min_cross_social_families }}+ platforms{% endif %}
+                        matched today’s filters.
+                        Re-run Mockup after social feeds refresh, or widen the Social proof tab.
+                    </p>
+                    {% else %}
                     <p class="muted" style="margin: 0;">No signals yet for today. Run <strong>Mockup</strong> or wait for the 06:00 EST Agent 0 ingest.</p>
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
@@ -195,7 +213,7 @@
                     class="research-score-ring"
                     style="--p: {{ conf_fill }};"
                     aria-label="Joint score {{ conf_fill }} out of 100"
-                    title="Joint score {{ conf_fill }} · Media {{ active.cross_media_score or 0 }} · Social {{ active.social_proof_score or 0 }}"
+                    title="Joint {{ conf_fill }} · Media {{ active.cross_media_score or 0 }} · Social {{ active.social_proof_score or 0 }}"
                 >
                     <svg class="research-score-ring-svg" viewBox="0 0 36 36" aria-hidden="true">
                         <circle class="research-score-ring-track" cx="18" cy="18" r="15.5"></circle>

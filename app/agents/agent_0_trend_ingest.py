@@ -1,9 +1,8 @@
 """
 Agent 0: US News & Viral Trend Ingestion Agent.
 
-Cross-references mainstream US media (Layer A), youth social/memes (Layer B),
-and character niche feeds (Layer C), then scores Friction Intersection pitches
-for HITL Gateway 1 (Top 5).
+Cross-references youth social/memes (Layer B) and mainstream US media (Layer A),
+then scores Friction Intersection pitches for HITL Gateway 1 (Top 5).
 """
 from typing import Any, Dict, List
 
