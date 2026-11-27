@@ -9,9 +9,8 @@
 | Piece | How |
 |---|---|
 | Layer A | Google Trends RSS, public news RSS, DuckDuckGo web search |
-| Layer B | Reddit public `.json`, Know Your Meme RSS |
-| Layer C | Character niche RSS + Reddit JSON |
-| Clustering | Jaccard text similarity (no embeddings) |
+| Layer B | Reddit, YouTube trending, Know Your Meme / youth slang RSS |
+| Clustering | Jaccard text similarity (no embeddings); OpenAI embeddings when keyed |
 | Scoring | Heuristic friction scorer (no LLM) |
 | Storage | Files under `outputs/agent0/` |
 | Schedule / Telegram | Optional; off by default |

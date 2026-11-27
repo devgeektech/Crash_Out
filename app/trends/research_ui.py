@@ -11,9 +11,9 @@ import math
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from app.trends.cluster import jaccard
+from app.trends.cluster import cosine, embed_texts, jaccard
 from app.trends.schema import normalize_pitch_run, pitches_to_concepts, today_run_date
 from app.trends.store import load_latest_pitch_run, load_raw_items, save_pitch_run
 
@@ -21,7 +21,30 @@ logger = logging.getLogger(__name__)
 
 MAX_SELECTED_SIGNALS = 1
 MAX_VIRAL_LIST = 10  # Trend Research list: top viral across media + youth social
+# Legacy joint floor (kept for meta/compat); board now ranks by clean trending quality.
+MIN_JOINT_BOARD_SCORE = 75
+# Board policy (client test): prefer 2+ social platform families; social-only allowed.
+MIN_CROSS_SOCIAL_FAMILIES = 2
+MIN_SINGLE_SOCIAL_FILL = 55  # pad Top-10 with strong single-platform social if needed
+MAX_THEME_PER_BOARD = 1  # cleaner Top-10: one story per theme lane
+BOARD_TITLE_DEDUP_JACCARD = 0.55  # drop near-duplicate headlines on final board
 PRESENCE_JACCARD = 0.28  # post-scrape topic merge threshold
+
+# Titles that look like feed noise rather than a pitched trending topic.
+_JUNK_TITLE_RE = re.compile(
+    r"(?i)\b("
+    r"subscribe|follow for more|live stream|livestream|full match|gameplay|"
+    r"walkthrough|speedrun|reaction only|asmr|nightcore|official audio|"
+    r"lyrics video|hour loop|10 hour|compilation #?\d*"
+    r")\b"
+)
+_GAMING_ONLY_RE = re.compile(
+    r"(?i)\b("
+    r"fortnite|minecraft|roblox|valorant|warzone|cod\b|call of duty|"
+    r"gta\s*v|gta\s*6|elden ring|league of legends|pokemon go|"
+    r"streamer|twitch highlights"
+    r")\b"
+)
 SESSION_SELECTED_KEY = "agent0_selected_signal_ids"
 SESSION_ACTIVE_KEY = "agent0_active_signal_id"
 SESSION_VIEW_KEY = "agent0_research_view"
@@ -39,12 +62,12 @@ FILTER_LABELS = {
     "social": "Social Proof (B)",
 }
 
-# Trend Research presence / confidence uses Mainstream + Social only (no Layer C).
+# Trend Research uses Mainstream (A) + Social (B) only — Layer C removed.
 RESEARCH_LAYERS = frozenset({"A", "B"})
 
 
 def _research_feed_items(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Drop Layer C (Character Niche) from Trend Research scoring UI."""
+    """Keep only Layer A/B items (drop any legacy Layer C rows)."""
     out: List[Dict[str, Any]] = []
     for it in items or []:
         layer = str(it.get("layer") or "").upper()
@@ -205,6 +228,14 @@ def _cross_attach_social_to_mainstream(topics: List[Dict[str, Any]]) -> List[Dic
     if not a_topics or not b_only:
         return topics
 
+    # Batch-embed all reps once so pairwise Story Match can use cosine.
+    reps = [
+        (t.get("representative") or {})
+        for t in (a_topics + b_only)
+        if isinstance(t.get("representative"), dict) or t.get("representative")
+    ]
+    ensure_item_embeddings([r for r in reps if isinstance(r, dict)])
+
     # Mutate member lists on A topics in place via id map.
     a_by_id = {str(t.get("id")): dict(t) for t in a_topics}
     attached_b_ids: set[str] = set()
@@ -217,11 +248,16 @@ def _cross_attach_social_to_mainstream(topics: List[Dict[str, Any]]) -> List[Dic
             a_rep = a_topic.get("representative") or {}
             match = story_match_confidence(a_rep, b_rep)
             total = float(match.get("score") or 0)
-            ent = float((match.get("factors") or {}).get("entity") or 0)
-            if total >= 42 or (ent >= 35 and total >= 34):
-                if total > best_score:
-                    best_score = total
-                    best_id = str(a_topic.get("id"))
+            factors = match.get("factors") or {}
+            mode = str(factors.get("mode") or "heuristic")
+            if mode == "embedding":
+                attach = total >= _EMBED_ATTACH_THRESHOLD
+            else:
+                ent = float(factors.get("entity") or 0)
+                attach = total >= 42 or (ent >= 35 and total >= 34)
+            if attach and total > best_score:
+                best_score = total
+                best_id = str(a_topic.get("id"))
         if not best_id:
             continue
         host = a_by_id[best_id]
@@ -332,11 +368,21 @@ def _apply_theme_diversity(cards: Sequence[Dict[str, Any]], *, max_per_theme: in
     return head + deferred
 
 
-# Story Match Confidence weights (publisher % vs selected trend).
+# Story Match Confidence weights (heuristic fallback when embeddings unavailable).
 _MATCH_W_SEMANTIC = 0.40
 _MATCH_W_ENTITY = 0.25
 _MATCH_W_CONTEXT = 0.20
 _MATCH_W_TIME = 0.15
+
+# Embedding Story Match: cosine ≥ this (×100) counts as same-story for soft A↔B attach.
+_EMBED_ATTACH_THRESHOLD = 58
+# Soft blend: embedding dominates; light time proximity keeps same-day hits ahead.
+_EMBED_W_COSINE = 0.90
+_EMBED_W_TIME = 0.10
+
+# Process-local text → embedding cache (avoids re-hitting OpenAI across topics).
+_EMBED_CACHE: Dict[str, List[float]] = {}
+_EMBED_CACHE_MAX = 4096
 
 _STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "from",
@@ -351,6 +397,110 @@ def _item_text(item: Dict[str, Any]) -> str:
     title = str(item.get("title") or "").strip()
     snip = str(item.get("snippet") or "").strip()
     return f"{title}. {snip}".strip()
+
+
+def _embedding_from_item(item: Dict[str, Any]) -> Optional[List[float]]:
+    """Return a cached / attached 1536-d embedding if present."""
+    for key in ("_embedding", "embedding"):
+        vec = item.get(key)
+        if isinstance(vec, (list, tuple)) and len(vec) == 1536:
+            return [float(x) for x in vec]
+    text = _item_text(item)
+    if text and text in _EMBED_CACHE:
+        return list(_EMBED_CACHE[text])
+    return None
+
+
+def _store_embedding(item: Dict[str, Any], vec: List[float]) -> None:
+    if not vec or len(vec) != 1536:
+        return
+    item["_embedding"] = list(vec)
+    text = _item_text(item)
+    if not text:
+        return
+    if len(_EMBED_CACHE) >= _EMBED_CACHE_MAX and text not in _EMBED_CACHE:
+        # Drop an arbitrary old entry to bound memory.
+        try:
+            _EMBED_CACHE.pop(next(iter(_EMBED_CACHE)))
+        except StopIteration:
+            pass
+    _EMBED_CACHE[text] = list(vec)
+
+
+def ensure_item_embeddings(items: Sequence[Dict[str, Any]]) -> bool:
+    """
+    Batch-embed title+snippet for items missing vectors.
+    Returns True when every non-empty item has an embedding (or was empty).
+    """
+    pending: List[Tuple[Dict[str, Any], str]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if _embedding_from_item(it) is not None:
+            continue
+        text = _item_text(it)
+        if not text:
+            continue
+        pending.append((it, text))
+    if not pending:
+        return True
+    vectors = embed_texts([t for _, t in pending])
+    if not vectors or len(vectors) != len(pending):
+        return False
+    for (it, _text), vec in zip(pending, vectors):
+        if isinstance(vec, list) and len(vec) == 1536:
+            _store_embedding(it, vec)
+    return all(_embedding_from_item(it) is not None for it, _ in pending)
+
+
+def _embedding_match_score(
+    anchor: Dict[str, Any],
+    other: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Cosine Story Match (0–100). None when embeddings are unavailable."""
+    a_vec = _embedding_from_item(anchor)
+    b_vec = _embedding_from_item(other)
+    if a_vec is None or b_vec is None:
+        # Try a small on-demand batch for this pair.
+        if not ensure_item_embeddings([anchor, other]):
+            return None
+        a_vec = _embedding_from_item(anchor)
+        b_vec = _embedding_from_item(other)
+    if a_vec is None or b_vec is None:
+        return None
+
+    a_title = str(anchor.get("title") or "").strip()
+    b_title = str(other.get("title") or "").strip()
+    if other is anchor or (a_title and b_title and a_title.lower() == b_title.lower()):
+        return {
+            "score": 100,
+            "factors": {
+                "semantic": 100.0,
+                "entity": 100.0,
+                "context": 100.0,
+                "time": 100.0,
+                "cosine": 1.0,
+                "mode": "embedding",
+            },
+        }
+
+    sim = float(cosine(a_vec, b_vec))
+    emb_pct = max(0.0, min(100.0, sim * 100.0))
+    t = _time_score(anchor, other)
+    raw = (_EMBED_W_COSINE * emb_pct) + (_EMBED_W_TIME * t)
+    score = int(round(max(0.0, min(100.0, raw))))
+    return {
+        "score": score,
+        "factors": {
+            # Keep S/E/C keys for UI/call-site compat; all driven by embedding.
+            "semantic": round(emb_pct, 1),
+            "entity": round(emb_pct, 1),
+            "context": round(emb_pct, 1),
+            "time": round(t, 1),
+            "cosine": round(sim, 4),
+            "mode": "embedding",
+        },
+    }
 
 
 def _content_tokens(text: str) -> set[str]:
@@ -442,16 +592,18 @@ def _time_score(anchor: Dict[str, Any], other: Dict[str, Any]) -> float:
     return 25.0
 
 
-def story_match_confidence(anchor: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Story Match Confidence for one publisher article vs the selected trend.
-
-    Score = (S×0.40) + (E×0.25) + (C×0.20) + (T×0.15)
-    """
+def _heuristic_story_match(anchor: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
+    """Lexical fallback: Score = (S×0.40) + (E×0.25) + (C×0.20) + (T×0.15)."""
     a_title = str(anchor.get("title") or "").strip()
     b_title = str(other.get("title") or "").strip()
     if other is anchor or (a_title and b_title and a_title.lower() == b_title.lower()):
-        factors = {"semantic": 100.0, "entity": 100.0, "context": 100.0, "time": 100.0}
+        factors = {
+            "semantic": 100.0,
+            "entity": 100.0,
+            "context": 100.0,
+            "time": 100.0,
+            "mode": "heuristic",
+        }
         return {"score": 100, "factors": factors}
 
     s = _semantic_score(anchor, other)
@@ -467,8 +619,22 @@ def story_match_confidence(anchor: Dict[str, Any], other: Dict[str, Any]) -> Dic
             "entity": round(e, 1),
             "context": round(c, 1),
             "time": round(t, 1),
+            "mode": "heuristic",
         },
     }
+
+
+def story_match_confidence(anchor: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Story Match Confidence for one publisher article vs the selected trend.
+
+    Primary: OpenAI embedding cosine (text-embedding-3-small) × 90% + time × 10%.
+    Fallback: lexical S/E/C/T when OPENAI_API_KEY is missing or embed fails.
+    """
+    embedded = _embedding_match_score(anchor, other)
+    if embedded is not None:
+        return embedded
+    return _heuristic_story_match(anchor, other)
 
 
 def _accumulate_platform_matches(
@@ -479,9 +645,12 @@ def _accumulate_platform_matches(
     Per-publisher Story Match Confidence bars.
 
     1) Anchor topic is fetched first (representative).
-    2) Each other platform hit is scored with S/E/C/T vs the anchor.
+    2) Batch-embed members, then score each hit vs the anchor (cosine / heuristic).
     3) Repeat hits on the same outlet keep the stronger match (not brand bias).
     """
+    # One OpenAI batch for this topic's members before pairwise scoring.
+    ensure_item_embeddings([rep, *list(members or [])])
+
     by_platform: Dict[str, Dict[str, Any]] = {}
     for it in members:
         name = str(it.get("outlet") or it.get("source") or "").strip()
@@ -531,7 +700,8 @@ def _platform_overlap_and_confidence(topic: Dict[str, Any]) -> Dict[str, Any]:
     Per-outlet Story Match bars + ring / list confidence.
 
     Client rule: more overlapping platforms/outlets → higher score.
-    - Each bar = that outlet's S/E/C/T match vs the anchor story.
+    - Each bar = that outlet's embedding Story Match vs the anchor story
+      (cosine; lexical S/E/C/T fallback if embeddings unavailable).
     - Ring score = mostly presence (how many outlets), blended with match quality
       so a 4-outlet story outranks a 1–2 outlet story even if avg match is lower.
     """
@@ -740,40 +910,381 @@ def _component_score_for_layer(topic: Dict[str, Any], layer: str) -> int:
 
 def joint_viral_scores(topic: Dict[str, Any]) -> Dict[str, int]:
     """
-    Cross-media (A) alone, social-proof (B) alone, and combined joint score.
+    Media alone, Social alone, and one unified Joint score.
 
-    Joint favors topics that clear both streams: balanced mean + cross-check
-    bonus when both > 0; single-stream topics are scaled down so they rank below
-    comparable Media × Social hits.
+    Joint == cross_social_score (same number everywhere — list, ring, ranking):
+    - Media + Social → 0.5×Media + 0.5×Social + 8
+    - Social only → Layer-B multi-platform heat (cross_social alone)
+    - Media only → Media × 0.58
     """
     media = _component_score_for_layer(topic, "A")
     social = _component_score_for_layer(topic, "B")
+    cross = cross_social_scores(topic)
+    social_heat = int(cross.get("cross_social_score") or 0)
 
     if media > 0 and social > 0:
-        # Combined = mean of alone scores + small cross-check bonus.
+        # One combined score for Media × Social topics.
         joint = min(100, int(round(0.5 * media + 0.5 * social + 8)))
+    elif social > 0 or social_heat > 0:
+        # Social-only: use the stronger of alone-social vs multi-platform heat.
+        joint = max(1, int(max(social, social_heat)))
     elif media > 0:
         joint = max(1, int(round(media * 0.58)))
-    elif social > 0:
-        joint = max(1, int(round(social * 0.58)))
     else:
         joint = 0
 
     return {
         "cross_media_score": int(media),
         "social_proof_score": int(social),
+        # Keep both keys identical so UI/ranking never diverge.
         "joint_score": int(joint),
+        "cross_social_score": int(joint),
+        "social_family_count": int(cross.get("social_family_count") or 0),
+        "is_cross_social": 1 if cross.get("is_cross_social") else 0,
+    }
+
+
+def cross_social_scores(topic: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Layer-B-only virality across social platform families.
+
+    n_families == 1 → early social signal (capped lower)
+    n_families >= 2 → presence-first cross-social heat (+ bonus for 3+)
+    """
+    members = [
+        m
+        for m in (topic.get("members") or [])
+        if str(m.get("layer") or "").upper() == "B"
+    ]
+    if not members:
+        return {
+            "cross_social_score": 0,
+            "social_family_count": 0,
+            "is_cross_social": False,
+        }
+
+    families = {
+        _social_platform_family(m) or "Social"
+        for m in members
+    }
+    n_families = max(len(families), 1)
+    rep = max(members, key=lambda x: _as_float(x.get("score")))
+    rows = _accumulate_platform_matches(members, rep)
+    strengths = [int(r.get("strength") or 0) for r in rows] or [48]
+    avg_match = max(1.0, min(100.0, sum(strengths) / max(1, len(strengths))))
+    feed_vol = sum(max(_as_float(m.get("score")), 0.0) for m in members)
+    volume_part = min(40.0, math.log1p(feed_vol) * 6.0)
+    volume_term = min(100.0, volume_part * 2.2)
+
+    if n_families == 1:
+        # Single-platform youth heat — visible but below true cross-social.
+        base = 28.0 + volume_part * 0.50 + avg_match * 0.22
+        score = max(1, min(72, int(round(base))))
+    else:
+        presence_base = min(96.0, 38.0 + n_families * 14.0)
+        multi_bonus = 6.0 if n_families >= 3 else 0.0
+        raw = (
+            0.55 * presence_base
+            + 0.30 * avg_match
+            + 0.15 * volume_term
+            + multi_bonus
+        )
+        score = max(1, min(99, int(round(raw))))
+
+    return {
+        "cross_social_score": int(score),
+        "social_family_count": int(n_families),
+        "is_cross_social": bool(n_families >= MIN_CROSS_SOCIAL_FAMILIES),
+    }
+
+
+def _card_is_media_x_social(card: Dict[str, Any]) -> bool:
+    """True when the topic has both mainstream (A) and youth-social (B) presence."""
+    if bool(card.get("has_cross_layer")):
+        return True
+    return int(card.get("cross_media_score") or 0) > 0 and int(card.get("social_proof_score") or 0) > 0
+
+
+def _card_is_cross_social(card: Dict[str, Any]) -> bool:
+    """True when 2+ social platform families are present on the topic."""
+    if bool(card.get("is_cross_social")):
+        return True
+    return int(card.get("social_family_count") or 0) >= MIN_CROSS_SOCIAL_FAMILIES
+
+
+def _clean_trending_title(title: str) -> bool:
+    """True when the headline is usable as a Top-10 trending topic."""
+    text = re.sub(r"\s+", " ", (title or "").strip())
+    if len(text) < 18:
+        return False
+    words = [w for w in re.findall(r"[A-Za-z0-9']+", text) if len(w) > 1]
+    if len(words) < 4:
+        return False
+    if _JUNK_TITLE_RE.search(text):
+        return False
+    # Reject all-caps spammy short banners.
+    letters = [c for c in text if c.isalpha()]
+    if letters and sum(1 for c in letters if c.isupper()) / max(1, len(letters)) > 0.85 and len(words) < 8:
+        return False
+    return True
+
+
+def _card_is_gaming_only_noise(card: Dict[str, Any]) -> bool:
+    """Gaming-only social with no mainstream attach — usually not a clean trend card."""
+    title = str(card.get("title") or "")
+    if not _GAMING_ONLY_RE.search(title):
+        return False
+    if _card_is_media_x_social(card):
+        return False
+    # Allow if Reddit/X/TikTok also carry it (real cultural moment).
+    chips = card.get("social_proof") or []
+    families = {str(c.get("name") or "") for c in chips}
+    non_yt = families - {"YouTube", "Social", ""}
+    return len(non_yt) == 0
+
+
+def _card_has_news_entertainment_yt(card: Dict[str, Any]) -> bool:
+    topic = card.get("topic") or {}
+    for m in topic.get("members") or []:
+        if str(m.get("source") or "") != "youtube_trending":
+            continue
+        cat = int((m.get("raw") or {}).get("category") or 0)
+        if cat in (24, 25):
+            return True
+        outlet = str(m.get("outlet") or "").lower()
+        if "news" in outlet or "entertainment" in outlet:
+            return True
+    return False
+
+
+def _card_display_score(card: Dict[str, Any]) -> int:
+    """Single board number: joint == cross_social (kept in sync by joint_viral_scores)."""
+    return int(
+        card.get("joint_score")
+        or card.get("cross_social_score")
+        or card.get("score")
+        or 0
+    )
+
+
+def trending_board_quality(card: Dict[str, Any]) -> float:
+    """
+    Selection gate for clean topics. Primary rank key is joint/display score;
+    small bonuses only break ties so the list order matches the number shown.
+    """
+    title = str(card.get("title") or "")
+    if not _clean_trending_title(title):
+        return -1000.0
+    if _card_is_gaming_only_noise(card):
+        return -500.0
+
+    joint = float(_card_display_score(card))
+    # Tiny tie-breakers only — never outweigh a several-point joint gap.
+    bonus = 0.0
+    if _card_is_media_x_social(card):
+        bonus += 0.4
+    if _card_is_cross_social(card):
+        bonus += 0.3
+    if _card_has_news_entertainment_yt(card):
+        bonus += 0.2
+    theme = str(card.get("theme_key") or _theme_key(title))
+    if theme in {"suburban", "youth", "lifestyle", "work", "tech"}:
+        bonus += 0.1
+    return joint + bonus
+
+
+def finalize_clean_trending_board(
+    cards: Sequence[Dict[str, Any]],
+    *,
+    limit: int = MAX_VIRAL_LIST,
+) -> List[Dict[str, Any]]:
+    """
+    Last mile: whatever scrape/score path ran, emit a clean Top-N trending list.
+    - Drop junk / gaming-only noise titles
+    - Sort by trending_board_quality
+    - Theme diversity + near-duplicate headline collapse
+    """
+    ranked = sorted(
+        (c for c in cards if trending_board_quality(c) > -100),
+        key=trending_board_quality,
+        reverse=True,
+    )
+    out: List[Dict[str, Any]] = []
+    theme_counts: Dict[str, int] = {}
+    kept_titles: List[str] = []
+
+    def too_similar(title: str) -> bool:
+        for prev in kept_titles:
+            if jaccard(title, prev) >= BOARD_TITLE_DEDUP_JACCARD:
+                return True
+        return False
+
+    deferred: List[Dict[str, Any]] = []
+    for card in ranked:
+        if len(out) >= limit:
+            break
+        title = str(card.get("title") or "")
+        if too_similar(title):
+            continue
+        theme = str(card.get("theme_key") or _theme_key(title))
+        if theme_counts.get(theme, 0) >= MAX_THEME_PER_BOARD:
+            deferred.append(card)
+            continue
+        out.append(card)
+        kept_titles.append(title)
+        theme_counts[theme] = theme_counts.get(theme, 0) + 1
+
+    # If theme cap left holes, fill with next-best non-dupes (still clean).
+    for card in deferred:
+        if len(out) >= limit:
+            break
+        title = str(card.get("title") or "")
+        if too_similar(title):
+            continue
+        out.append(card)
+        kept_titles.append(title)
+
+    # Last resort: if still thin, allow strong media×social even if title gate was harsh.
+    if len(out) < limit:
+        have = {str(c.get("id")) for c in out}
+        for card in ranked:
+            if len(out) >= limit:
+                break
+            cid = str(card.get("id") or "")
+            if not cid or cid in have:
+                continue
+            if not _card_is_media_x_social(card) and not _card_is_cross_social(card):
+                continue
+            title = str(card.get("title") or "")
+            if too_similar(title):
+                continue
+            out.append(card)
+            have.add(cid)
+            kept_titles.append(title)
+
+    # Always re-sort by the number the UI shows (joint == cross_social).
+    out.sort(key=_card_display_score, reverse=True)
+    return out[:limit]
+
+
+def _append_with_theme_cap(
+    pool: Sequence[Dict[str, Any]],
+    *,
+    out: List[Dict[str, Any]],
+    theme_counts: Dict[str, int],
+    limit: int,
+    max_per_theme: int = MAX_THEME_PER_BOARD,
+) -> None:
+    """Walk a pre-sorted pool into out, respecting theme diversity and board size."""
+    deferred: List[Dict[str, Any]] = []
+    have = {str(c.get("id")) for c in out}
+    for card in pool:
+        if len(out) >= limit:
+            return
+        cid = str(card.get("id") or "")
+        if not cid or cid in have:
+            continue
+        theme = str(card.get("theme_key") or _theme_key(str(card.get("title") or "")))
+        if theme_counts.get(theme, 0) < max_per_theme:
+            out.append(card)
+            have.add(cid)
+            theme_counts[theme] = theme_counts.get(theme, 0) + 1
+        else:
+            deferred.append(card)
+    for card in deferred:
+        if len(out) >= limit:
+            return
+        cid = str(card.get("id") or "")
+        if not cid or cid in have:
+            continue
+        out.append(card)
+        have.add(cid)
+
+
+def select_top_viral_cards(
+    cards: Sequence[Dict[str, Any]],
+    *,
+    limit: int = MAX_VIRAL_LIST,
+    min_joint: int = MIN_JOINT_BOARD_SCORE,
+) -> Dict[str, Any]:
+    """
+    Trend Research Top-N — final output is a clean trending topics list:
+
+    1. Prefer Media×Social and cross-social viral topics
+    2. Allow strong single-platform social as fill (not media-only / gaming junk)
+    3. Finalize with title cleanup, theme diversity, near-dupe collapse
+
+    `min_joint` kept for meta/compat only.
+    """
+    del min_joint
+    preferred = [
+        c
+        for c in cards
+        if (_card_is_cross_social(c) or _card_is_media_x_social(c))
+        and _clean_trending_title(str(c.get("title") or ""))
+        and not _card_is_gaming_only_noise(c)
+    ]
+    fill = [
+        c
+        for c in cards
+        if c not in preferred
+        and int(c.get("social_proof_score") or 0) >= MIN_SINGLE_SOCIAL_FILL
+        and int(c.get("social_family_count") or 0) >= 1
+        and _clean_trending_title(str(c.get("title") or ""))
+        and not _card_is_gaming_only_noise(c)
+    ]
+    preferred = sorted(preferred, key=trending_board_quality, reverse=True)
+    fill = sorted(fill, key=trending_board_quality, reverse=True)
+
+    pooled: List[Dict[str, Any]] = list(preferred)
+    preferred_ids = {str(c.get("id")) for c in preferred}
+    for c in fill:
+        if str(c.get("id")) not in preferred_ids:
+            pooled.append(c)
+
+    selected = finalize_clean_trending_board(pooled, limit=limit)
+    if not selected:
+        selected = finalize_clean_trending_board(cards, limit=limit)
+
+    filled_from_preferred = sum(
+        1 for c in selected if _card_is_cross_social(c) or _card_is_media_x_social(c)
+    )
+    media_x_social = [c for c in cards if _card_is_media_x_social(c)]
+    cross_social = [c for c in cards if _card_is_cross_social(c)]
+    return {
+        "cards": selected,
+        "cross_layer_pool": len(media_x_social),
+        "cross_social_pool": len(cross_social),
+        "above_floor_count": filled_from_preferred,
+        "board_filled_from_floor": filled_from_preferred,
+        "min_joint": MIN_JOINT_BOARD_SCORE,
+        "min_cross_social_families": MIN_CROSS_SOCIAL_FAMILIES,
+        "used_below_floor": len(selected) > filled_from_preferred,
+        "used_single_social_fill": len(selected) > filled_from_preferred,
+        "clean_board": True,
     }
 
 
 def _unanimous_copy(topic: Dict[str, Any], score: int) -> Dict[str, str]:
     """Dynamic status copy for the ring — plain language, no math formula."""
     presence = int(topic.get("presence_count") or 0)
-    has_ab = bool(topic.get("has_cross_layer")) or (
-        "A" in {str(x).upper() for x in (topic.get("layers") or [])}
-        and "B" in {str(x).upper() for x in (topic.get("layers") or [])}
+    layers = {str(x).upper() for x in (topic.get("layers") or [])}
+    has_ab = bool(topic.get("has_cross_layer")) or ("A" in layers and "B" in layers)
+    social = _social_proof_from_topic(topic)
+    family_count = len(social.get("chips") or [])
+    is_cross_social = family_count >= MIN_CROSS_SOCIAL_FAMILIES or bool(
+        topic.get("is_cross_social")
     )
-    if has_ab and (score >= 70 or presence >= 2):
+
+    if is_cross_social and has_ab:
+        headline = "Cross-social + media"
+        detail = "Youth platforms agree, and mainstream has picked it up"
+        badge = "Media × Social"
+    elif is_cross_social:
+        headline = "Cross-social heat"
+        detail = "Discussed heavily across multiple youth/social platforms"
+        badge = "Cross-social"
+    elif has_ab and (score >= 70 or presence >= 2):
         headline = "Cross-checked signal"
         detail = "Mainstream coverage plus social proof from the target audience"
         badge = "Media × Social"
@@ -1420,14 +1931,21 @@ def build_signal_card(
     cross_media_score = int(viral.get("cross_media_score") or 0)
     social_proof_score = int(viral.get("social_proof_score") or 0)
     joint_score = int(viral.get("joint_score") or 0)
-    # List / ring score = joint (media alone + social alone, combined).
-    score = joint_score
+    # Joint and cross_social are the same unified board score.
+    cross_social_score = int(viral.get("cross_social_score") or joint_score)
+    social_family_count = int(viral.get("social_family_count") or 0)
+    is_cross_social = bool(viral.get("is_cross_social"))
+    # List / ring / rank all use the same joint number.
+    score = joint_score or cross_social_score
+    if score <= 0:
+        score = social_proof_score
     if score <= 0:
         # Fallback: presence confidence, then feed-rank soft score.
         score = int(overlap_meta.get("confidence") or 0)
         if score <= 0:
             score = max(1, min(99, int(round(40 + math.log1p(_as_float(rep.get("score"))) * 5))))
         joint_score = score
+        cross_social_score = score
     outlet_bars = list(overlap_meta.get("bars") or [])
     outlets = [str(b.get("name") or "") for b in outlet_bars if b.get("name")]
     if not outlets:
@@ -1502,8 +2020,8 @@ def build_signal_card(
     has_cross = bool(topic.get("has_cross_layer")) or (
         "mainstream" in buckets and "social" in buckets
     )
-    # Rank primarily by joint score; presence_rank is a tiny tie-break only.
-    rank_score = float(joint_score) + float(topic.get("presence_rank") or 0) * 0.001
+    # Rank by unified joint score; presence_rank is a tiny tie-break only.
+    rank_score = float(score) + float(topic.get("presence_rank") or 0) * 0.001
     return {
         "id": sid,
         "index": index + 1,
@@ -1528,7 +2046,10 @@ def build_signal_card(
         "score": score,
         "cross_media_score": cross_media_score,
         "social_proof_score": social_proof_score,
-        "joint_score": joint_score,
+        "joint_score": score,
+        "cross_social_score": score,
+        "social_family_count": social_family_count,
+        "is_cross_social": is_cross_social,
         "rank_score": rank_score,
         "score_label": f"{score}/100",
         "time_ago": _relative_time(rep.get("fetched_at")),
@@ -1566,6 +2087,9 @@ def build_signal_detail(card: Dict[str, Any], pool_cards: Sequence[Dict[str, Any
         "cross_media_score": int(card.get("cross_media_score") or 0),
         "social_proof_score": int(card.get("social_proof_score") or 0),
         "joint_score": int(card.get("joint_score") or presence_confidence or 0),
+        "cross_social_score": int(card.get("cross_social_score") or 0),
+        "social_family_count": int(card.get("social_family_count") or 0),
+        "is_cross_social": 1 if card.get("is_cross_social") else 0,
     }
     cross_media_score = int(viral.get("cross_media_score") or card.get("cross_media_score") or 0)
     social_proof_score = int(viral.get("social_proof_score") or card.get("social_proof_score") or 0)
@@ -1576,7 +2100,25 @@ def build_signal_detail(card: Dict[str, Any], pool_cards: Sequence[Dict[str, Any
         or card.get("score")
         or 0
     )
-    display_score = joint_score or presence_confidence or int(card.get("score") or 0)
+    # Unified: cross_social_score mirrors joint_score for list/ring/ranking.
+    cross_social_score = int(viral.get("cross_social_score") or joint_score)
+    if joint_score and cross_social_score and joint_score != cross_social_score:
+        cross_social_score = joint_score
+    social_family_count = int(
+        viral.get("social_family_count") or card.get("social_family_count") or 0
+    )
+    is_cross_social = bool(
+        viral.get("is_cross_social") or card.get("is_cross_social") or social_family_count >= 2
+    )
+    if topic:
+        topic = dict(topic)
+        topic["is_cross_social"] = is_cross_social
+    display_score = (
+        joint_score
+        or social_proof_score
+        or presence_confidence
+        or int(card.get("score") or 0)
+    )
     unanimous = _unanimous_copy(topic, display_score)
     social = _social_proof_from_topic(topic)
     # Research page detail = presence / Story Match / social only.
@@ -1600,7 +2142,10 @@ def build_signal_detail(card: Dict[str, Any], pool_cards: Sequence[Dict[str, Any
         "score_label": f"{display_score}/100",
         "cross_media_score": cross_media_score,
         "social_proof_score": social_proof_score,
-        "joint_score": joint_score,
+        "joint_score": display_score,
+        "cross_social_score": display_score,
+        "social_family_count": social_family_count,
+        "is_cross_social": is_cross_social,
         "confidence": display_score,
         "confidence_bar": display_score,
         "detail_label": f"TREND SIGNAL {card.get('index_label') or '01'}",
@@ -1635,7 +2180,7 @@ def build_research_context(
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     bundle = _cached_raw_bundle(run_date)
-    # Research UI: Mainstream (A) + Social Proof (B) only — Layer C excluded.
+    # Research UI: Mainstream (A) + Social Proof (B) only.
     items = _research_feed_items(bundle.get("items") or [])
     selected = list(selected_ids or [])[:MAX_SELECTED_SIGNALS]
     selected_signal_id = selected[0] if selected else ""
@@ -1643,42 +2188,17 @@ def build_research_context(
     has_pitch = pitch_btn_mode == "view"
 
     # Post-scrape: group by presence (+ soft A×B social attach).
-    # Rank by joint score (cross-media alone + social-proof alone, combined).
+    # Final board = clean trending topics (quality sort), regardless of scrape path.
     topics = group_items_by_presence(items)
     cards = [
         build_signal_card(topic, index=i, selected_ids=selected, active_id=active_id)
         for i, topic in enumerate(topics)
     ]
-    cards.sort(
-        key=lambda c: (
-            int(c.get("joint_score") or c.get("score") or 0),
-            int(c.get("cross_media_score") or 0),
-            int(c.get("social_proof_score") or 0),
-            float(c.get("rank_score") or 0),
-        ),
-        reverse=True,
-    )
+    cards.sort(key=trending_board_quality, reverse=True)
 
-    # Top 10 = highest joint score down. Soft theme cap while walking that order
-    # (never promote a lower joint score above a higher one).
-    viral_cards: List[Dict[str, Any]] = []
-    theme_counts: Dict[str, int] = {}
-    deferred: List[Dict[str, Any]] = []
-    max_per_theme = 2
-    for card in cards:
-        theme = str(card.get("theme_key") or _theme_key(str(card.get("title") or "")))
-        if theme_counts.get(theme, 0) < max_per_theme:
-            viral_cards.append(card)
-            theme_counts[theme] = theme_counts.get(theme, 0) + 1
-        else:
-            deferred.append(card)
-        if len(viral_cards) >= MAX_VIRAL_LIST:
-            break
-    if len(viral_cards) < MAX_VIRAL_LIST:
-        for card in deferred:
-            viral_cards.append(card)
-            if len(viral_cards) >= MAX_VIRAL_LIST:
-                break
+    # Top N clean trending list (deduped headlines, theme diversity, junk filtered).
+    board = select_top_viral_cards(cards, limit=MAX_VIRAL_LIST, min_joint=MIN_JOINT_BOARD_SCORE)
+    viral_cards: List[Dict[str, Any]] = list(board.get("cards") or [])
 
     # Keep any already-selected topics visible even if they fell outside Top 10.
     selected_set = set(selected)
@@ -1690,9 +2210,18 @@ def build_research_context(
                 viral_cards.append(c)
                 have.add(cid)
 
+    # Rank order must match the number shown in the list (unified joint score).
+    viral_cards.sort(key=_card_display_score, reverse=True)
     for i, card in enumerate(viral_cards):
         card["index"] = i + 1
         card["index_label"] = f"{i + 1:02d}"
+        # Keep aliases identical on every card.
+        shown = _card_display_score(card)
+        card["score"] = shown
+        card["joint_score"] = shown
+        card["cross_social_score"] = shown
+        card["confidence"] = shown
+        card["confidence_bar"] = shown
 
     # Research UI stops at the thin Top-10 presence board (streams + social).
     # OpenAI summary / Agent M take run on pitch handoff, not on this page.
@@ -1755,6 +2284,12 @@ def build_research_context(
     mainstream_n = sum(1 for c in viral_cards if "mainstream" in (c.get("buckets") or []))
     social_n = sum(1 for c in viral_cards if "social" in (c.get("buckets") or []))
     raw_count = len(items)
+    above_floor = int(board.get("above_floor_count") or 0)
+    filled_from_floor = int(board.get("board_filled_from_floor") or 0)
+    cross_pool = int(board.get("cross_layer_pool") or 0)
+    cross_social_pool = int(board.get("cross_social_pool") or 0)
+    used_below = bool(board.get("used_below_floor") or board.get("used_single_social_fill"))
+    below_on_board = max(0, len(viral_cards) - filled_from_floor) if used_below else 0
 
     return {
         "run_date": day,
@@ -1762,6 +2297,21 @@ def build_research_context(
         "total_count": len(viral_cards),
         "pool_count": len(cards),
         "viral_limit": MAX_VIRAL_LIST,
+        "min_joint_score": MIN_JOINT_BOARD_SCORE,
+        "min_cross_social_families": MIN_CROSS_SOCIAL_FAMILIES,
+        "above_floor_count": above_floor,
+        "cross_layer_pool": cross_pool,
+        "cross_social_pool": cross_social_pool,
+        "board_used_below_floor": used_below,
+        "board_policy_label": (
+            "Clean trending topics"
+            + (
+                f" · {filled_from_floor} cross-checked"
+                if filled_from_floor
+                else f" · {MIN_CROSS_SOCIAL_FAMILIES}+ social platforms"
+            )
+            + (f" (+{below_on_board} fill)" if below_on_board else "")
+        ),
         "raw_item_count": raw_count,
         "filtered_count": len(filtered),
         "mainstream_count": mainstream_n,
@@ -1979,7 +2529,6 @@ def clusters_from_selected_topics(topics: Sequence[Dict[str, Any]]) -> List[Dict
         layer_hits = {
             "A": sum(1 for it in members if str(it.get("layer") or "").upper() == "A"),
             "B": sum(1 for it in members if str(it.get("layer") or "").upper() == "B"),
-            "C": sum(1 for it in members if str(it.get("layer") or "").upper() == "C"),
         }
         cluster: Dict[str, Any] = {
             "id": str(topic.get("id") or f"selected_{i + 1}"),
@@ -2024,7 +2573,6 @@ def clusters_from_selected_items(items: Sequence[Dict[str, Any]]) -> List[Dict[s
                 "layer_hits": {
                     "A": 1 if layer == "A" else 0,
                     "B": 1 if layer == "B" else 0,
-                    "C": 1 if layer == "C" else 0,
                 },
                 "cross_layer": False,
                 "representative": it,
@@ -2172,7 +2720,6 @@ def create_pitches_from_signal_ids(
             "layer_counts": {
                 "A": sum(1 for t in selected_topics if "A" in (t.get("layers") or [])),
                 "B": sum(1 for t in selected_topics if "B" in (t.get("layers") or [])),
-                "C": sum(1 for t in selected_topics if "C" in (t.get("layers") or [])),
             },
             "selected_titles": [str(r.get("title") or "") for r in selected_reps],
             "source_signal_id": wanted[0] if wanted else "",

@@ -387,9 +387,89 @@ def fetch_serpapi_trends_fallback() -> List[Dict[str, Any]]:
     return out
 
 
-def collect_layer_a() -> List[Dict[str, Any]]:
+def _bridge_query_from_title(title: str) -> str:
+    """Compress a YouTube title into a Google News search query."""
+    cleaned = re.sub(r"[^\w\s\-']", " ", title or "", flags=re.UNICODE)
+    tokens = [t for t in cleaned.split() if len(t) > 2][:8]
+    return " ".join(tokens).strip()
+
+
+def fetch_mainstream_bridges_from_youtube(
+    youtube_titles: List[str],
+    *,
+    per_title: int = 4,
+) -> List[Dict[str, Any]]:
+    """
+    For viral YouTube News/Entertainment titles, pull matching mainstream
+    Google News hits (Layer A) so social heat can cross-check with wires.
+    """
+    out: List[Dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for title in youtube_titles:
+        query = _bridge_query_from_title(title)
+        if len(query) < 6:
+            continue
+        from urllib.parse import quote
+
+        url = (
+            "https://news.google.com/rss/search?"
+            f"q={quote(query)}+when:24h&hl=en-US&gl=US&ceid=US:en"
+        )
+        rows = _fetch_rss(url)
+        for i, row in enumerate(rows[:per_title]):
+            hit_title = (row.get("title") or "").strip()
+            key = hit_title.lower()
+            if not hit_title or key in seen_titles:
+                continue
+            # Skip near-identical YouTube mirror rows.
+            if key == title.strip().lower():
+                continue
+            seen_titles.add(key)
+            base_score = 88.0 - i
+            age = row.get("age_hours")
+            if age is not None:
+                if age <= 6.0:
+                    base_score += 10.0
+                elif age <= 24.0:
+                    base_score += 5.0
+            out.append(
+                _item(
+                    title=hit_title,
+                    source="youtube_mainstream_bridge",
+                    url=row.get("link") or "",
+                    score=round(base_score, 1),
+                    snippet=(row.get("description") or "")[:400],
+                    outlet="Google News (YT bridge)",
+                    raw={
+                        "seed_youtube_title": title,
+                        "query": query,
+                        "age_hours": age,
+                        "pub_date": row.get("pub_date"),
+                    },
+                )
+            )
+        time.sleep(0.05)
+    logger.info(
+        "YouTube→mainstream bridges: seeds=%d hits=%d",
+        len(youtube_titles),
+        len(out),
+    )
+    return out
+
+
+def collect_layer_a(
+    *,
+    youtube_bridge_titles: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """Mainstream / parent-suburban signal layer using free direct sources."""
     bucket: List[Dict[str, Any]] = []
+    # 0. Bridge: mainstream coverage of viral YouTube News/Entertainment titles.
+    if youtube_bridge_titles:
+        try:
+            bucket.extend(fetch_mainstream_bridges_from_youtube(youtube_bridge_titles))
+        except Exception as exc:
+            logger.debug("YouTube mainstream bridge skipped: %s", exc)
+
     # 1. Free Google Trends US RSS
     bucket.extend(fetch_google_trends_us())
     
